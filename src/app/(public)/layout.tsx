@@ -1,4 +1,4 @@
-import Header from "@/components/header";
+import { Header } from "@/components";
 
 const PublicLayout = ({ children }: React.PropsWithChildren) => {
   return (
