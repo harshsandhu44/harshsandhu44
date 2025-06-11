@@ -1,7 +1,12 @@
+"use client";
+
 import { NAV_LINKS } from "@/lib/constants";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 const Header = () => {
+  const pathname = usePathname();
   const navLinks = NAV_LINKS;
 
   return (
@@ -11,7 +16,10 @@ const Header = () => {
           <Link
             key={link.href}
             href={link.href}
-            className="text-sm font-medium hover:underline underline-offset-8"
+            className={cn(
+              "text-sm font-medium",
+              pathname === link.href && "underline underline-offset-4"
+            )}
           >
             {link.label}
           </Link>
