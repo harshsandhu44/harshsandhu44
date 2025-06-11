@@ -1,5 +1,5 @@
-import { GithubIcon, InstagramIcon } from "@/components/icons";
 import { buttonVariants } from "@/components/ui";
+import { SOCIAL_LINKS } from "@/lib/constants";
 import Link from "next/link";
 
 const Home = () => {
@@ -19,20 +19,16 @@ const Home = () => {
         <div className="space-y-2">
           <h2 className="text-lg font-bold">Connect with me</h2>
           <div className="flex gap-4 items-center">
-            <Link
-              href="https://github.com/harshsandhu44"
-              target="_blank"
-              className={buttonVariants({ variant: "outline", size: "icon" })}
-            >
-              <GithubIcon />
-            </Link>
-            <Link
-              href="https://www.instagram.com/95_harshsandhu/"
-              target="_blank"
-              className={buttonVariants({ variant: "outline", size: "icon" })}
-            >
-              <InstagramIcon />
-            </Link>
+            {SOCIAL_LINKS.map((link) => (
+              <Link
+                key={link.label}
+                href={link.href}
+                target="_blank"
+                className={buttonVariants({ variant: "outline", size: "icon" })}
+              >
+                <link.icon />
+              </Link>
+            ))}
           </div>
         </div>
       </section>
