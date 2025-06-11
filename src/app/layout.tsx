@@ -11,7 +11,7 @@ export default function RootLayout({
   children,
 }: Readonly<React.PropsWithChildren>) {
   return (
-    <html lang="en">
+    <html lang="en" className="dark" suppressHydrationWarning>
       <body>{children}</body>
     </html>
   );
