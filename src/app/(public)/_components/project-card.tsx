@@ -1,15 +1,15 @@
 "use client";
 
-import { GithubIcon } from "@/components";
+import { GithubIcon } from "@/components/icons";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
-  Badge,
-  Button,
   Card,
   CardContent,
   CardFooter,
   CardHeader,
   CardTitle,
-} from "@/components/ui";
+} from "@/components/ui/card";
 import { Project } from "@/lib/types";
 import { ExternalLinkIcon } from "lucide-react";
 import Image from "next/image";
