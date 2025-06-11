@@ -1,14 +1,5 @@
-import Footer from "@/components/footer";
-import Header from "@/components/header";
-
 const PublicLayout = ({ children }: React.PropsWithChildren) => {
-  return (
-    <>
-      <Header />
-      {children}
-      <Footer />
-    </>
-  );
+  return <>{children}</>;
 };
 
 export default PublicLayout;
