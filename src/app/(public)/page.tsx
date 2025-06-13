@@ -35,19 +35,18 @@ const Home = () => {
       </section>
 
       <section className="space-y-4">
-        <h2 className="text-lg font-bold">Projects</h2>
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-lg font-bold">Projects</h2>
+          <Button variant="link" size="sm" asChild>
+            <Link href="/projects">View All</Link>
+          </Button>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {PROJECTS.slice(0, 2).map((project) => (
-            <ProjectCard key={project.label} project={project} />
+            <ProjectCard key={project.label} project={project} size="sm" />
           ))}
         </div>
-        {PROJECTS.length > 2 && (
-          <div className="flex justify-center">
-            <Button variant="outline" asChild>
-              <Link href="/projects">View All Projects</Link>
-            </Button>
-          </div>
-        )}
       </section>
     </main>
   );
