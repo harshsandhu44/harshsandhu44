@@ -27,18 +27,6 @@ This repository includes several GitHub Actions workflows for continuous integra
 - Uploads coverage reports to Codecov (if configured)
 - Provides detailed insight into test coverage
 
-### 3. PR Check (`pr-check.yml`)
-
-**Triggers:** When PRs are opened, updated, or reopened
-
-**What it does:**
-
-- Quick validation on Node.js 20.x
-- TypeScript compilation check with `tsc --noEmit`
-- ESLint validation
-- Runs tests
-- Posts/updates a comment on the PR with results
-
 ## Setting Up Branch Protection
 
 To enforce these checks before merging, add these as required status checks in your repository settings:
