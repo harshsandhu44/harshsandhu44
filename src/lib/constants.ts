@@ -27,6 +27,7 @@ export const SOCIAL_LINKS = [
 export const PROJECTS = [
   {
     label: 'MoodSync - A Mood-Adaptive Sound Frequency App',
+    slug: 'mood-sync',
     href: '/projects/mood-sync',
     description:
       "A mood-adaptive sound frequency app that uses the Web Audio API to generate sound frequencies based on the user's mood.",
