@@ -1,19 +1,19 @@
-"use client";
+'use client';
 
-import { GithubIcon } from "@/components/icons";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { GithubIcon } from '@/components/icons';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
   CardFooter,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Project } from "@/lib/types";
-import { ExternalLinkIcon } from "lucide-react";
-import Image from "next/image";
-import Link from "next/link";
+} from '@/components/ui/card';
+import { Project } from '@/lib/types';
+import { ExternalLinkIcon } from 'lucide-react';
+import Image from 'next/image';
+import Link from 'next/link';
 
 interface ProjectCardProps {
   project: Project;

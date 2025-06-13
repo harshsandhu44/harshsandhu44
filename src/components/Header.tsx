@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { NAV_LINKS } from "@/lib/constants";
-import { cn } from "@/lib/utils";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { NAV_LINKS } from '@/lib/constants';
+import { cn } from '@/lib/utils';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 
 const Header = () => {
   const pathname = usePathname();
@@ -17,8 +17,8 @@ const Header = () => {
             key={link.href}
             href={link.href}
             className={cn(
-              "text-sm font-medium",
-              pathname === link.href && "underline underline-offset-4"
+              'text-sm font-medium',
+              pathname === link.href && 'underline underline-offset-4',
             )}
           >
             {link.label}

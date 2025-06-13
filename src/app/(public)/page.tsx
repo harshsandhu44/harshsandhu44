@@ -1,7 +1,7 @@
-import { Button, buttonVariants } from "@/components/ui/button";
-import { PROJECTS, SOCIAL_LINKS } from "@/lib/constants";
-import Link from "next/link";
-import ProjectCard from "./_components/project-card";
+import { Button, buttonVariants } from '@/components/ui/button';
+import { PROJECTS, SOCIAL_LINKS } from '@/lib/constants';
+import Link from 'next/link';
+import ProjectCard from './_components/project-card';
 
 const Home = () => {
   return (
@@ -13,7 +13,7 @@ const Home = () => {
           an impact on humanity.
           <br />I am a full stack developer and a designer with 5 years of
           professional experience in web development. Currently, I am working as
-          a Software Engineer at{" "}
+          a Software Engineer at{' '}
           <span className="underline underline-offset-8">MagicEdtech</span>.
         </p>
 
@@ -25,7 +25,7 @@ const Home = () => {
                 key={link.label}
                 href={link.href}
                 target="_blank"
-                className={buttonVariants({ variant: "outline", size: "icon" })}
+                className={buttonVariants({ variant: 'outline', size: 'icon' })}
               >
                 <link.icon />
               </Link>
