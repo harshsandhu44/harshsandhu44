@@ -8,7 +8,7 @@ const Layout = ({ children }: React.PropsWithChildren) => {
   const router = useRouter();
 
   return (
-    <main className="container space-y-4">
+    <main className="container space-y-8">
       <Button onClick={() => router.back()} variant="secondary" size="icon">
         <ArrowLeftIcon />
       </Button>
