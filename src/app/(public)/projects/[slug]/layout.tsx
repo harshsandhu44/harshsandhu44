@@ -1,6 +1,8 @@
 const Layout = ({ children }: React.PropsWithChildren) => {
   return (
-    <div className="mx-auto prose dark:prose-invert prose-zinc">{children}</div>
+    <div className="container prose dark:prose-invert prose-zinc">
+      {children}
+    </div>
   );
 };
 
