@@ -5,7 +5,7 @@ import ProjectCard from './_components/project-card';
 
 const Home = () => {
   return (
-    <main className="py-12 container space-y-12">
+    <main className="flex-1 py-12 container space-y-12">
       <section className="space-y-4">
         <h1 className="text-4xl font-bold">Harsh Sandhu</h1>
         <p>
