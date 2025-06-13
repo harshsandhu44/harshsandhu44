@@ -18,7 +18,7 @@ const Header = () => {
             href={link.href}
             className={cn(
               'text-sm font-medium',
-              pathname === link.href && 'underline underline-offset-4',
+              pathname === link.href && 'underline underline-offset-4'
             )}
           >
             {link.label}
