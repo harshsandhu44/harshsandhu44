@@ -1,1 +1,1 @@
-<h4 align="center"><samp> Hi there 👋🏻 welcome to my Github! I'm an overthinker and good at programming. I also like building web applications 📟 and I'm building myself as an entreprenuer ✨ and a human 👦🏻.️ </samp></h4>
+<h4 align="center"><samp> Hi there 👋🏻 welcome to my Github! I'm a problem solver and good at learning new things. I like building web applications 📟 and I'm building myself as an entreprenuer ✨ and a human 👦🏻.️ </samp></h4>
