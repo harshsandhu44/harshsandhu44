@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { GrainOverlay } from "@/components/grain-overlay";
+import { AppHeader } from "@/components/app-header";
 import { AppFooter } from "@/components/app-footer";
 import "./globals.css";
 
@@ -19,6 +20,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       </head>
       <body>
         <GrainOverlay />
+        <AppHeader />
         <main>{children}</main>
         <AppFooter />
       </body>

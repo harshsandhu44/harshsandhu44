@@ -9,7 +9,7 @@ export function AppFooter() {
 
   return (
     <footer className="bg-primary text-primary-foreground">
-      <div className="container mx-auto min-h-[50vh] flex flex-col items-center justify-center space-y-4">
+      <div className="max-w-7xl px-4 mx-auto min-h-[50vh] flex flex-col items-center justify-center space-y-4">
         <h2 className="text-4xl md:text-6xl font-black mb-4">{tagline}</h2>
         <p className="text-center max-w-xl">{subTagline}</p>
         <Button asChild variant="secondary" className="mt-4">

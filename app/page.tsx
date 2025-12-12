@@ -18,7 +18,7 @@ export default function HomePage() {
   }));
 
   return (
-    <div className="mx-auto px-2 md:px-4 max-w-7xl">
+    <div className="mx-auto px-4 max-w-7xl">
       <section
         className="relative py-24 min-h-dvh flex flex-col md:items-center justify-center md:text-center space-y-4"
         id="hero-section"

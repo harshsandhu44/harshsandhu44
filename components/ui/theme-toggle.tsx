@@ -5,12 +5,19 @@ import { Moon, Sun } from "lucide-react";
 import { flushSync } from "react-dom";
 
 import { cn } from "@/lib/utils";
+import { buttonVariants } from "./button";
 
 interface Props extends React.ComponentPropsWithoutRef<"button"> {
+  showLabel?: boolean;
   duration?: number;
 }
 
-export const ThemeToggle = ({ className, duration = 400, ...props }: Props) => {
+export const ThemeToggle = ({
+  className,
+  showLabel = false,
+  duration = 400,
+  ...props
+}: Props) => {
   const [isDark, setIsDark] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -70,11 +77,17 @@ export const ThemeToggle = ({ className, duration = 400, ...props }: Props) => {
     <button
       ref={buttonRef}
       onClick={toggleTheme}
-      className={cn(className)}
+      className={cn(
+        className,
+        buttonVariants({
+          size: showLabel ? "default" : "icon",
+          variant: "ghost",
+        }),
+      )}
       {...props}
     >
       {isDark ? <Sun /> : <Moon />}
-      <span className="sr-only">Toggle theme</span>
+      <span className={cn(showLabel ? "" : "sr-only")}>Toggle theme</span>
     </button>
   );
 };
