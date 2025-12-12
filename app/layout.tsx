@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { GeistMono } from "geist/font/mono";
 import { GrainOverlay } from "@/components/grain-overlay";
 import { AppHeader } from "@/components/app-header";
 import { AppFooter } from "@/components/app-footer";
@@ -18,7 +19,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           rel="stylesheet"
         />
       </head>
-      <body>
+      <body className={`${GeistMono.variable}`}>
         <GrainOverlay />
         <AppHeader />
         <main>{children}</main>
