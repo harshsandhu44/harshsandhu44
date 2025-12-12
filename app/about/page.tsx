@@ -20,7 +20,7 @@ export default function AboutPage() {
             className="object-cover object-center opacity-90"
             sizes="100vw"
           />
-          <div className="absolute inset-0 bg-linear-to-r from-primary via-primary/50 to-transparent" />
+          <div className="absolute inset-0 bg-primary/75" />
         </div>
 
         <div className="max-w-7xl mx-auto px-4 relative z-10 flex h-full flex-col justify-center md:px-12">
@@ -32,12 +32,12 @@ export default function AboutPage() {
             </BlurFade>
 
             <BlurFade delay={0.3} inView>
-              <span className="text-lg font-semibold text-primary-foreground">
+              <span className="text-lg sm:text-xl font-medium text-primary-foreground">
                 {bio.catchphrase}
               </span>
             </BlurFade>
 
-            <div className="space-y-6 text-lg sm:text-xl leading-relaxed text-primary-foreground">
+            <div className="space-y-6 text-lg sm:text-xl font-medium leading-relaxed text-primary-foreground">
               {bio.paragraphs?.map((text, i) => (
                 <BlurFade key={i} delay={0.5 + i * 0.2} inView>
                   <p className="max-w-prose">{text}</p>
