@@ -1,3 +1,6 @@
+import { BentoItem } from "@/components/ui/bento-grid";
+import { LaptopIcon, ServerIcon, CloudIcon, TerminalIcon } from "lucide-react";
+
 export const DATA = {
   global: {
     name: "Harsh Sandhu",
@@ -95,7 +98,7 @@ export const DATA = {
 
   about: {
     bio: {
-      image: "/images/harsh-portrait.jpg", // Update path
+      image: "https://placehold.co/800", // Update path
       greeting: "Hi, I'm Harsh.",
       catchphrase: "I live in the terminal and dream in TypeScript.",
       paragraphs: [
@@ -105,44 +108,68 @@ export const DATA = {
     },
     interests: [
       {
+        id: "f1",
+        title: "F1 Strategist",
+        description:
+          "I analyze race pace data for fun. Ask me about tire degradation.",
+        tags: ["Data", "Racing"],
         icon: "🏎️",
-        label: "F1 Strategist",
-        desc: "I analyze race pace data for fun. Ask me about tire degradation.",
+        colSpan: 1,
+        href: "https://www.formula1.com",
       },
       {
+        id: "terminal",
+        title: "Terminal Junkie",
+        description:
+          "I haven't touched a mouse in 3 days. Send help (or vim macros).",
+        tags: ["Neovim", "Zsh", "Tmux"],
         icon: "⌨️",
-        label: "Terminal Junkie",
-        desc: "I haven't touched a mouse in 3 days. Send help (or vim macros).",
+        colSpan: 2, // Highlighted item
       },
       {
+        id: "german",
+        title: "Sprichst du Deutsch?",
+        description:
+          "Learning German. Level A2. Still struggling with 'der/die/das'.",
+        tags: ["Learning", "A2"],
         icon: "🇩🇪",
-        label: "Sprichst du Deutsch?",
-        desc: "Learning German. Level A2. Still struggling with 'der/die/das'.",
+        colSpan: 2, // Highlighted item
       },
       {
+        id: "cycling",
+        title: "Weekend Rider",
+        description: "Cycling through Punjab to clear the cache (my brain).",
+        tags: ["Strava", "Health"],
         icon: "🚴",
-        label: "Weekend Rider",
-        desc: "Cycling through Punjab to clear the cache (my brain).",
+        colSpan: 1,
       },
-    ],
+    ] as BentoItem[],
     stack: {
       header: "My Weapons of Choice",
       categories: [
         {
           name: "Frontend",
-          items: "React & Next.js (The Bread & Butter)",
+          icon: LaptopIcon,
+          items: ["React", "Next.js", "Tailwind", "Framer Motion"],
+          desc: "The Bread & Butter",
         },
         {
           name: "Backend",
-          items: "Node, Python, & Go (The Heavy Lifting)",
+          icon: ServerIcon,
+          items: ["Node.js", "Python", "Go", "PostgreSQL"],
+          desc: "The Heavy Lifting",
         },
         {
           name: "Infrastructure",
-          items: "AWS & Docker (The Cloud Kingdom)",
+          icon: CloudIcon,
+          items: ["AWS", "Docker", "Vercel", "Terraform"],
+          desc: "The Cloud Kingdom",
         },
         {
-          name: "Editor",
-          items: "Zed & Neovim (Speed matters)",
+          name: "Editor & Tools",
+          icon: TerminalIcon,
+          items: ["Zed", "Neovim", "Tmux", "LazyGit"],
+          desc: "Speed matters",
         },
       ],
     },
