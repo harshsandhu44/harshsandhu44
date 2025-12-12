@@ -152,7 +152,7 @@ export const DATA = {
     tagline: "Don't be a stranger.",
     subTagline:
       "Whether it's a project inquiry or a debate about the latest F1 Grand Prix—my inbox is open.",
-    cta: "Shoot me an email →",
+    cta: "Shoot me an email",
     hoverText: "I reply fast!",
   },
 };

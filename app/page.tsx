@@ -3,8 +3,8 @@ import { ArrowBigDownIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Highlighter } from "@/components/ui/highlighter";
-import { DATA } from "@/lib/constants";
 import BentoGrid from "@/components/ui/bento-grid";
+import { DATA } from "@/lib/constants";
 
 export default function HomePage() {
   const projectItems = DATA.selectedWorks.projects.map((project) => ({
@@ -20,7 +20,7 @@ export default function HomePage() {
   return (
     <div className="mx-auto px-2 md:px-4 max-w-7xl">
       <section
-        className="py-24 min-h-dvh flex flex-col md:items-center justify-center md:text-center space-y-4"
+        className="relative py-24 min-h-dvh flex flex-col md:items-center justify-center md:text-center space-y-4"
         id="hero-section"
       >
         <Badge variant="outline" className="px-3 py-1 italic">
