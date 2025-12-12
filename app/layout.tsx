@@ -1,17 +1,6 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import { GrainOverlay } from "@/components/grain-overlay";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "Create Next App",
@@ -23,13 +12,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en">
       <head>
         <link
-          href="https://api.fontshare.com/v2/css?f[]=satoshi@1,2&f[]=boska@1,2&display=swap"
+          href="https://api.fontshare.com/v2/css?f[]=satoshi@1,2&f[]=comico@400&display=swap"
           rel="stylesheet"
         />
       </head>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body>
         <GrainOverlay />
         <main>{children}</main>
       </body>

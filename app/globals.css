@@ -59,7 +59,7 @@
   --spacing: 0.25rem;
 
   --font-sans: "Satoshi", sans-serif;
-  --font-serif: "Boska", serif;
+  --font-cursive: "Comico", cursive;
 }
 
 .dark {
@@ -161,6 +161,7 @@
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
   --font-serif: var(--font-serif);
+  --font-cursive: var(--font-cursive);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -182,11 +183,13 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground font-sans antialiased;
+    @apply bg-background text-foreground font-sans leading-normal antialiased;
   }
 }
 
-::view-transition-old(root), ::view-transition-new(root) {
-    animation: none;
-    mix-blend-mode: normal;
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
 }
+

@@ -2,34 +2,58 @@ import Link from "next/link";
 import { ArrowBigDownIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Highlighter } from "@/components/ui/highlighter";
+import { DATA } from "@/lib/constants";
+import BentoGrid from "@/components/ui/bento-grid";
 
 export default function HomePage() {
+  const projectItems = DATA.selectedWorks.projects.map((project) => ({
+    id: project.id,
+    title: project.title,
+    description: project.subtext,
+    image: project.image,
+    href: project.link,
+    tags: project.tags,
+    colSpan: project.id === "spear-education" ? 2 : (1 as 2 | 1 | 3),
+  }));
+
   return (
     <div className="mx-auto px-2 md:px-4 max-w-7xl">
       <section
-        className="py-24 min-h-dvh flex flex-col items-center justify-center text-center space-y-4"
+        className="py-24 min-h-dvh flex flex-col md:items-center justify-center md:text-center space-y-4"
         id="hero-section"
       >
         <Badge variant="outline" className="px-3 py-1 italic">
-          Currently optimizing my dotfiles (again).
+          {DATA.hero.statusBadge}
         </Badge>
         <h1 className="text-5xl md:text-7xl font-black max-w-prose">
-          I build pixel-perfect{" "}
-          <span className="text-muted-foreground">chaos</span> for the web.
+          {DATA.hero.headline.start}
+          <div className="inline-block relative">
+            <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-sm text-primary font-cursive">
+              {DATA.hero.headline.replace}
+            </span>
+            <Highlighter action="crossed-off">
+              {DATA.hero.headline.strike}
+            </Highlighter>
+          </div>
+          {DATA.hero.headline.end}
         </h1>
-        <p className="text-xl max-w-prose">
-          Full-Stack Engineer & Digital Architect. I turn coffee into clean code
-          and complex problems into simple solutions.
-        </p>
+        <p className="text-xl max-w-prose">{DATA.hero.subHeadline}</p>
         <Button asChild className="mt-4" size="lg">
           <Link href="#journey-section">
-            See what I&apos;ve been cooking <ArrowBigDownIcon />
+            {DATA.hero.cta} <ArrowBigDownIcon />
           </Link>
         </Button>
       </section>
 
-      <section className="py-24" id="journey-section">
-        <h2>Journey Section Placeholder</h2>
+      <section
+        className="py-24 min-h-dvh flex flex-col md:items-center justify-center space-y-16"
+        id="journey-section"
+      >
+        <h2 className="text-4xl md:text6xl font-black md:text-center max-w-prose">
+          {DATA.selectedWorks.title}
+        </h2>
+        <BentoGrid items={projectItems} />
       </section>
     </div>
   );
