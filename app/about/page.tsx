@@ -3,42 +3,56 @@ import { DATA } from "@/lib/constants";
 import BentoGrid from "@/components/ui/bento-grid";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { BlurFade } from "@/components/ui/blur-fade";
 
 export default function AboutPage() {
   const { bio, interests, stack } = DATA.about;
 
   return (
-    <div className="mx-auto px-4 max-w-7xl">
-      <section className="relative py-24 min-h-dvh flex flex-col-reverse lg:grid grid-cols-2 place-content-center gap-x-4 gap-y-12">
-        <div className="flex flex-col justify-center gap-4">
-          <h1 className="text-5xl md:text-7xl font-black max-w-prose">
-            {bio.greeting}
-          </h1>
-          <p className="text-xl font-medium">{bio.catchphrase}</p>
-          <div className="space-y-4">
-            {bio.paragraphs.map((paragraph, idx) => (
-              <p key={idx} className="text-xl font-medium">
-                {paragraph}
-              </p>
-            ))}
-          </div>
-        </div>
-
-        <div className="relative min-h-[25vh] w-full md:min-h-[50vh] lg:aspect-square place-self-center-safe">
+    <div>
+      <section className="relative h-screen w-full overflow-hidden bg-black">
+        <div className="absolute inset-0 z-0">
           <Image
             src={bio.image}
             alt="Harsh Sandhu"
             fill
-            className="object-cover"
+            priority
+            className="object-cover object-center opacity-90"
+            sizes="100vw"
           />
+          <div className="absolute inset-0 bg-linear-to-r from-primary via-primary/50 to-transparent" />
+        </div>
+
+        <div className="max-w-7xl mx-auto px-4 relative z-10 flex h-full flex-col justify-center md:px-12">
+          <div className="max-w-2xl space-y-8">
+            <BlurFade delay={0.1} inView>
+              <h1 className="text-5xl font-bold tracking-tighter text-primary-foreground sm:text-7xl xl:text-8xl">
+                {bio.greeting}
+              </h1>
+            </BlurFade>
+
+            <BlurFade delay={0.3} inView>
+              <span className="text-lg font-semibold text-primary-foreground">
+                {bio.catchphrase}
+              </span>
+            </BlurFade>
+
+            <div className="space-y-6 text-lg sm:text-xl leading-relaxed text-primary-foreground">
+              {bio.paragraphs?.map((text, i) => (
+                <BlurFade key={i} delay={0.5 + i * 0.2} inView>
+                  <p className="max-w-prose">{text}</p>
+                </BlurFade>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 
-      <section className="py-24 min-h-[50vh] flex items-center justify-center gap-4">
+      <section className="px-4 max-w-7xl mx-auto py-24 min-h-[50vh] flex items-center justify-center gap-4">
         <BentoGrid items={interests} />
       </section>
 
-      <section className="py-24 min-h-[50vh] flex flex-col items-center justify-center gap-8">
+      <section className="px-4 max-w-7xl mx-auto py-24 min-h-[50vh] flex flex-col items-center justify-center gap-8">
         <div className="text-center space-y-2">
           <h2 className="text-3xl font-bold tracking-tight">{stack.header}</h2>
         </div>

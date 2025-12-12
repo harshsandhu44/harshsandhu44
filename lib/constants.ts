@@ -98,7 +98,7 @@ export const DATA = {
 
   about: {
     bio: {
-      image: "https://placehold.co/800", // Update path
+      image: "/images/harshsandhu.png",
       greeting: "Hi, I'm Harsh.",
       catchphrase: "I live in the terminal and dream in TypeScript.",
       paragraphs: [
