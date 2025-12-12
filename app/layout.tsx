@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { GrainOverlay } from "@/components/grain-overlay";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -29,6 +30,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <GrainOverlay />
         <main>{children}</main>
       </body>
     </html>
