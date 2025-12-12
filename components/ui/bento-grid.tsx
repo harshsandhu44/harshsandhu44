@@ -5,6 +5,7 @@ import { getColSpanClass } from "@/lib/utils";
 
 export interface BentoItem {
   id: string | number;
+  icon?: string;
   title: string;
   description?: string;
   image?: string;
@@ -58,7 +59,6 @@ function BentoCard({ item, index }: { item: BentoItem; index: number }) {
     >
       {/* @ts-expect-error Make the item unclickable on missing href */}
       <ContentWrapper className="block h-full w-full" {...wrapperProps}>
-        {/* Background Image/Gradient */}
         <div className="absolute inset-0 h-full w-full">
           {item.image ? (
             <>
@@ -67,10 +67,20 @@ function BentoCard({ item, index }: { item: BentoItem; index: number }) {
                 alt={item.title}
                 fill
                 className="object-cover transition-transform duration-500 group-hover:scale-105 opacity-80 group-hover:opacity-60"
-                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
               />
-              <div className="absolute inset-0 bg-card" />
+              {/* 
+         NOTE: Ensure 'bg-card' has opacity in your globals.css (e.g., --card: 0 0% 100% / 0.5) 
+         or change this class to 'bg-black/40' to act as an overlay 
+      */}
+              <div className="absolute inset-0 bg-card/60" />
             </>
+          ) : item.icon ? (
+            /* creative-tweak: Render Icon as Watermark */
+            <div className="flex h-full w-full items-center justify-center overflow-hidden bg-muted/20">
+              <span className="text-[10rem] opacity-10 grayscale transition-transform duration-500 group-hover:scale-110 group-hover:rotate-12 select-none">
+                {item.icon}
+              </span>
+            </div>
           ) : (
             <div className="h-full w-full bg-card" />
           )}
