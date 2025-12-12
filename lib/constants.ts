@@ -74,19 +74,19 @@ export const DATA = {
     roles: [
       {
         company: "Magic EdTech",
-        role: "React Expert",
+        role: "Sr. Software Engineer",
         period: "2024 - Present",
         description: "Currently making magic happen (literally).",
       },
       {
         company: "Dhan AI",
-        role: "Sr. Frontend Engineer",
+        role: "Sr. Software Engineer",
         period: "2022 - 2024",
         description: "Tamed the inventory beast for enterprise clients.",
       },
       {
-        company: "Pragyaware",
-        role: "Frontend Developer",
+        company: "Pragyaware Informatics",
+        role: "Jr. Software Engineer",
         period: "2022",
         description: "Where it all started. Learned to pixel-peep.",
       },
