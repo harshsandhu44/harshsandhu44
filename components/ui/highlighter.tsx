@@ -101,3 +101,5 @@ export function Highlighter({
     </span>
   );
 }
+
+Highlighter.displayName = "Highlighter";
