@@ -1,7 +1,6 @@
-import Link from "next/link";
 import { ArrowBigDownIcon, BriefcaseIcon, CalendarIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Highlighter } from "@/components/ui/highlighter";
 import BentoGrid from "@/components/ui/bento-grid";
 import { DATA } from "@/lib/constants";
@@ -13,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { AnchorLink } from "@/components/anchor-link";
 
 export default function HomePage() {
   const projectItems = DATA.selectedWorks.projects.map((project) => ({
@@ -47,11 +47,12 @@ export default function HomePage() {
           {DATA.hero.headline.end}
         </h1>
         <p className="text-xl max-w-prose">{DATA.hero.subHeadline}</p>
-        <Button asChild className="mt-4" size="lg">
-          <Link href="#journey-section">
-            {DATA.hero.cta} <ArrowBigDownIcon />
-          </Link>
-        </Button>
+        <AnchorLink
+          href="#journey-section"
+          className={buttonVariants({ size: "lg" })}
+        >
+          {DATA.hero.cta} <ArrowBigDownIcon />
+        </AnchorLink>
       </section>
 
       <section
