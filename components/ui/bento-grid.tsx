@@ -58,7 +58,11 @@ function BentoCard({ item, index }: { item: BentoItem; index: number }) {
       `}
     >
       {/* @ts-expect-error Make the item unclickable on missing href */}
-      <ContentWrapper className="block h-full w-full" {...wrapperProps}>
+      <ContentWrapper
+        target="_blank"
+        className="block h-full w-full"
+        {...wrapperProps}
+      >
         <div className="absolute inset-0 h-full w-full">
           {item.image ? (
             <>
@@ -68,10 +72,6 @@ function BentoCard({ item, index }: { item: BentoItem; index: number }) {
                 fill
                 className="object-cover transition-transform duration-500 group-hover:scale-105 opacity-80 group-hover:opacity-60"
               />
-              {/* 
-         NOTE: Ensure 'bg-card' has opacity in your globals.css (e.g., --card: 0 0% 100% / 0.5) 
-         or change this class to 'bg-black/40' to act as an overlay 
-      */}
               <div className="absolute inset-0 bg-card/60" />
             </>
           ) : item.icon ? (
