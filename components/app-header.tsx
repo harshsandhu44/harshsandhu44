@@ -31,16 +31,16 @@ export function AppHeader() {
         config["text-primary-foreground"].includes(path) &&
           "text-primary-foreground",
         scrolled
-          ? "bg-background/80 text-foreground backdrop-blur-md border-b shadow-sm py-2"
+          ? "bg-background/80 text-foreground backdrop-blur-md py-2"
           : "bg-transparent py-4",
       )}
     >
       <div className="px-4 max-w-7xl mx-auto grid grid-cols-2 items-center gap-4 transition-all duration-300">
-        <span className="font-black text-lg tracking-tight">Harsh Sandhu</span>
+        <span className="font-black text-lg">Harsh Sandhu</span>
 
         <div className="place-self-end self-center flex flex-row-reverse md:flex-row items-center gap-6">
           <Navbar />
-          <ThemeToggle showLabel />
+          <ThemeToggle />
         </div>
       </div>
     </header>
