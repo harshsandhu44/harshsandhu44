@@ -118,7 +118,7 @@ function BentoCard({ item, index }: { item: BentoItem; index: number }) {
                 {item.title}
               </h3>
               {item.description && (
-                <p className="mt-2 text-sm text-card-foreground md:text-base opacity-0 transition-opacity duration-300 group-hover:opacity-100 line-clamp-2">
+                <p className="mt-2 text-card-foreground md:text-base opacity-100 md:opacity-0 transition-opacity duration-300 group-hover:opacity-100 line-clamp-2">
                   {item.description}
                 </p>
               )}
