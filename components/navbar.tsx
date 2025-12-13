@@ -23,7 +23,11 @@ export function Navbar() {
   const navItems = [
     { label: "home", href: "/" },
     { label: "about", href: "/about" },
-    { label: "resume", href: "/resume" },
+    {
+      label: "resume",
+      href: process.env.NEXT_PUBLIC_RESUME_URL || "",
+      external: true,
+    },
   ];
 
   if (mobile) {
@@ -48,6 +52,9 @@ export function Navbar() {
                   path === item.href && "text-primary",
                 )}
                 onClick={() => setOpen(false)}
+                {...(item.external
+                  ? { target: "_blank", rel: "noopener noreferrer" }
+                  : {})}
               >
                 {item.label}
               </Link>
