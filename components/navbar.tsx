@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -14,6 +15,8 @@ import { useMediaQuery } from "@/lib/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
 
 export function Navbar() {
+  const [open, setOpen] = useState(false);
+
   const mobile = useMediaQuery("(max-width: 768px)");
   const path = usePathname();
 
@@ -25,7 +28,7 @@ export function Navbar() {
 
   if (mobile) {
     return (
-      <Drawer>
+      <Drawer open={open} onOpenChange={setOpen}>
         <DrawerTrigger className="place-self-end self-center">
           <span className="uppercase font-medium">Menu</span>
         </DrawerTrigger>
@@ -44,6 +47,7 @@ export function Navbar() {
                   "text-3xl text-center font-bold capitalize",
                   path === item.href && "text-primary",
                 )}
+                onClick={() => setOpen(false)}
               >
                 {item.label}
               </Link>
