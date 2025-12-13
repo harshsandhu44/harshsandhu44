@@ -29,36 +29,13 @@ export const DATA = {
     title: "Selected Works",
     projects: [
       {
-        id: "spear-education",
-        title: "Teaching 50k Dentists to Scale",
-        subtext: "React, AWS, and a whole lot of uptime.",
-        tags: ["React", "AWS", "AppSync"],
-        image: "/images/projects/spear.jpg",
-      },
-      {
-        id: "wingos",
-        title: "Ordering Fries, Faster.",
-        subtext:
-          "A SaaS platform for hungry customers. 1000+ weekly orders processed without a hiccup.",
-        tags: ["Next.js", "Stripe", "SaaS"],
-        image: "/images/projects/wingos.jpg",
-      },
-      {
-        id: "moodsync",
-        title: "Hacking Your Brainwaves",
-        subtext: "Psychoacoustics meets Next.js. Yes, it actually works.",
-        tags: ["Web Audio API", "Psychoacoustics", "Next.js"],
-        link: "https://moodsync.harshsandhu.com",
-        image: "/images/projects/moodsync.jpg",
-      },
-      {
         id: "panj-granth",
         title: "Spiritual Tech for the Soul",
         subtext:
           "An offline-first reading experience for the Guru Granth Sahib. Built for peace of mind (and performance).",
         tags: ["React Native", "Expo", "Mobile"],
         link: "https://github.com/harshsandhu44/panj-granth",
-        image: "/images/projects/panj-granth.jpg",
+        image: "/images/projects/panj-granth.png",
       },
       {
         id: "soul-bible",
@@ -67,7 +44,22 @@ export const DATA = {
           "Feature-rich Bible app with cloud sync. Because faith shouldn't have loading spinners.",
         tags: ["React Native", "TypeScript", "Cloud Sync"],
         link: "https://github.com/harshsandhu44/soul-bible",
-        image: "/images/projects/soul-bible.jpg",
+        image: "https://placehold.co/800.png",
+      },
+      {
+        id: "moodsync",
+        title: "Hacking Your Brainwaves",
+        subtext: "Psychoacoustics meets Next.js. Yes, it actually works.",
+        tags: ["Web Audio API", "Psychoacoustics", "Next.js"],
+        link: "https://moodsync.harshsandhu.com",
+        image: "/images/projects/moodsync.png",
+      },
+      {
+        id: "spear-education",
+        title: "Teaching 50k Dentists to Scale",
+        subtext: "React, AWS, and a whole lot of uptime.",
+        tags: ["React", "AWS", "AppSync"],
+        image: "/images/projects/spear.png",
       },
     ],
   },
