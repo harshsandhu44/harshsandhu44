@@ -1,3 +1,6 @@
+"use client";
+
+import { useRef } from "react";
 import { ArrowBigDownIcon, BriefcaseIcon, CalendarIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -13,8 +16,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { AnchorLink } from "@/components/anchor-link";
+import { useAnimateOnScroll } from "@/lib/animations";
 
 export default function HomePage() {
+  const containerRef = useRef(null);
+  useAnimateOnScroll(containerRef);
+
   const projectItems = DATA.selectedWorks.projects.map((project) => ({
     id: project.id,
     title: project.title,
@@ -26,10 +33,10 @@ export default function HomePage() {
   }));
 
   return (
-    <div className="mx-auto px-4 max-w-7xl">
+    <div ref={containerRef} className="mx-auto px-4 max-w-7xl">
       <section
         className="relative py-24 min-h-dvh flex flex-col md:items-center justify-center md:text-center space-y-4"
-        id="hero-section"
+        id="section-hero"
       >
         <Badge variant="outline" className="px-3 py-1 italic">
           {DATA.hero.statusBadge}
@@ -57,7 +64,7 @@ export default function HomePage() {
 
       <section
         className="py-24 min-h-dvh flex flex-col md:items-center justify-center space-y-16"
-        id="journey-section"
+        id="section-journey"
       >
         <h2 className="text-4xl md:text6xl font-black md:text-center max-w-prose">
           {DATA.selectedWorks.title}
@@ -67,7 +74,7 @@ export default function HomePage() {
 
       <section
         className="py-24 min-h-dvh flex flex-col md:items-center justify-center space-y-16"
-        id="experience-section"
+        id="section-experience"
       >
         <h2 className="text-4xl md:text6xl font-black md:text-center max-w-prose">
           {DATA.experience.header}

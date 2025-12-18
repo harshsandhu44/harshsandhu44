@@ -1,16 +1,25 @@
+"use client";
+
 import Image from "next/image";
+import { useRef } from "react";
 import { DATA } from "@/lib/constants";
 import BentoGrid from "@/components/ui/bento-grid";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { BlurFade } from "@/components/ui/blur-fade";
+import { useAnimateOnScroll } from "@/lib/animations";
 
 export default function AboutPage() {
   const { bio, interests, stack } = DATA.about;
+  const containerRef = useRef(null);
+  useAnimateOnScroll(containerRef);
 
   return (
-    <div>
-      <section className="dark relative h-screen w-full overflow-hidden bg-black">
+    <div ref={containerRef}>
+      <section
+        className="dark relative h-screen w-full overflow-hidden bg-black"
+        id="section-about-hero"
+      >
         <div className="absolute inset-0 z-0">
           <Image
             src={bio.image}
@@ -48,11 +57,17 @@ export default function AboutPage() {
         </div>
       </section>
 
-      <section className="px-4 max-w-7xl mx-auto py-24 min-h-[50vh] flex items-center justify-center gap-4">
+      <section
+        className="px-4 max-w-7xl mx-auto py-24 min-h-[50vh] flex items-center justify-center gap-4"
+        id="section-about-interests"
+      >
         <BentoGrid items={interests} />
       </section>
 
-      <section className="px-4 max-w-7xl mx-auto py-24 min-h-[50vh] flex flex-col items-center justify-center gap-8">
+      <section
+        className="px-4 max-w-7xl mx-auto py-24 min-h-[50vh] flex flex-col items-center justify-center gap-8"
+        id="section-about-stack"
+      >
         <div className="text-center space-y-2">
           <h2 className="text-3xl font-bold tracking-tight">{stack.header}</h2>
         </div>
