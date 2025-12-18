@@ -4,6 +4,7 @@ import { GrainOverlay } from "@/components/grain-overlay";
 import { AppHeader } from "@/components/app-header";
 import { AppFooter } from "@/components/app-footer";
 import { SmoothScroll } from "@/components/smooth-scroll";
+import { Preloader } from "@/components/preloader";
 import { siteConfig } from "@/config/site";
 import "lenis/dist/lenis.css";
 import "./globals.css";
@@ -107,6 +108,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className={`${GeistMono.variable}`}>
         <SmoothScroll>
           <GrainOverlay />
+          <Preloader />
           <AppHeader />
           <main>
             <script

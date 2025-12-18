@@ -10,7 +10,7 @@ export default function AboutPage() {
 
   return (
     <div>
-      <section className="relative h-screen w-full overflow-hidden bg-black">
+      <section className="dark relative h-screen w-full overflow-hidden bg-black">
         <div className="absolute inset-0 z-0">
           <Image
             src={bio.image}
