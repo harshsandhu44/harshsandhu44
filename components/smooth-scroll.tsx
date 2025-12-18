@@ -1,14 +1,32 @@
 "use client";
 
-import { ReactLenis } from "lenis/react";
-import { type PropsWithChildren } from "react";
+import { useGSAP } from "@gsap/react";
+import gsap from "gsap";
+import ScrollSmoother from "gsap/ScrollSmoother";
+import ScrollTrigger from "gsap/ScrollTrigger";
+import { type PropsWithChildren, useRef } from "react";
 
-export function SmoothScroll({ children }: PropsWithChildren) {
-  return (
-    <ReactLenis root options={{ lerp: 0.5, duration: 1.5, smoothWheel: true }}>
-      {children}
-    </ReactLenis>
-  );
+if (typeof window !== "undefined") {
+  gsap.registerPlugin(ScrollTrigger, ScrollSmoother);
 }
 
-SmoothScroll.displayName = "SmoothScroll";
+export function SmoothScroll({ children }: PropsWithChildren) {
+  const wrapper = useRef<HTMLDivElement>(null);
+
+  useGSAP(
+    () => {
+      ScrollSmoother.create({
+        smooth: 2,
+        effects: true,
+        ease: "power4.out",
+      });
+    },
+    { scope: wrapper },
+  );
+
+  return (
+    <div id="smooth-wrapper" ref={wrapper}>
+      <div id="smooth-content">{children}</div>
+    </div>
+  );
+}

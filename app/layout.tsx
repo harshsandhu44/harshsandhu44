@@ -3,10 +3,10 @@ import { GeistMono } from "geist/font/mono";
 import { GrainOverlay } from "@/components/grain-overlay";
 import { AppHeader } from "@/components/app-header";
 import { AppFooter } from "@/components/app-footer";
-import { SmoothScroll } from "@/components/smooth-scroll";
 import { Preloader } from "@/components/preloader";
+import { SmoothScroll } from "@/components/smooth-scroll";
 import { siteConfig } from "@/config/site";
-import "lenis/dist/lenis.css";
+
 import "./globals.css";
 
 // 1. Viewport Configuration (Separate export in Next.js 14+)
