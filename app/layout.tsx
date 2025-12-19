@@ -59,13 +59,6 @@ export const metadata: Metadata = {
     creator: "@harshsandhu", // Change to your handle
   },
 
-  // Icons
-  icons: {
-    icon: "/favicon.ico",
-    shortcut: "/favicon-16x16.png",
-    apple: "/apple-touch-icon.png",
-  },
-
   // Robots (Indexing)
   robots: {
     index: true,
