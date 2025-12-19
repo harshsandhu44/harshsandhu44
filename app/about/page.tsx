@@ -8,28 +8,31 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { useAnimateOnScroll } from "@/lib/animations";
+import { useMediaQuery } from "@/lib/hooks/useMediaQuery";
 
 export default function AboutPage() {
   const { bio, interests, stack } = DATA.about;
+  const mobile = useMediaQuery("(max-width: 768px)");
   const containerRef = useRef(null);
   useAnimateOnScroll(containerRef);
 
   return (
     <div ref={containerRef}>
       <section
-        className="dark relative h-screen w-full overflow-hidden bg-black"
+        className="dark relative h-screen w-full overflow-hidden"
         id="section-about-hero"
       >
         <div className="absolute inset-0 z-0">
           <Image
-            src={bio.image}
+            src={mobile ? bio.image.mobile : bio.image.desktop}
             alt="Harsh Sandhu"
             fill
             priority
-            className="object-cover object-center opacity-90"
+            className="object-cover object-center"
             sizes="100vw"
           />
-          <div className="absolute inset-0 bg-primary/75" />
+          <div className="absolute inset-0 bg-background/90" />
+          <div className="absolute inset-0 bg-linear-to-b from-50% from-transparent to-100% to-background" />
         </div>
 
         <div className="max-w-7xl mx-auto px-4 relative z-10 flex h-full flex-col justify-center md:px-12">

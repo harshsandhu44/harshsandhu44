@@ -90,7 +90,10 @@ export const DATA = {
 
   about: {
     bio: {
-      image: "/images/harshsandhu.png",
+      image: {
+        mobile: "/images/harshsandhu-mobile.jpg",
+        desktop: "/images/harshsandhu-desktop.jpg",
+      },
       greeting: "Hi, I'm Harsh.",
       catchphrase: "I live in the terminal and dream in TypeScript.",
       paragraphs: [
