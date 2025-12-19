@@ -35,7 +35,7 @@ export default function HomePage() {
   return (
     <div ref={containerRef} className="mx-auto px-4 max-w-7xl">
       <section
-        className="relative py-24 min-h-dvh flex flex-col md:items-center justify-center md:text-center space-y-4"
+        className="relative py-24 min-h-screen flex flex-col md:items-center justify-center md:text-center space-y-4"
         id="section-hero"
       >
         <Badge variant="outline" className="px-3 py-1 italic">
