@@ -55,7 +55,7 @@ export default function HomePage() {
         </h1>
         <p className="text-xl max-w-prose">{DATA.hero.subHeadline}</p>
         <AnchorLink
-          href="#journey-section"
+          href="#section-journey"
           className={buttonVariants({ size: "lg" })}
         >
           {DATA.hero.cta} <ArrowBigDownIcon />
