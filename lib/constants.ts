@@ -44,7 +44,7 @@ export const DATA = {
           "Feature-rich Bible app with cloud sync. Because faith shouldn't have loading spinners.",
         tags: ["React Native", "TypeScript", "Cloud Sync"],
         link: "https://github.com/harshsandhu44/soul-bible",
-        image: "https://placehold.co/800.png",
+        image: "https://placehold.harshsandhu.com/api/img",
       },
       {
         id: "moodsync",
