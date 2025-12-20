@@ -61,6 +61,15 @@ export const DATA = {
         tags: ["React", "AWS", "AppSync"],
         image: "/images/projects/spear.png",
       },
+      {
+        id: "placehold",
+        title: "Placeholder Images, but Make it Fast",
+        subtext:
+          "Dynamic image & text generator API. Built on the Edge, because your loading states deserve better.",
+        tags: ["Next.js", "Vercel OG", "Edge Runtime"],
+        link: "https://placehold.harshsandhu.com",
+        image: "https://placehold.harshsandhu.com/api/img",
+      },
     ],
   },
 
