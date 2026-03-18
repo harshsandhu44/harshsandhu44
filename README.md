@@ -23,14 +23,14 @@ Interests:
 <pre>
 Selected projects:
 - tinkersim     -> electronics learning + simulation
-- weather-app   -> frontend/product work
-- event-pilot   -> event platform ideas
-- dotfiles      -> development environment
+- gitpilot      -> handleing the tedious parts of daily git workflow
+- draw          -> whiteboard app for brainstorming
+- placehold     -> placeholder images and text
 </pre>
 
 <pre>
 Stack:
-typescript · javascript · rust · next.js · react · tailwind · supabase · docker · aws
+typescript · javascript · rust · next.js · react · tailwind · docker · aws
 </pre>
 
 <div align="left">
