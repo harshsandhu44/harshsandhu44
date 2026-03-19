@@ -1,13 +1,17 @@
 {
   "name": "harshsandhu44",
   "private": true,
-  "workspaces": ["apps/*"],
+  "packageManager": "bun@1.3.11",
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint"
   },
   "devDependencies": {
+    "baseline-browser-mapping": "^2.10.8",
     "turbo": "latest"
   }
 }
