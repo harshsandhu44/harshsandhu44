@@ -1,5 +1,5 @@
 import { BentoItem } from "@/components/ui/bento-grid";
-import { LaptopIcon, ServerIcon, CloudIcon, TerminalIcon } from "lucide-react";
+import { LaptopIcon, ServerIcon, CloudIcon, TerminalIcon, CpuIcon } from "lucide-react";
 
 export const DATA = {
   global: {
@@ -14,13 +14,13 @@ export const DATA = {
 
   hero: {
     headline: {
-      start: "I build pixel-perfect ",
-      strike: "chaos", // The word to cross out
+      start: "I build ",
+      strike: "generic digital chaos", // The word to cross out
       replace: "systems", // The word to replace it with
       end: " for the web.",
     },
     subHeadline:
-      "Full-Stack Engineer & Digital Architect. I turn coffee into clean code and complex problems into simple solutions.",
+      "Product engineer focused on Rust, Next.js, and software that feels simple even when the engineering isn't.",
     statusBadge: "Currently optimizing my dotfiles (again).",
     cta: "See what I've been cooking",
   },
@@ -29,52 +29,88 @@ export const DATA = {
     title: "Selected Works",
     projects: [
       {
-        id: "panj-granth",
-        title: "Spiritual Tech for the Soul",
+        id: "tinkersim",
+        slug: "tinkersim",
+        title: "TinkerSim",
         subtext:
-          "An offline-first reading experience for the Guru Granth Sahib. Built for peace of mind (and performance).",
-        tags: ["React Native", "Expo", "Mobile"],
-        link: "https://github.com/harshsandhu44/panj-granth",
-        image: "/images/projects/panj-granth.png",
-      },
-      {
-        id: "soul-bible",
-        title: "The Good Book, Reimagined",
-        subtext:
-          "Feature-rich Bible app with cloud sync. Because faith shouldn't have loading spinners.",
-        tags: ["React Native", "TypeScript", "Cloud Sync"],
-        link: "https://github.com/harshsandhu44/soul-bible",
+          "Simulation workbench for testing distributed systems behavior. Built for engineers who need reproducible chaos.",
+        longDescription:
+          "TinkerSim is a simulation workbench that lets you model distributed systems, inject faults, and observe emergent behavior. Built with Rust compiled to WASM for near-native performance in the browser. Define your topology, configure failure modes, and replay scenarios deterministically.",
+        tags: ["Rust", "WASM", "simulation"],
+        link: "https://github.com/harshsandhu44/tinkersim",
         image: "https://placehold.harshsandhu.com/api/img",
+        featured: true,
       },
       {
-        id: "moodsync",
-        title: "Hacking Your Brainwaves",
-        subtext: "Psychoacoustics meets Next.js. Yes, it actually works.",
-        tags: ["Web Audio API", "Psychoacoustics", "Next.js"],
-        link: "https://moodsync.harshsandhu.com",
-        image: "/images/projects/moodsync.png",
-      },
-      {
-        id: "spear-education",
-        title: "Teaching 50k Dentists to Scale",
-        subtext: "React, AWS, and a whole lot of uptime.",
-        tags: ["React", "AWS", "AppSync"],
-        image: "/images/projects/spear.png",
+        id: "gitpilot",
+        slug: "gitpilot",
+        title: "gitpilot",
+        subtext:
+          "AI-powered CLI that writes, explains, and reviews your git history. Ship faster with less cognitive overhead.",
+        longDescription:
+          "gitpilot is a Rust CLI that hooks into your git workflow to auto-generate commit messages, explain diffs in plain English, and surface risky changes before they land on main. Runs locally — no data leaves your machine.",
+        tags: ["Rust", "CLI", "AI"],
+        link: "https://github.com/harshsandhu44/gitpilot",
+        image: "https://placehold.harshsandhu.com/api/img",
+        featured: true,
       },
       {
         id: "placehold",
-        title: "Placeholder Images, but Make it Fast",
+        slug: "placehold",
+        title: "Placehold",
         subtext:
-          "Dynamic image & text generator API. Built on the Edge, because your loading states deserve better.",
-        tags: ["Next.js", "Vercel OG", "Edge Runtime"],
+          "Zero-config placeholder image API. Instant SVG/PNG images for mockups and prototypes.",
+        longDescription:
+          "Placehold is a zero-config placeholder image API running on the Vercel Edge Runtime. Request any size, format, or color scheme and get back a crisp SVG or PNG instantly. Used by developers worldwide for mockups, wireframes, and loading state prototypes.",
+        tags: ["Next.js", "API", "OSS"],
         link: "https://placehold.harshsandhu.com",
         image: "https://placehold.harshsandhu.com/api/img",
+        featured: true,
+      },
+      {
+        id: "termeme-cli",
+        slug: "termeme-cli",
+        title: "termeme-cli",
+        subtext:
+          "Terminal meme generator. Because devtools should have a sense of humor.",
+        longDescription:
+          "termeme-cli is a Rust CLI for generating memes directly in your terminal. Pipe in an image URL, pick a template, add your text, and get ASCII art or a rendered image back. Because every CI failure deserves a reaction.",
+        tags: ["Rust", "CLI", "OSS"],
+        link: "https://github.com/harshsandhu44/termeme-cli",
+        image: "https://placehold.harshsandhu.com/api/img",
+        featured: true,
+      },
+      {
+        id: "panj-granth",
+        slug: "panj-granth",
+        title: "Panj Granth",
+        subtext:
+          "Digital archive and reader for Sikh scripture.",
+        longDescription:
+          "An offline-first reading experience for Panj Granthi. Designed for performance and peace of mind — full text search, bookmarks, and a distraction-free reader mode. Built with React Native and Expo.",
+        tags: ["Next.js", "PWA"],
+        link: "https://github.com/harshsandhu44/panj-granth",
+        image: "/images/projects/panj-granth.png",
+        featured: false,
+      },
+      {
+        id: "moodsync",
+        slug: "moodsync",
+        title: "MoodSync",
+        subtext:
+          "Mood-based playlist engine using Spotify API.",
+        longDescription:
+          "MoodSync uses psychoacoustics and your current mood to build the perfect Spotify playlist. Answer a few questions, and the engine curates tracks matched to your emotional state using audio feature analysis from the Spotify API.",
+        tags: ["Next.js", "Spotify API"],
+        link: "https://moodsync.harshsandhu.com",
+        image: "/images/projects/moodsync.png",
+        featured: false,
       },
     ],
   },
 
   experience: {
-    header: "Where I’ve been delivering value",
+    header: "Where I've been delivering value",
     roles: [
       {
         company: "Magic EdTech",
@@ -104,9 +140,9 @@ export const DATA = {
         desktop: "/images/harshsandhu-desktop.jpg",
       },
       greeting: "Hi, I'm Harsh.",
-      catchphrase: "I live in the terminal and dream in TypeScript.",
+      catchphrase: "I live in the terminal and dream in Rust.",
       paragraphs: [
-        "By day, I’m architecting scalable SaaS platforms that handle millions of requests. By night, I’m probably tweaking my Neovim config, analyzing Formula 1 telemetry data, or wondering why my cat just pushed my coffee off the desk.",
+        "I'm a product engineer building developer tools, simulation systems, and fast web products. I care about software that feels simple even when the engineering underneath is anything but.",
         "I believe software shouldn't just work—it should feel effortlessly magical (and load in under 200ms).",
       ],
     },
@@ -156,6 +192,12 @@ export const DATA = {
           icon: LaptopIcon,
           items: ["React", "Next.js", "Tailwind", "Framer Motion"],
           desc: "The Bread & Butter",
+        },
+        {
+          name: "Systems",
+          icon: CpuIcon,
+          items: ["Rust", "WASM", "CLI tooling", "Systems design"],
+          desc: "Where it gets fast",
         },
         {
           name: "Backend",

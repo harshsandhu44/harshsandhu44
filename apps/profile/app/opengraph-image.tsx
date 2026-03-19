@@ -4,7 +4,7 @@ import { ImageResponse } from "next/og";
 export const runtime = "edge";
 
 // Image metadata
-export const alt = "Harsh Sandhu - Full Stack Engineer";
+export const alt = "Harsh Sandhu - Product Engineer";
 export const size = {
   width: 1200,
   height: 630,
@@ -57,13 +57,23 @@ export default async function Image() {
             textAlign: "center",
           }}
         >
-          Full-Stack Engineer & Digital Architect
+          Product Engineer
+        </div>
+        <div
+          style={{
+            fontSize: 22,
+            color: "#666666",
+            textAlign: "center",
+            marginTop: 12,
+          }}
+        >
+          Developer tools · Simulation systems · Fast web products
         </div>
         <div
           style={{
             marginTop: 30,
             padding: "10px 20px",
-            backgroundColor: "#2962FF",
+            backgroundColor: "#FF6B35",
             color: "white",
             borderRadius: "50px",
             fontSize: 24,

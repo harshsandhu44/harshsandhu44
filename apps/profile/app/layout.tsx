@@ -3,7 +3,6 @@ import { GeistMono } from "geist/font/mono";
 import { GrainOverlay } from "@/components/grain-overlay";
 import { AppHeader } from "@/components/app-header";
 import { AppFooter } from "@/components/app-footer";
-import { Preloader } from "@/components/preloader";
 import { SmoothScroll } from "@/components/smooth-scroll";
 import { siteConfig } from "@/config/site";
 
@@ -81,12 +80,19 @@ const jsonLd = {
   sameAs: [
     "https://github.com/harshsandhu44",
     "https://linkedin.com/in/nyxfor13days",
+    "https://twitter.com/harshsandhu44",
   ],
-  jobTitle: "Senior Full-Stack Engineer",
-  worksFor: {
-    "@type": "Organization",
-    name: "Magic EdTech",
-  },
+  jobTitle: "Product Engineer",
+  description:
+    "Product engineer building developer tools, simulation systems, and fast web products. Rust, Next.js, thoughtful design.",
+  knowsAbout: [
+    "Rust",
+    "Next.js",
+    "Developer Tools",
+    "Simulation Systems",
+    "TypeScript",
+    "React",
+  ],
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -101,7 +107,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className={`${GeistMono.variable}`}>
         <SmoothScroll>
           <GrainOverlay />
-          <Preloader />
           <AppHeader />
           <main>
             <script

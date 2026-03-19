@@ -1,6 +1,3 @@
-"use client";
-
-import { useRef } from "react";
 import { ArrowBigDownIcon, BriefcaseIcon, CalendarIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -16,26 +13,25 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { AnchorLink } from "@/components/anchor-link";
-import { useAnimateOnScroll } from "@/lib/animations";
+import { HomeAnimations } from "@/components/home/home-animations";
 
 export default function HomePage() {
-  const containerRef = useRef(null);
-  useAnimateOnScroll(containerRef);
-
-  const projectItems = DATA.selectedWorks.projects.map((project) => ({
-    id: project.id,
-    title: project.title,
-    description: project.subtext,
-    image: project.image,
-    href: project.link,
-    tags: project.tags,
-    colSpan: project.id === "spear-education" ? 2 : (1 as 2 | 1 | 3),
-  }));
+  const projectItems = DATA.selectedWorks.projects
+    .filter((p) => p.featured)
+    .map((project) => ({
+      id: project.id,
+      title: project.title,
+      description: project.subtext,
+      image: project.image,
+      href: project.link,
+      tags: project.tags,
+      colSpan: 1 as 2 | 1 | 3,
+    }));
 
   return (
-    <div ref={containerRef} className="mx-auto px-4 max-w-7xl">
+    <HomeAnimations>
       <section
-        className="relative py-24 min-h-screen flex flex-col md:items-center justify-center md:text-center space-y-4"
+        className="relative py-24 min-h-screen container flex flex-col md:items-center justify-center md:text-center space-y-4"
         id="section-hero"
       >
         <Badge variant="outline" className="px-3 py-1 italic">
@@ -63,7 +59,7 @@ export default function HomePage() {
       </section>
 
       <section
-        className="py-24 min-h-dvh flex flex-col md:items-center justify-center space-y-16"
+        className="py-24 min-h-dvh container flex flex-col md:items-center justify-center space-y-16"
         id="section-journey"
       >
         <h2 className="text-4xl md:text6xl font-black md:text-center max-w-prose">
@@ -73,7 +69,7 @@ export default function HomePage() {
       </section>
 
       <section
-        className="py-24 min-h-dvh flex flex-col md:items-center justify-center space-y-16"
+        className="py-24 min-h-dvh container flex flex-col md:items-center justify-center space-y-16"
         id="section-experience"
       >
         <h2 className="text-4xl md:text6xl font-black md:text-center max-w-prose">
@@ -120,7 +116,7 @@ export default function HomePage() {
           ))}
         </div>
       </section>
-    </div>
+    </HomeAnimations>
   );
 }
 
