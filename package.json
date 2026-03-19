@@ -8,10 +8,11 @@
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
-    "lint": "turbo lint"
+    "lint": "turbo lint",
+    "typecheck": "turbo typecheck"
   },
   "devDependencies": {
     "baseline-browser-mapping": "^2.10.8",
-    "turbo": "latest"
+    "turbo": "^2.5.4"
   }
 }
