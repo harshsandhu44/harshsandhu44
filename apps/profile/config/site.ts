@@ -3,7 +3,7 @@ export const siteConfig = {
   url: "https://harshsandhu.com",
   ogImage: "https://harshsandhu.com/og-image.png",
   description:
-    "Senior Full-Stack Engineer & Digital Architect. I build scalable SaaS platforms, effortless digital experiences, and pixel-perfect chaos.",
+    "Product engineer building developer tools, simulation systems, and fast web products. Rust, Next.js, thoughtful design.",
   links: {
     github: "https://github.com/harshsandhu44",
     linkedin: "https://linkedin.com/in/nyxfor13days",
@@ -11,14 +11,14 @@ export const siteConfig = {
   },
   keywords: [
     "Harsh Sandhu",
-    "Full-Stack Engineer",
-    "React Developer",
-    "Next.js Expert",
-    "AWS Architect",
-    "Creative Developer",
-    "Software Engineer India",
-    "Ludhiana",
-    "Punjab",
+    "Product Engineer",
+    "Developer Tools",
+    "Rust",
+    "Next.js",
+    "Simulation Systems",
+    "Software Engineer",
+    "gitpilot",
+    "TinkerSim",
   ],
 };
 

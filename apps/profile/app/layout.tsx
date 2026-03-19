@@ -81,12 +81,19 @@ const jsonLd = {
   sameAs: [
     "https://github.com/harshsandhu44",
     "https://linkedin.com/in/nyxfor13days",
+    "https://twitter.com/harshsandhu44",
   ],
-  jobTitle: "Senior Full-Stack Engineer",
-  worksFor: {
-    "@type": "Organization",
-    name: "Magic EdTech",
-  },
+  jobTitle: "Product Engineer",
+  description:
+    "Product engineer building developer tools, simulation systems, and fast web products. Rust, Next.js, thoughtful design.",
+  knowsAbout: [
+    "Rust",
+    "Next.js",
+    "Developer Tools",
+    "Simulation Systems",
+    "TypeScript",
+    "React",
+  ],
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
