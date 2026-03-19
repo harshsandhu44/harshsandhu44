@@ -37,3 +37,9 @@ typescript · javascript · rust · next.js · react · tailwind · docker · aw
   <img src="https://github-readme-stats.vercel.app/api?username=harshsandhu44&show_icons=false&hide_border=true&title_color=808080&text_color=8a8a8a&bg_color=00000000" alt="GitHub stats" />
   <img src="https://github-readme-stats.vercel.app/api/top-langs/?username=harshsandhu44&layout=compact&hide_border=true&title_color=808080&text_color=8a8a8a&bg_color=00000000" alt="Top languages" />
 </div>
+
+<div align="center">
+  <img src="https://raw.githubusercontent.com/harshsandhu44/harshsandhu44/output/github-contribution-grid-snake.svg" alt="snake animation" />
+</div>
+
+<p align="center"><code>building useful things, one repo at a time</code></p>
