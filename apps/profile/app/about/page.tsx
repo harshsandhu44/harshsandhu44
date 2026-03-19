@@ -1,36 +1,22 @@
-"use client";
-
-import Image from "next/image";
-import { useRef } from "react";
 import { DATA } from "@/lib/constants";
 import BentoGrid from "@/components/ui/bento-grid";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { BlurFade } from "@/components/ui/blur-fade";
-import { useAnimateOnScroll } from "@/lib/animations";
-import { useMediaQuery } from "@/lib/hooks/useMediaQuery";
+import { AboutImage } from "@/components/about/about-image";
+import { HomeAnimations } from "@/components/home/home-animations";
 
 export default function AboutPage() {
   const { bio, interests, stack } = DATA.about;
-  const mobile = useMediaQuery("(max-width: 768px)");
-  const containerRef = useRef(null);
-  useAnimateOnScroll(containerRef);
 
   return (
-    <div ref={containerRef}>
+    <HomeAnimations>
       <section
         className="relative h-screen w-full overflow-hidden"
         id="section-about-hero"
       >
         <div className="absolute inset-0 z-0">
-          <Image
-            src={mobile ? bio.image.mobile : bio.image.desktop}
-            alt="Harsh Sandhu"
-            fill
-            priority
-            className="object-cover object-center"
-            sizes="100vw"
-          />
+          <AboutImage mobile={bio.image.mobile} desktop={bio.image.desktop} />
           <div className="absolute inset-0 bg-background/80 dark:bg-background/90" />
           <div className="absolute inset-0 bg-linear-to-b from-0% from-background via-10% via-transparent to-100% to-background" />
         </div>
@@ -109,7 +95,7 @@ export default function AboutPage() {
           ))}
         </div>
       </section>
-    </div>
+    </HomeAnimations>
   );
 }
 
