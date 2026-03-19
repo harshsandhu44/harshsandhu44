@@ -23,6 +23,7 @@ export function Navbar() {
   const navItems = [
     { label: "home", href: "/" },
     { label: "about", href: "/about" },
+    { label: "projects", href: "/projects" },
     {
       label: "resume",
       href: process.env.NEXT_PUBLIC_RESUME_URL || "",
@@ -65,7 +66,7 @@ export function Navbar() {
     );
   } else {
     return (
-      <nav className="place-self-stretch self-center grid grid-cols-3 place-content-center gap-4">
+      <nav className="place-self-stretch self-center grid grid-cols-4 place-content-center gap-4">
         {navItems.map((item) => (
           <Link
             key={item.label}
