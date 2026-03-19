@@ -7,11 +7,7 @@ export function HomeAnimations({ children }: { children: React.ReactNode }) {
   const containerRef = useRef(null);
   useAnimateOnScroll(containerRef);
 
-  return (
-    <div ref={containerRef} className="mx-auto px-4 max-w-7xl">
-      {children}
-    </div>
-  );
+  return <div ref={containerRef}>{children}</div>;
 }
 
 HomeAnimations.displayName = "HomeAnimations";

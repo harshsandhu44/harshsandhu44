@@ -39,7 +39,7 @@ export default async function ProjectDetailPage({ params }: Props) {
   if (!project) notFound();
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-24 space-y-12">
+    <div className="max-w-3xl container py-24 space-y-12">
       <Link
         href="/projects"
         className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"

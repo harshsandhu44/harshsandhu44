@@ -21,7 +21,7 @@ export default function AboutPage() {
           <div className="absolute inset-0 bg-linear-to-b from-0% from-background via-10% via-transparent to-100% to-background" />
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 relative z-10 flex h-full flex-col justify-center md:px-12">
+        <div className="container relative z-10 flex h-full flex-col justify-center md:px-12">
           <div className="max-w-2xl space-y-8">
             <BlurFade delay={0.1} inView>
               <h1 className="text-5xl font-bold tracking-tighter sm:text-7xl xl:text-8xl">

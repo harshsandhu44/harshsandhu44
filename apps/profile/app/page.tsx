@@ -31,7 +31,7 @@ export default function HomePage() {
   return (
     <HomeAnimations>
       <section
-        className="relative py-24 min-h-screen flex flex-col md:items-center justify-center md:text-center space-y-4"
+        className="relative py-24 min-h-screen container flex flex-col md:items-center justify-center md:text-center space-y-4"
         id="section-hero"
       >
         <Badge variant="outline" className="px-3 py-1 italic">
@@ -59,7 +59,7 @@ export default function HomePage() {
       </section>
 
       <section
-        className="py-24 min-h-dvh flex flex-col md:items-center justify-center space-y-16"
+        className="py-24 min-h-dvh container flex flex-col md:items-center justify-center space-y-16"
         id="section-journey"
       >
         <h2 className="text-4xl md:text6xl font-black md:text-center max-w-prose">
@@ -69,7 +69,7 @@ export default function HomePage() {
       </section>
 
       <section
-        className="py-24 min-h-dvh flex flex-col md:items-center justify-center space-y-16"
+        className="py-24 min-h-dvh container flex flex-col md:items-center justify-center space-y-16"
         id="section-experience"
       >
         <h2 className="text-4xl md:text6xl font-black md:text-center max-w-prose">

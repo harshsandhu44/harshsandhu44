@@ -3,7 +3,6 @@ import { GeistMono } from "geist/font/mono";
 import { GrainOverlay } from "@/components/grain-overlay";
 import { AppHeader } from "@/components/app-header";
 import { AppFooter } from "@/components/app-footer";
-import { Preloader } from "@/components/preloader";
 import { SmoothScroll } from "@/components/smooth-scroll";
 import { siteConfig } from "@/config/site";
 
@@ -108,7 +107,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className={`${GeistMono.variable}`}>
         <SmoothScroll>
           <GrainOverlay />
-          <Preloader />
           <AppHeader />
           <main>
             <script

@@ -18,11 +18,12 @@ export default function ProjectsPage() {
   const secondary = DATA.selectedWorks.projects.filter((p) => !p.featured);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-24 space-y-20">
+    <div className="container py-24 space-y-20">
       <div className="space-y-4 md:text-center">
         <h1 className="text-5xl md:text-7xl font-black">Projects</h1>
         <p className="text-xl text-muted-foreground max-w-prose md:mx-auto">
-          Things I&apos;ve built — developer tools, simulation systems, and experiments.
+          Things I&apos;ve built — developer tools, simulation systems, and
+          experiments.
         </p>
       </div>
 
