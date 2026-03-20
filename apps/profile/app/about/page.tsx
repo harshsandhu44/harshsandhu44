@@ -1,10 +1,9 @@
 import { DATA } from "@/lib/constants";
 import BentoGrid from "@/components/ui/bento-grid";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { BlurFade } from "@/components/ui/blur-fade";
 import { AboutImage } from "@/components/about/about-image";
 import { HomeAnimations } from "@/components/home/home-animations";
+import { SectionLabel, DividerRule } from "@/components/editorial";
 
 export default function AboutPage() {
   const { bio, interests, stack } = DATA.about;
@@ -24,21 +23,21 @@ export default function AboutPage() {
         <div className="container relative z-10 flex h-full flex-col justify-center md:px-12">
           <div className="max-w-2xl space-y-8">
             <BlurFade delay={0.1} inView>
-              <h1 className="text-5xl font-bold tracking-tighter sm:text-7xl xl:text-8xl">
+              <h1 className="font-serif font-bold text-5xl tracking-tight sm:text-7xl xl:text-8xl">
                 {bio.greeting}
               </h1>
             </BlurFade>
 
             <BlurFade delay={0.3} inView>
-              <span className="text-lg sm:text-xl font-medium">
+              <span className="font-mono text-sm uppercase tracking-widest text-muted-foreground">
                 {bio.catchphrase}
               </span>
             </BlurFade>
 
-            <div className="space-y-6 text-lg sm:text-xl font-medium leading-relaxed">
+            <div className="space-y-6 text-lg sm:text-xl leading-relaxed">
               {bio.paragraphs?.map((text, i) => (
                 <BlurFade key={i} delay={0.5 + i * 0.2} inView>
-                  <p className="max-w-prose">{text}</p>
+                  <p className="max-w-prose font-sans">{text}</p>
                 </BlurFade>
               ))}
             </div>
@@ -57,41 +56,31 @@ export default function AboutPage() {
         className="px-4 max-w-7xl mx-auto py-24 min-h-[50vh] flex flex-col items-center justify-center gap-8"
         id="section-about-stack"
       >
-        <div className="text-center space-y-2">
-          <h2 className="text-3xl font-bold tracking-tight">{stack.header}</h2>
+        <div className="w-full space-y-2">
+          <div className="flex items-center gap-4 mb-8">
+            <SectionLabel ruled>STACK I ACTUALLY REACH FOR</SectionLabel>
+            <DividerRule className="flex-1" />
+          </div>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <div className="w-full grid gap-0 md:grid-cols-2 lg:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-border border-t border-border">
           {stack.categories.map((category) => (
-            <Card
-              key={category.name}
-              className="group hover:border-foreground/20 transition-colors"
-            >
-              <CardHeader className="space-y-1 pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg font-semibold">
-                    {category.name}
-                  </CardTitle>
-                  <category.icon className="size-5 text-primary" />
-                </div>
-                <p className="text-xs text-muted-foreground font-medium">
-                  {category.desc}
-                </p>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {category.items.map((item) => (
-                    <Badge
-                      key={item}
-                      variant="secondary"
-                      className="font-normal bg-secondary/50 hover:bg-secondary"
-                    >
-                      {item}
-                    </Badge>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            <div key={category.name} className="p-6 space-y-3">
+              <div className="flex items-center justify-between">
+                <SectionLabel>{category.name}</SectionLabel>
+                <category.icon className="size-4 text-primary" />
+              </div>
+              <p className="font-mono text-xs text-muted-foreground/70 italic">
+                {category.desc}
+              </p>
+              <div className="flex flex-wrap gap-x-2 gap-y-1">
+                {category.items.map((item, i) => (
+                  <span key={item} className="font-mono text-xs uppercase tracking-[0.08em]">
+                    {item}{i < category.items.length - 1 ? " ·" : ""}
+                  </span>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       </section>

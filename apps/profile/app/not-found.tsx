@@ -1,81 +1,70 @@
 "use client";
 
 import Link from "next/link";
-import { Terminal } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { WordRotate } from "@/components/ui/word-rotate";
 import { usePathname } from "next/navigation";
+import { DividerRule, SectionLabel, MetadataRow } from "@/components/editorial";
 
 export default function NotFound() {
   const path = usePathname();
+  const date = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 
   return (
-    <div className="flex h-screen w-full flex-col items-center justify-center p-4 font-mono selection:bg-primary/30">
-      <div className="w-full max-w-2xl overflow-hidden rounded-lg border bg-card/50 shadow-2xl">
-        {/* Terminal Header */}
-        <div className="flex items-center gap-2 border-b bg-card px-4 py-2">
-          <div className="flex gap-1.5">
-            <div className="h-3 w-3 rounded-full bg-red-500/80" />
-            <div className="h-3 w-3 rounded-full bg-yellow-500/80" />
-            <div className="h-3 w-3 rounded-full bg-green-500/80" />
-          </div>
-          <div className="flex-1 text-center text-xs text-muted-foreground">
-            Harsh@MacBook-Pro: ~ (zsh)
-          </div>
+    <div className="flex min-h-screen w-full flex-col items-center justify-center p-4 md:p-8">
+      <div className="w-full max-w-2xl space-y-6">
+        <MetadataRow
+          items={[
+            { value: "THE HARSH SANDHU DAILY" },
+            { label: "FILED", value: date },
+          ]}
+        />
+
+        <DividerRule variant="double" />
+
+        <div className="py-2 text-center">
+          <SectionLabel>BREAKING — ERROR 404</SectionLabel>
         </div>
 
-        {/* Terminal Body */}
-        <div className="p-6 space-y-4 text-sm md:text-base">
-          <div className="flex gap-2">
-            <span className="text-green-500">➜</span>
-            <span className="text-blue-500">~</span>
-            <span>
-              curl https://harshsandhu.com
+        <DividerRule variant="double" />
+
+        <div className="space-y-4 pt-2">
+          <h1 className="font-serif font-black text-6xl md:text-8xl leading-none tracking-tight">
+            STORY NOT FOUND
+          </h1>
+
+          <DividerRule variant="thick" />
+
+        <p className="font-serif text-xl md:text-2xl text-muted-foreground leading-relaxed italic">
+            Requested dispatch at{" "}
+            <span className="font-mono text-base not-italic text-foreground bg-muted px-1">
               {path}
-            </span>
-          </div>
+            </span>{" "}
+            could not be located in our archives.
+          </p>
 
-          <div className="space-y-1 text-destructive">
-            <p>Error: 404_PAGE_NOT_FOUND</p>
-            <p>Status: CRITICAL_FAILURE</p>
-            <p>Telemetry: OFF_TRACK_LIMITS_TURN_1</p>
-          </div>
-
-          <div className="border-l-2 pl-4 py-2 text-muted-foreground">
-            <span className="text-muted-foreground">Analysis:</span>
-            <span className="ml-2">The page you are looking for has been</span>
-            <WordRotate
-              className="inline-block px-1 font-bold text-warning"
-              words={[
-                "deleted by `rm -rf /`",
-                "retired from the race (DNF)",
-                "lost in the Docker build context",
-                "garbage collected",
-                "pitted for soft tires",
-              ]}
-            />
-          </div>
-
-          <div className="pt-4 flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-            <p className="text-muted-foreground/75 text-xs sm:text-sm">
-              [System]: Initiating recovery protocol...
-            </p>
-
-            <Button asChild variant="outline" className="group">
-              <Link href="/">
-                <Terminal className="mr-2 size-4" />
-                <span className="group-hover:hidden">cd ..</span>
-                <span className="hidden group-hover:inline">cd /</span>
-              </Link>
-            </Button>
-          </div>
+          <p className="font-sans text-base text-muted-foreground leading-relaxed">
+            Our editorial team has searched the archives extensively. The story
+            you seek may have been retracted, relocated to a different section,
+            or simply never filed. We regret the inconvenience.
+          </p>
         </div>
-      </div>
 
-      {/* Background Decor */}
-      <div className="fixed -z-10 h-full w-full opacity-5 pointer-events-none">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[20rem] font-black select-none">
-          404
+        <DividerRule variant="thin" />
+
+        <div className="flex items-center justify-between pt-2">
+          <span className="font-mono text-xs uppercase tracking-[0.15em] text-muted-foreground">
+            LATE EDITION · CORRECTION ISSUED
+          </span>
+          <Link
+            href="/"
+            className="font-mono text-xs uppercase tracking-widest hover:text-primary transition-colors"
+          >
+            Return to Front Page →
+          </Link>
         </div>
       </div>
     </div>

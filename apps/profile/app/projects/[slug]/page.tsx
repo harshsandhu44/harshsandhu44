@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { DATA } from "@/lib/constants";
-import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { ArrowLeftIcon, ExternalLinkIcon } from "lucide-react";
 import { siteConfig } from "@/config/site";
+import { SectionLabel, DividerRule } from "@/components/editorial";
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -42,29 +42,29 @@ export default async function ProjectDetailPage({ params }: Props) {
     <div className="max-w-3xl container py-24 space-y-12">
       <Link
         href="/projects"
-        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        className="font-mono text-xs uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-2"
       >
-        <ArrowLeftIcon className="size-4" /> All Projects
+        <ArrowLeftIcon className="size-3" /> All Projects
       </Link>
 
       <div className="space-y-6">
         <div className="space-y-3">
           {project.featured && (
-            <span className="text-xs font-medium text-primary uppercase tracking-wide">
-              Featured
-            </span>
+            <SectionLabel>{project.category ?? "FEATURED"}</SectionLabel>
           )}
-          <h1 className="text-4xl md:text-6xl font-black">{project.title}</h1>
-          <p className="text-xl text-muted-foreground leading-relaxed">
+          <h1 className="font-serif font-bold text-5xl md:text-6xl leading-tight tracking-tight">
+            {project.title}
+          </h1>
+          <p className="font-sans text-xl text-muted-foreground leading-relaxed">
             {project.subtext}
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {project.tags.map((tag) => (
-            <Badge key={tag} variant="secondary">
-              {tag}
-            </Badge>
+        <div className="flex flex-wrap gap-2 items-center">
+          {project.tags.map((tag, i) => (
+            <span key={tag} className="font-mono text-xs uppercase tracking-[0.1em] text-muted-foreground">
+              {tag}{i < project.tags.length - 1 ? " ·" : ""}
+            </span>
           ))}
         </div>
 
@@ -80,11 +80,11 @@ export default async function ProjectDetailPage({ params }: Props) {
         )}
       </div>
 
-      <div className="prose prose-invert max-w-none">
-        <p className="text-lg leading-relaxed text-muted-foreground">
-          {project.longDescription}
-        </p>
-      </div>
+      <DividerRule />
+
+      <p className="font-sans text-lg leading-relaxed text-muted-foreground">
+        {project.longDescription}
+      </p>
     </div>
   );
 }
