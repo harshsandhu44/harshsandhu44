@@ -4,7 +4,6 @@ import { Crimson_Text } from "next/font/google";
 import { GrainOverlay } from "@/components/grain-overlay";
 import { AppHeader } from "@/components/app-header";
 import { AppFooter } from "@/components/app-footer";
-import { SmoothScroll } from "@/components/smooth-scroll";
 import { siteConfig } from "@/config/site";
 
 import "./globals.css";
@@ -114,18 +113,16 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         />
       </head>
       <body className={`${GeistMono.variable} ${crimsonText.variable} font-sans`}>
-        <SmoothScroll>
-          <GrainOverlay />
-          <AppHeader />
-          <main>
-            <script
-              type="application/ld+json"
-              dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-            />
-            {children}
-          </main>
-          <AppFooter />
-        </SmoothScroll>
+        <GrainOverlay />
+        <AppHeader />
+        <main>
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          />
+          {children}
+        </main>
+        <AppFooter />
       </body>
     </html>
   );

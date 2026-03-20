@@ -1,9 +1,7 @@
 import Link from "next/link";
 import { Highlighter } from "@/components/ui/highlighter";
 import { DATA } from "@/lib/constants";
-import { BlurFade } from "@/components/ui/blur-fade";
 import { AnchorLink } from "@/components/anchor-link";
-import { HomeAnimations } from "@/components/home/home-animations";
 import {
   LeadStory,
   SectionLabel,
@@ -16,7 +14,7 @@ export default function HomePage() {
   const featuredProjects = DATA.selectedWorks.projects.filter((p) => p.featured);
 
   return (
-    <HomeAnimations>
+    <>
       <LeadStory
         headline={
           <>
@@ -136,19 +134,18 @@ export default function HomePage() {
         </div>
 
         <div className="divide-y divide-border">
-          {DATA.experience.roles.map((role, i) => (
-            <BlurFade key={role.company} delay={0.1 + i * 0.1} inView>
-              <ArchiveEntry
-                period={role.period}
-                company={role.company}
-                role={role.role}
-                description={role.description}
-              />
-            </BlurFade>
+          {DATA.experience.roles.map((role) => (
+            <ArchiveEntry
+              key={role.company}
+              period={role.period}
+              company={role.company}
+              role={role.role}
+              description={role.description}
+            />
           ))}
         </div>
       </section>
-    </HomeAnimations>
+    </>
   );
 }
 

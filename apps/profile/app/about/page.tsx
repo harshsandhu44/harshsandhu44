@@ -1,15 +1,13 @@
 import { DATA } from "@/lib/constants";
 import BentoGrid from "@/components/ui/bento-grid";
-import { BlurFade } from "@/components/ui/blur-fade";
 import { AboutImage } from "@/components/about/about-image";
-import { HomeAnimations } from "@/components/home/home-animations";
 import { SectionLabel, DividerRule } from "@/components/editorial";
 
 export default function AboutPage() {
   const { bio, interests, stack } = DATA.about;
 
   return (
-    <HomeAnimations>
+    <>
       <section
         className="relative h-screen w-full overflow-hidden"
         id="section-about-hero"
@@ -22,23 +20,17 @@ export default function AboutPage() {
 
         <div className="container relative z-10 flex h-full flex-col justify-center md:px-12">
           <div className="max-w-2xl space-y-8">
-            <BlurFade delay={0.1} inView>
-              <h1 className="font-serif font-bold text-5xl tracking-tight sm:text-7xl xl:text-8xl">
-                {bio.greeting}
-              </h1>
-            </BlurFade>
+            <h1 className="font-serif font-bold text-5xl tracking-tight sm:text-7xl xl:text-8xl">
+              {bio.greeting}
+            </h1>
 
-            <BlurFade delay={0.3} inView>
-              <span className="font-mono text-sm uppercase tracking-widest text-muted-foreground">
-                {bio.catchphrase}
-              </span>
-            </BlurFade>
+            <span className="font-mono text-sm uppercase tracking-widest text-muted-foreground">
+              {bio.catchphrase}
+            </span>
 
             <div className="space-y-6 text-lg sm:text-xl leading-relaxed">
               {bio.paragraphs?.map((text, i) => (
-                <BlurFade key={i} delay={0.5 + i * 0.2} inView>
-                  <p className="max-w-prose font-sans">{text}</p>
-                </BlurFade>
+                <p key={i} className="max-w-prose font-sans">{text}</p>
               ))}
             </div>
           </div>
@@ -84,7 +76,7 @@ export default function AboutPage() {
           ))}
         </div>
       </section>
-    </HomeAnimations>
+    </>
   );
 }
 
