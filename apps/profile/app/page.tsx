@@ -1,117 +1,149 @@
-import { ArrowDownIcon, BriefcaseIcon, CalendarIcon } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import Link from "next/link";
 import { Highlighter } from "@/components/ui/highlighter";
-import BentoGrid from "@/components/ui/bento-grid";
 import { DATA } from "@/lib/constants";
 import { BlurFade } from "@/components/ui/blur-fade";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { AnchorLink } from "@/components/anchor-link";
 import { HomeAnimations } from "@/components/home/home-animations";
+import {
+  LeadStory,
+  SectionLabel,
+  DividerRule,
+  ArticleBlock,
+  ArchiveEntry,
+} from "@/components/editorial";
 
 export default function HomePage() {
-  const projectItems = DATA.selectedWorks.projects
-    .filter((p) => p.featured)
-    .map((project) => ({
-      id: project.id,
-      title: project.title,
-      description: project.subtext,
-      image: project.image,
-      href: project.link,
-      tags: project.tags,
-      colSpan: 1 as 2 | 1 | 3,
-    }));
+  const featuredProjects = DATA.selectedWorks.projects.filter((p) => p.featured);
 
   return (
     <HomeAnimations>
-      <section
-        className="relative py-24 min-h-screen container flex flex-col md:items-center justify-center md:text-center space-y-4"
-        id="section-hero"
-      >
-        <Badge variant="outline" className="px-3 py-2 italic">
-          {DATA.hero.statusBadge}
-        </Badge>
-        <h1 className="mt-4 text-5xl md:text-7xl font-black leading-snug max-w-prose">
-          {DATA.hero.headline.start}
-          <div className="inline-block relative">
-            <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-sm text-primary font-cursive">
-              {DATA.hero.headline.replace}
-            </span>{" "}
-            <Highlighter action="crossed-off">
-              {DATA.hero.headline.strike}
-            </Highlighter>
+      <LeadStory
+        headline={
+          <>
+            {DATA.hero.headline.start}
+            <span className="inline-block relative">
+              <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-sm text-primary font-cursive whitespace-nowrap">
+                {DATA.hero.headline.replace}
+              </span>{" "}
+              <Highlighter action="crossed-off">{DATA.hero.headline.strike}</Highlighter>
+            </span>
+            {DATA.hero.headline.end}
+          </>
+        }
+        deck={DATA.hero.subHeadline}
+        byline={`${DATA.global.name} — Product Engineer`}
+        statusNote={DATA.hero.statusBadge}
+        cta={
+          <AnchorLink
+            href="#section-journey"
+            className="font-mono text-sm uppercase tracking-widest border border-foreground px-4 py-2 hover:bg-foreground hover:text-background transition-colors inline-flex items-center gap-2"
+          >
+            {DATA.hero.cta} ↓
+          </AnchorLink>
+        }
+        sideRailContent={
+          <div className="space-y-6">
+            <div>
+              <p className="font-mono text-xs uppercase tracking-[0.15em] text-muted-foreground mb-2">
+                Online
+              </p>
+              <div className="space-y-1">
+                <Link
+                  href={DATA.global.socials.github}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block font-mono text-xs uppercase tracking-[0.1em] hover:text-primary transition-colors"
+                >
+                  GitHub ↗
+                </Link>
+                <Link
+                  href={DATA.global.socials.linkedin}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block font-mono text-xs uppercase tracking-[0.1em] hover:text-primary transition-colors"
+                >
+                  LinkedIn ↗
+                </Link>
+                <Link
+                  href={DATA.global.socials.twitter}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block font-mono text-xs uppercase tracking-[0.1em] hover:text-primary transition-colors"
+                >
+                  Twitter/X ↗
+                </Link>
+              </div>
+            </div>
+            <DividerRule />
+            <div>
+              <p className="font-mono text-xs uppercase tracking-[0.15em] text-muted-foreground mb-1">
+                Status
+              </p>
+              <p className="font-mono text-xs italic text-muted-foreground/70">
+                {DATA.hero.statusBadge}
+              </p>
+            </div>
           </div>
-          {DATA.hero.headline.end}
-        </h1>
-        <p className="text-xl max-w-prose">{DATA.hero.subHeadline}</p>
-        <AnchorLink
-          href="#section-journey"
-          className={buttonVariants({ size: "lg" })}
-        >
-          {DATA.hero.cta} <ArrowDownIcon />
-        </AnchorLink>
-      </section>
+        }
+      />
 
       <section
-        className="py-24 min-h-dvh container flex flex-col md:items-center justify-center space-y-16"
+        className="py-24 container"
         id="section-journey"
       >
-        <h2 className="text-4xl md:text6xl font-black md:text-center max-w-prose">
-          {DATA.selectedWorks.title}
-        </h2>
-        <BentoGrid items={projectItems} />
+        <div className="flex items-center gap-4 mb-8">
+          <SectionLabel ruled>PORTFOLIO</SectionLabel>
+          <DividerRule className="flex-1" />
+        </div>
+
+        {/* Lead project — full width */}
+        {featuredProjects[0] && (
+          <ArticleBlock
+            featured
+            sectionLabel={featuredProjects[0].category ?? "PROJECT"}
+            title={featuredProjects[0].title}
+            deck={featuredProjects[0].subtext}
+            tags={featuredProjects[0].tags}
+            href={featuredProjects[0].link}
+          />
+        )}
+
+        <DividerRule className="my-2" />
+
+        {/* Grid of remaining featured projects */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-border">
+          {featuredProjects.slice(1).map((p) => (
+            <div key={p.id} className="md:px-6 first:pl-0 last:pr-0">
+              <ArticleBlock
+                sectionLabel={p.category ?? "PROJECT"}
+                title={p.title}
+                deck={p.subtext}
+                tags={p.tags}
+                href={p.link}
+              />
+            </div>
+          ))}
+        </div>
       </section>
 
       <section
-        className="py-24 min-h-dvh container flex flex-col md:items-center justify-center space-y-16"
+        className="py-24 container"
         id="section-experience"
       >
-        <h2 className="text-4xl md:text6xl font-black md:text-center max-w-prose">
-          {DATA.experience.header}
-        </h2>
-        <div className="flex flex-col gap-8 relative pl-6 border-l border-muted">
-          {DATA.experience.roles.map((item, index) => (
-            <BlurFade
-              key={item.company + index}
-              delay={0.2 + index * 0.1}
-              inView
-              className="relative"
-            >
-              {/* Timeline Dot */}
-              <span className="absolute -left-[29.5px] top-4 flex h-6 w-6 items-center justify-center rounded-full bg-background border border-muted ring-4 ring-background">
-                <BriefcaseIcon className="h-3 w-3 text-muted-foreground" />
-              </span>
+        <div className="flex items-center gap-4 mb-8">
+          <SectionLabel ruled>PROFESSIONAL RECORD</SectionLabel>
+          <DividerRule className="flex-1" />
+        </div>
 
-              <Card className="shadow-none border-none bg-transparent pt-0">
-                <CardHeader className="p-0 mb-2">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                    <div className="flex flex-col">
-                      <CardTitle className="text-base font-semibold">
-                        {item.company}
-                      </CardTitle>
-                      <CardDescription className="text-sm font-medium">
-                        {item.role}
-                      </CardDescription>
-                    </div>
-                    <Badge
-                      variant="secondary"
-                      className="w-fit text-xs font-normal"
-                    >
-                      <CalendarIcon className="mr-1 h-3 w-3" />
-                      {item.period}
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0 text-muted-foreground text-sm">
-                  {item.description}
-                </CardContent>
-              </Card>
+        <div className="divide-y divide-border">
+          {DATA.experience.roles.map((role, i) => (
+            <BlurFade key={role.company} delay={0.1 + i * 0.1} inView>
+              <ArchiveEntry
+                period={role.period}
+                company={role.company}
+                role={role.role}
+                description={role.description}
+              />
             </BlurFade>
           ))}
         </div>
