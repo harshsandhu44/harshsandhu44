@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { GeistMono } from "geist/font/mono";
-import { Playfair_Display } from "next/font/google";
+import { Crimson_Text } from "next/font/google";
 import { GrainOverlay } from "@/components/grain-overlay";
 import { AppHeader } from "@/components/app-header";
 import { AppFooter } from "@/components/app-footer";
@@ -9,10 +9,11 @@ import { siteConfig } from "@/config/site";
 
 import "./globals.css";
 
-const playfair = Playfair_Display({
+const crimsonText = Crimson_Text({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800", "900"],
-  variable: "--font-playfair",
+  weight: ["400", "600", "700"],
+  style: ["normal", "italic"],
+  variable: "--font-crimson-text",
   display: "swap",
 });
 
@@ -112,7 +113,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           rel="stylesheet"
         />
       </head>
-      <body className={`${GeistMono.variable} ${playfair.variable}`}>
+      <body className={`${GeistMono.variable} ${crimsonText.variable} font-sans`}>
         <SmoothScroll>
           <GrainOverlay />
           <AppHeader />

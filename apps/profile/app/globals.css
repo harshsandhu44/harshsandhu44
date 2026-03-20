@@ -61,7 +61,7 @@
   --font-sans: "Satoshi", sans-serif;
   --font-mono: "Geist Mono", monospace;
   --font-cursive: "Comico", cursive;
-  --font-serif: "Playfair Display", Georgia, serif;
+  --font-serif: var(--font-crimson-text), Georgia, serif;
   /* Editorial tokens */
   --rule-thin: 1px solid var(--border);
   --rule-thick: 2px solid var(--foreground);
