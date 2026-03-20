@@ -61,9 +61,18 @@
   --font-sans: "Satoshi", sans-serif;
   --font-mono: "Geist Mono", monospace;
   --font-cursive: "Comico", cursive;
+  --font-serif: "Playfair Display", Georgia, serif;
+  /* Editorial tokens */
+  --rule-thin: 1px solid var(--border);
+  --rule-thick: 2px solid var(--foreground);
+  --rule-decorative: 3px double var(--foreground);
+  --newsprint: #f7f4ed;
+  --ink: #1a1814;
 }
 
 .dark {
+  --newsprint: #1a1916;
+  --ink: #e8e3d8;
   --background: #262624;
   --foreground: #c6c1b3;
   --card: #262624;
@@ -184,6 +193,22 @@
   max-width: 90rem;
   margin-inline: auto;
   padding-inline: 1rem;
+}
+
+@utility font-editorial {
+  font-family: var(--font-serif);
+}
+
+@utility editorial-rule {
+  border-top: var(--rule-thin);
+}
+
+@utility editorial-rule-thick {
+  border-top: var(--rule-thick);
+}
+
+@utility editorial-rule-double {
+  border-top: var(--rule-decorative);
 }
 
 @keyframes vt-fade-in {

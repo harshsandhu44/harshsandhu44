@@ -38,6 +38,7 @@ export const DATA = {
       {
         id: "tinkersim",
         slug: "tinkersim",
+        category: "SIMULATION",
         title: "TinkerSim",
         subtext:
           "Electronics learning and circuit simulation platform built for visual, hands-on experimentation.",
@@ -58,6 +59,7 @@ export const DATA = {
       {
         id: "gitpilot",
         slug: "gitpilot",
+        category: "DEVELOPER TOOLS",
         title: "GitPilot",
         subtext: "Rust CLI for the tedious parts of daily Git workflow.",
         longDescription:
@@ -70,6 +72,7 @@ export const DATA = {
       {
         id: "placehold",
         slug: "placehold",
+        category: "WEB PRODUCT",
         title: "Placehold",
         subtext:
           "Simple, fast placeholder image and text generator with a polished docs experience.",
@@ -83,6 +86,7 @@ export const DATA = {
       {
         id: "event-pilot",
         slug: "event-pilot",
+        category: "AI PRODUCT",
         title: "EventPilot",
         subtext:
           "AI-powered event guide assistant with chat, voice interaction, and real-time updates.",
@@ -103,6 +107,7 @@ export const DATA = {
       {
         id: "draw",
         slug: "draw",
+        category: "CREATIVE TOOLS",
         title: "Draw",
         subtext:
           "Whiteboard-style brainstorming app for sketching ideas quickly.",
@@ -116,6 +121,7 @@ export const DATA = {
       {
         id: "doot-app",
         slug: "doot-app",
+        category: "MOBILE",
         title: "Doot",
         subtext:
           "Feature-rich mobile dating app with onboarding, swiping, matching, and messaging.",
@@ -258,5 +264,19 @@ export const DATA = {
       "Open to product, frontend, and developer-tooling conversations.",
     cta: "Send me an email",
     hoverText: "I usually reply pretty fast.",
+  },
+
+  editorial: {
+    publication: "The Harsh Sandhu Daily",
+    volume: "Vol. IV",
+    edition: "No. 2026",
+    tagline: "Product Engineering · Developer Tools · Simulation Systems",
+    themeLabels: { light: "MORNING EDITION", dark: "NIGHT EDITION" },
+    sectionLabels: {
+      hero: "DISPATCH",
+      works: "PORTFOLIO",
+      experience: "PROFESSIONAL RECORD",
+      about: "ABOUT THE AUTHOR",
+    },
   },
 };

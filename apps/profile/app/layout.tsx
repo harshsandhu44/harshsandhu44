@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { GeistMono } from "geist/font/mono";
+import { Playfair_Display } from "next/font/google";
 import { GrainOverlay } from "@/components/grain-overlay";
 import { AppHeader } from "@/components/app-header";
 import { AppFooter } from "@/components/app-footer";
@@ -8,10 +9,17 @@ import { siteConfig } from "@/config/site";
 
 import "./globals.css";
 
+const playfair = Playfair_Display({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800", "900"],
+  variable: "--font-playfair",
+  display: "swap",
+});
+
 // 1. Viewport Configuration (Separate export in Next.js 14+)
 export const viewport: Viewport = {
   themeColor: "#111111", // Matches your dark background
-  colorScheme: "dark",
+  colorScheme: "light dark",
 };
 
 // 2. Metadata Configuration
@@ -104,7 +112,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           rel="stylesheet"
         />
       </head>
-      <body className={`${GeistMono.variable}`}>
+      <body className={`${GeistMono.variable} ${playfair.variable}`}>
         <SmoothScroll>
           <GrainOverlay />
           <AppHeader />
