@@ -1,4 +1,4 @@
-import { ArrowBigDownIcon, BriefcaseIcon, CalendarIcon } from "lucide-react";
+import { ArrowDownIcon, BriefcaseIcon, CalendarIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Highlighter } from "@/components/ui/highlighter";
@@ -34,10 +34,10 @@ export default function HomePage() {
         className="relative py-24 min-h-screen container flex flex-col md:items-center justify-center md:text-center space-y-4"
         id="section-hero"
       >
-        <Badge variant="outline" className="px-3 py-1 italic">
+        <Badge variant="outline" className="px-3 py-2 italic">
           {DATA.hero.statusBadge}
         </Badge>
-        <h1 className="text-5xl md:text-7xl font-black max-w-prose">
+        <h1 className="mt-4 text-5xl md:text-7xl font-black leading-snug max-w-prose">
           {DATA.hero.headline.start}
           <div className="inline-block relative">
             <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-sm text-primary font-cursive">
@@ -54,7 +54,7 @@ export default function HomePage() {
           href="#section-journey"
           className={buttonVariants({ size: "lg" })}
         >
-          {DATA.hero.cta} <ArrowBigDownIcon />
+          {DATA.hero.cta} <ArrowDownIcon />
         </AnchorLink>
       </section>
 
