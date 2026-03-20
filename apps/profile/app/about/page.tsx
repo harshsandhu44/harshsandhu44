@@ -1,76 +1,113 @@
 import { DATA } from "@/lib/constants";
-import BentoGrid from "@/components/ui/bento-grid";
 import { AboutImage } from "@/components/about/about-image";
-import { SectionLabel, DividerRule } from "@/components/editorial";
+import { DividerRule } from "@/components/editorial";
 
 export default function AboutPage() {
   const { bio, interests, stack } = DATA.about;
 
   return (
     <>
-      <section
-        className="relative h-screen w-full overflow-hidden"
-        id="section-about-hero"
-      >
-        <div className="absolute inset-0 z-0">
-          <AboutImage mobile={bio.image.mobile} desktop={bio.image.desktop} />
-          <div className="absolute inset-0 bg-background/80 dark:bg-background/90" />
-          <div className="absolute inset-0 bg-linear-to-b from-0% from-background via-10% via-transparent to-100% to-background" />
+      {/* Bio section — newspaper column layout */}
+      <section className="container section-newspaper" id="section-about-hero">
+        <div className="border-t-2 border-foreground pt-1 mb-2">
+          <span className="col-header-box">About the Author</span>
         </div>
+        <DividerRule variant="thick" className="mb-4" />
 
-        <div className="container relative z-10 flex h-full flex-col justify-center md:px-12">
-          <div className="max-w-2xl space-y-8">
-            <h1 className="font-serif font-bold text-5xl tracking-tight sm:text-7xl xl:text-8xl">
-              {bio.greeting}
-            </h1>
+        <h1 className="font-serif font-bold text-3xl md:text-4xl tracking-tight mb-1">
+          {bio.greeting}
+        </h1>
+        <span className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+          {bio.catchphrase}
+        </span>
 
-            <span className="font-mono text-sm uppercase tracking-widest text-muted-foreground">
-              {bio.catchphrase}
-            </span>
+        <DividerRule className="my-3" />
 
-            <div className="space-y-6 text-lg sm:text-xl leading-relaxed">
+        {/* Bio columns + image */}
+        <div className="grid grid-cols-1 md:newspaper-grid">
+          <div className="md:col-span-3 newspaper-col-first">
+            <div className="drop-cap">
               {bio.paragraphs?.map((text, i) => (
-                <p key={i} className="max-w-prose font-sans">{text}</p>
+                <p key={i} className="newspaper-body mb-3">
+                  {text}
+                </p>
               ))}
+            </div>
+          </div>
+          <div className="newspaper-col-last mt-4 md:mt-0">
+            <div className="w-full aspect-[3/4] overflow-hidden">
+              <AboutImage mobile={bio.image.mobile} desktop={bio.image.desktop} />
             </div>
           </div>
         </div>
       </section>
 
-      <section
-        className="px-4 max-w-7xl mx-auto py-24 min-h-[50vh] flex items-center justify-center gap-4"
-        id="section-about-interests"
-      >
-        <BentoGrid items={interests} />
+      {/* Interests section — newspaper grid */}
+      <section className="container section-newspaper" id="section-about-interests">
+        <div className="border-t-2 border-foreground pt-1 mb-2">
+          <span className="col-header-box">Interests & Pursuits</span>
+        </div>
+        <DividerRule className="mb-4" />
+
+        <div className="grid grid-cols-1 md:newspaper-grid">
+          {interests.map((item, i) => (
+            <div
+              key={item.id}
+              className={
+                i === 0
+                  ? "newspaper-col-first"
+                  : i === interests.length - 1
+                  ? "newspaper-col-last"
+                  : "newspaper-col"
+              }
+            >
+              <article className="py-3">
+                <span className="col-header-box mb-2 block w-fit">
+                  {(item.tags as string[])[0] ?? item.id}
+                </span>
+                <h3 className="font-serif font-bold text-lg leading-tight mt-2">
+                  {item.title as string}
+                </h3>
+                <p className="newspaper-body mt-1 text-muted-foreground">
+                  {item.description as string}
+                </p>
+              </article>
+            </div>
+          ))}
+        </div>
       </section>
 
-      <section
-        className="px-4 max-w-7xl mx-auto py-24 min-h-[50vh] flex flex-col items-center justify-center gap-8"
-        id="section-about-stack"
-      >
-        <div className="w-full space-y-2">
-          <div className="flex items-center gap-4 mb-8">
-            <SectionLabel ruled>STACK I ACTUALLY REACH FOR</SectionLabel>
-            <DividerRule className="flex-1" />
-          </div>
+      {/* Stack section */}
+      <section className="container py-8" id="section-about-stack">
+        <div className="border-t-2 border-foreground pt-1 mb-2">
+          <span className="col-header-box">Stack I Actually Reach For</span>
         </div>
+        <DividerRule className="mb-4" />
 
-        <div className="w-full grid gap-0 md:grid-cols-2 lg:grid-cols-4 divide-y md:divide-y-0 md:divide-x divide-border border-t border-border">
-          {stack.categories.map((category) => (
-            <div key={category.name} className="p-6 space-y-3">
-              <div className="flex items-center justify-between">
-                <SectionLabel>{category.name}</SectionLabel>
-                <category.icon className="size-4 text-primary" />
-              </div>
-              <p className="font-mono text-xs text-muted-foreground/70 italic">
-                {category.desc}
-              </p>
-              <div className="flex flex-wrap gap-x-2 gap-y-1">
-                {category.items.map((item, i) => (
-                  <span key={item} className="font-mono text-xs uppercase tracking-[0.08em]">
-                    {item}{i < category.items.length - 1 ? " ·" : ""}
-                  </span>
-                ))}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
+          {stack.categories.map((category, i) => (
+            <div
+              key={category.name}
+              className={
+                i === 0
+                  ? "newspaper-col-first"
+                  : i === stack.categories.length - 1
+                  ? "newspaper-col-last"
+                  : "newspaper-col"
+              }
+            >
+              <div className="py-4">
+                <span className="col-header-box mb-2 block w-fit">{category.name}</span>
+                <p className="font-mono text-xs text-muted-foreground/70 italic mt-2 mb-3">
+                  {category.desc}
+                </p>
+                <div className="space-y-1">
+                  {category.items.map((item) => (
+                    <span key={item} className="block font-mono text-xs uppercase tracking-[0.08em]">
+                      {item}
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
           ))}

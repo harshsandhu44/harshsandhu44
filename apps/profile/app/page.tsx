@@ -4,14 +4,13 @@ import { DATA } from "@/lib/constants";
 import { AnchorLink } from "@/components/anchor-link";
 import {
   LeadStory,
-  SectionLabel,
   DividerRule,
   ArticleBlock,
   ArchiveEntry,
 } from "@/components/editorial";
 
 export default function HomePage() {
-  const featuredProjects = DATA.selectedWorks.projects.filter((p) => p.featured);
+  const projects = DATA.selectedWorks.projects;
 
   return (
     <>
@@ -42,10 +41,8 @@ export default function HomePage() {
         sideRailContent={
           <div className="space-y-6">
             <div>
-              <p className="font-mono text-xs uppercase tracking-[0.15em] text-muted-foreground mb-2">
-                Online
-              </p>
-              <div className="space-y-1">
+              <p className="col-header-box mb-2">Online</p>
+              <div className="space-y-1 mt-2">
                 <Link
                   href={DATA.global.socials.github}
                   target="_blank"
@@ -74,10 +71,8 @@ export default function HomePage() {
             </div>
             <DividerRule />
             <div>
-              <p className="font-mono text-xs uppercase tracking-[0.15em] text-muted-foreground mb-1">
-                Status
-              </p>
-              <p className="font-mono text-xs italic text-muted-foreground/70">
+              <p className="col-header-box mb-2">Status</p>
+              <p className="font-mono text-xs italic text-muted-foreground/70 mt-2">
                 {DATA.hero.statusBadge}
               </p>
             </div>
@@ -85,63 +80,112 @@ export default function HomePage() {
         }
       />
 
-      <section
-        className="py-24 container"
-        id="section-journey"
-      >
-        <div className="flex items-center gap-4 mb-8">
-          <SectionLabel ruled>PORTFOLIO</SectionLabel>
-          <DividerRule className="flex-1" />
+      {/* Portfolio section */}
+      <section className="py-8 container" id="section-journey">
+        <div className="border-t-2 border-foreground pt-1 mb-4">
+          <span className="col-header-box">Portfolio</span>
+          <DividerRule className="mt-1" />
         </div>
 
-        {/* Lead project — full width */}
-        {featuredProjects[0] && (
-          <ArticleBlock
-            featured
-            sectionLabel={featuredProjects[0].category ?? "PROJECT"}
-            title={featuredProjects[0].title}
-            deck={featuredProjects[0].subtext}
-            tags={featuredProjects[0].tags}
-            href={featuredProjects[0].link}
-          />
-        )}
+        {/* Row 1 — TinkerSim (col-span-2) + GitPilot + Placehold */}
+        <div className="grid grid-cols-1 md:newspaper-grid">
+          <div className="md:col-span-2 newspaper-col-first">
+            <ArticleBlock
+              featured
+              sectionLabel={projects[0].category ?? "PROJECT"}
+              title={projects[0].title}
+              deck={projects[0].subtext}
+              tags={projects[0].tags}
+              href={projects[0].link}
+              body={projects[0].bodyCopy}
+            />
+          </div>
+          <div className="newspaper-col">
+            <ArticleBlock
+              sectionLabel={projects[1].category ?? "PROJECT"}
+              title={projects[1].title}
+              deck={projects[1].subtext}
+              tags={projects[1].tags}
+              href={projects[1].link}
+              body={projects[1].bodyCopy}
+            />
+          </div>
+          <div className="newspaper-col-last">
+            <ArticleBlock
+              sectionLabel={projects[2].category ?? "PROJECT"}
+              title={projects[2].title}
+              deck={projects[2].subtext}
+              tags={projects[2].tags}
+              href={projects[2].link}
+              body={projects[2].bodyCopy}
+            />
+          </div>
+        </div>
 
-        <DividerRule className="my-2" />
+        <DividerRule variant="thick" className="my-0" />
 
-        {/* Grid of remaining featured projects */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-border">
-          {featuredProjects.slice(1).map((p) => (
-            <div key={p.id} className="md:px-6 first:pl-0 last:pr-0">
-              <ArticleBlock
-                sectionLabel={p.category ?? "PROJECT"}
-                title={p.title}
-                deck={p.subtext}
-                tags={p.tags}
-                href={p.link}
-              />
-            </div>
-          ))}
+        {/* Row 2 — EventPilot (col-span-2) + Draw + Doot */}
+        <div className="grid grid-cols-1 md:newspaper-grid">
+          <div className="md:col-span-2 newspaper-col-first">
+            <ArticleBlock
+              sectionLabel={projects[3].category ?? "PROJECT"}
+              title={projects[3].title}
+              deck={projects[3].subtext}
+              tags={projects[3].tags}
+              href={projects[3].link}
+              body={projects[3].bodyCopy}
+            />
+          </div>
+          <div className="newspaper-col">
+            <ArticleBlock
+              sectionLabel={projects[4].category ?? "PROJECT"}
+              title={projects[4].title}
+              deck={projects[4].subtext}
+              tags={projects[4].tags}
+              href={projects[4].link}
+              body={projects[4].bodyCopy}
+            />
+          </div>
+          <div className="newspaper-col-last">
+            <ArticleBlock
+              sectionLabel={projects[5].category ?? "PROJECT"}
+              title={projects[5].title}
+              deck={projects[5].subtext}
+              tags={projects[5].tags}
+              href={projects[5].link}
+              body={projects[5].bodyCopy}
+            />
+          </div>
         </div>
       </section>
 
-      <section
-        className="py-24 container"
-        id="section-experience"
-      >
-        <div className="flex items-center gap-4 mb-8">
-          <SectionLabel ruled>PROFESSIONAL RECORD</SectionLabel>
-          <DividerRule className="flex-1" />
+      {/* Experience section */}
+      <section className="py-8 container" id="section-experience">
+        <div className="border-t-2 border-foreground pt-1 mb-4">
+          <span className="col-header-box">Professional Record</span>
+          <DividerRule className="mt-1" />
         </div>
 
-        <div className="divide-y divide-border">
-          {DATA.experience.roles.map((role) => (
-            <ArchiveEntry
+        <div className="grid grid-cols-1 md:newspaper-grid-3">
+          {DATA.experience.roles.map((role, i) => (
+            <div
               key={role.company}
-              period={role.period}
-              company={role.company}
-              role={role.role}
-              description={role.description}
-            />
+              className={
+                i === 0
+                  ? "newspaper-col-first"
+                  : i === DATA.experience.roles.length - 1
+                  ? "newspaper-col-last"
+                  : "newspaper-col"
+              }
+            >
+              <ArchiveEntry
+                period={role.period}
+                company={role.company}
+                role={role.role}
+                description={role.longDescription ?? role.description}
+                suppressInternalBorder
+              />
+            </div>
           ))}
         </div>
       </section>

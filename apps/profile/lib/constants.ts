@@ -44,6 +44,8 @@ export const DATA = {
           "Electronics learning and circuit simulation platform built for visual, hands-on experimentation.",
         longDescription:
           "TinkerSim is a simulation-focused product for learning electronics by building and testing circuits visually. It combines a modern node-based canvas with browser-based circuit simulation, component systems, authentication, and a dedicated compiler service for Arduino workflows.",
+        bodyCopy:
+          "TinkerSim brings circuit experimentation into the browser with a node-based canvas that lets learners place, wire, and simulate components in real time. The platform includes a custom compiler service that translates diagrams into Arduino-compatible code, making the leap from simulation to hardware as short as possible. Authentication, component libraries, and a structured curriculum layer make it a complete learning environment rather than a one-off tool.",
         tags: [
           "Next.js",
           "React",
@@ -64,6 +66,8 @@ export const DATA = {
         subtext: "Rust CLI for the tedious parts of daily Git workflow.",
         longDescription:
           "GitPilot is a developer tool for quick repository inspection, PR summaries, pre-commit risk detection, and safe branch cleanup. It reflects my interest in workflow tooling that saves time without adding friction.",
+        bodyCopy:
+          "GitPilot is a Rust CLI designed to remove the friction from daily Git operations. It handles repository inspection, generates concise PR summaries, detects risky pre-commit changes, and automates safe branch cleanup — all from a single binary with no configuration required. The goal was a tool that respects the engineer's time and stays out of the way.",
         tags: ["Rust", "CLI", "Git", "Developer Tools"],
         link: "https://github.com/harshsandhu44/gitpilot",
         image: "https://placehold.harshsandhu.com/api/img",
@@ -78,6 +82,8 @@ export const DATA = {
           "Simple, fast placeholder image and text generator with a polished docs experience.",
         longDescription:
           "Placehold is a lightweight developer utility for generating placeholder images and lorem text. It includes API routes, documentation, and edge-ready image generation in a clean Next.js setup.",
+        bodyCopy:
+          "Placehold solves the mundane problem of placeholder content during development by exposing a clean API that generates sized images on demand. Built on Next.js with edge-ready image generation, it ships with its own documentation site so developers can integrate it without leaving the browser. The project prioritised a minimal API surface and zero-configuration setup.",
         tags: ["Next.js", "TypeScript", "Tailwind", "Vercel OG"],
         link: "https://github.com/harshsandhu44/placehold",
         image: "https://placehold.harshsandhu.com/api/img",
@@ -92,6 +98,8 @@ export const DATA = {
           "AI-powered event guide assistant with chat, voice interaction, and real-time updates.",
         longDescription:
           "EventPilot is a modern event experience product built as a monorepo. It combines AI chat, voice interaction, and live event navigation with a structured frontend and Firebase-backed data layer.",
+        bodyCopy:
+          "EventPilot reimagines how attendees navigate live events by embedding an AI assistant directly into the event experience. The assistant handles natural-language queries via chat or voice, surfaces real-time schedule changes, and guides users through venue maps. A Firebase data layer keeps everything in sync while ElevenLabs voice synthesis makes interactions feel conversational rather than transactional.",
         tags: [
           "Next.js",
           "React",
@@ -113,6 +121,8 @@ export const DATA = {
           "Whiteboard-style brainstorming app for sketching ideas quickly.",
         longDescription:
           "Draw is a lightweight visual thinking tool for rough ideation and fast brainstorming. It adds a more creative, interaction-heavy project to the portfolio mix.",
+        bodyCopy:
+          "Draw is a whiteboard tool optimised for speed — the kind of canvas you open when an idea needs to get out of your head before it disappears. Built on native Canvas APIs, it prioritises low-latency input and a minimal interface that stays out of the way.",
         tags: ["JavaScript", "Canvas", "Web App", "UI"],
         link: "https://github.com/harshsandhu44/draw",
         image: "https://placehold.harshsandhu.com/api/img",
@@ -127,6 +137,8 @@ export const DATA = {
           "Feature-rich mobile dating app with onboarding, swiping, matching, and messaging.",
         longDescription:
           "Doot is a React Native mobile application built with Expo and Firebase. It includes authentication, profile flows, swiping, real-time messaging, and a more consumer-product style user experience.",
+        bodyCopy:
+          "Doot is a full-featured dating app built with React Native and Expo, covering the entire user journey from onboarding and profile creation through card swiping, match management, and real-time messaging. Firestore backs the live data layer while the product focuses on keeping interactions smooth and the UI feeling native across iOS and Android.",
         tags: ["React Native", "Expo", "TypeScript", "Firebase", "Firestore"],
         link: "https://github.com/harshsandhu44/doot-app",
         image: "https://placehold.harshsandhu.com/api/img",
@@ -144,6 +156,8 @@ export const DATA = {
         period: "2024 - Present",
         description:
           "Building product experiences and shipping frontend-heavy systems with a focus on quality and usability.",
+        longDescription:
+          "At Magic EdTech I own the frontend architecture for learning products used by students across multiple markets. The work involves building component systems, optimising delivery performance, and collaborating closely with product and design to turn requirements into experiences that feel polished rather than just functional.",
       },
       {
         company: "Dhan AI",
@@ -151,6 +165,8 @@ export const DATA = {
         period: "2022 - 2024",
         description:
           "Worked on enterprise-facing software and product engineering across fast-moving delivery cycles.",
+        longDescription:
+          "Dhan AI moved fast and the role demanded both breadth and precision — shipping enterprise-facing features on tight cycles while keeping the codebase maintainable enough for the next sprint. I worked across the full product surface, from data-heavy dashboards to authentication and API integration layers.",
       },
       {
         company: "Pragyaware Informatics",
@@ -158,6 +174,8 @@ export const DATA = {
         period: "2022",
         description:
           "Started professionally here, building the habits that shaped how I think about product and code.",
+        longDescription:
+          "My first professional role, where I learned to write code that other people would need to read, debug, and extend. The experience instilled a respect for maintainability and clear intent that still shapes how I approach every project.",
       },
     ],
   },

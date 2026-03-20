@@ -190,9 +190,76 @@
 }
 
 @utility container {
-  max-width: 90rem;
+  max-width: 72rem;
   margin-inline: auto;
   padding-inline: 1rem;
+}
+
+/* 4-col and 3-col newspaper grids */
+@utility newspaper-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  column-gap: 0;
+}
+@utility newspaper-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  column-gap: 0;
+}
+
+/* Column gutter utilities — border-right as vertical rule */
+@utility newspaper-col {
+  padding-inline: 1rem;
+  border-right: 1px solid var(--border);
+}
+@utility newspaper-col-first {
+  padding-inline: 1rem;
+  border-right: 1px solid var(--border);
+  padding-left: 0;
+}
+@utility newspaper-col-last {
+  padding-inline: 1rem;
+  border-right: none;
+  padding-right: 0;
+}
+
+/* Drop cap on first paragraph's first letter */
+@utility drop-cap {
+  & > p:first-of-type::first-letter {
+    font-family: var(--font-serif);
+    font-size: 4.5rem;
+    font-weight: 700;
+    line-height: 0.8;
+    float: left;
+    margin-right: 0.1em;
+    margin-top: 0.05em;
+    color: var(--foreground);
+  }
+}
+
+/* Newspaper body text style */
+@utility newspaper-body {
+  font-family: var(--font-serif);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  text-align: justify;
+  hyphens: auto;
+}
+
+/* Section column label box */
+@utility col-header-box {
+  border: 1px solid var(--foreground);
+  padding: 0.125rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  display: inline-block;
+}
+
+/* Compact section spacing (replaces py-24) */
+@utility section-newspaper {
+  padding-block: 2rem;
 }
 
 @utility font-editorial {

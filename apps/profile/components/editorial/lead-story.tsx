@@ -1,4 +1,3 @@
-import { MetadataRow } from "./metadata-row";
 import { DividerRule } from "./divider-rule";
 import { DATA } from "@/lib/constants";
 
@@ -20,38 +19,48 @@ export function LeadStory({
   sideRailContent,
 }: LeadStoryProps) {
   const { edition, volume, publication, tagline } = DATA.editorial;
+  const dateStr = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 
   return (
-    <section id="section-hero" className="container py-24 min-h-screen flex flex-col justify-center">
-      {/* Masthead metadata */}
-      <MetadataRow
-        className="mb-4"
-        items={[
-          { value: publication },
-          { value: volume },
-          { value: edition },
-        ]}
-      />
+    <section id="section-hero" className="container section-newspaper">
+      {/* Masthead — Tier 1 */}
+      <div className="grid grid-cols-3 items-baseline border-b border-foreground pb-1">
+        <span className="font-mono text-[10px] uppercase tracking-[0.15em]">
+          {volume} · {edition}
+        </span>
+        <span className="font-serif font-black text-2xl md:text-3xl text-center">
+          {publication}
+        </span>
+        <span className="font-mono text-[10px] text-right">{dateStr}</span>
+      </div>
 
-      <DividerRule variant="thick" className="mb-2" />
-
-      <div className="mb-4">
-        <p className="font-mono text-xs uppercase tracking-[0.15em] text-muted-foreground text-center py-1">
+      {/* Masthead — Tier 2 */}
+      <div className="border-t-[3px] border-double border-foreground border-b border-foreground py-[2px]">
+        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-center">
           {tagline}
         </p>
       </div>
 
-      <DividerRule variant="thin" className="mb-8" />
+      {/* Masthead — Tier 3 */}
+      <div className="border-b border-border py-1 flex justify-between">
+        <span className="font-mono text-[10px]">{dateStr}</span>
+        <span className="font-mono text-[10px]">harshsandhu.com</span>
+      </div>
 
-      {/* Lead story grid */}
-      <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-8 md:gap-12">
-        {/* Main content */}
-        <div className="space-y-4">
-          <div className="font-serif font-black text-5xl md:text-7xl leading-[1.05] tracking-tight">
+      {/* Hero grid — 4 cols */}
+      <div className="grid grid-cols-1 md:newspaper-grid mt-4">
+        {/* Main content — spans 3 cols */}
+        <div className="md:col-span-3 newspaper-col-first space-y-3">
+          <div className="font-serif font-black text-4xl md:text-6xl leading-[1.0] tracking-tight">
             {headline}
           </div>
 
-          <p className="font-sans text-lg leading-relaxed text-muted-foreground max-w-xl">
+          <p className="newspaper-body text-muted-foreground">
             {deck}
           </p>
 
@@ -68,9 +77,9 @@ export function LeadStory({
           {cta && <div className="pt-2">{cta}</div>}
         </div>
 
-        {/* Side rail — hidden on mobile */}
+        {/* Side rail */}
         {sideRailContent && (
-          <aside className="hidden md:flex flex-col gap-4 border-l border-border pl-8">
+          <aside className="newspaper-col-last flex flex-col gap-4 mt-4 md:mt-0">
             {sideRailContent}
           </aside>
         )}

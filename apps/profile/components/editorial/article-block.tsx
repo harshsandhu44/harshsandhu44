@@ -9,6 +9,7 @@ interface ArticleBlockProps {
   tags: string[];
   href?: string;
   featured?: boolean;
+  body?: string;
   className?: string;
 }
 
@@ -19,12 +20,13 @@ export function ArticleBlock({
   tags,
   href,
   featured,
+  body,
   className,
 }: ArticleBlockProps) {
   return (
     <article
       className={cn(
-        "py-6 group",
+        "pt-4 pb-0 group",
         featured ? "border-t-2 border-foreground" : "border-t border-border",
         className,
       )}
@@ -32,27 +34,29 @@ export function ArticleBlock({
       <SectionLabel className="mb-3 block">{sectionLabel}</SectionLabel>
 
       {featured ? (
-        <h2 className="font-serif font-bold text-4xl md:text-5xl leading-tight tracking-tight mb-3">
+        <h2 className="font-serif font-bold text-4xl md:text-5xl leading-tight tracking-tight mb-2">
           {title}
         </h2>
       ) : (
-        <h3 className="font-serif font-bold text-2xl md:text-3xl leading-tight tracking-tight mb-3">
+        <h3 className="font-serif font-bold text-xl md:text-2xl leading-tight tracking-tight mb-2">
           {title}
         </h3>
       )}
 
-      <p className="font-sans text-base text-muted-foreground leading-relaxed mb-4 max-w-prose">
+      <p className="newspaper-body mt-1 mb-3 text-muted-foreground">
         {deck}
       </p>
 
-      <footer className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2 flex-wrap">
-          {tags.map((tag) => (
-            <span key={tag} className="font-mono text-xs uppercase tracking-[0.1em] text-muted-foreground">
-              {tag}
-            </span>
-          ))}
+      {body && (
+        <div className="drop-cap mt-2">
+          <p className="newspaper-body">{body}</p>
         </div>
+      )}
+
+      <footer className="flex items-center justify-between gap-4 mt-3">
+        <span className="font-mono text-xs uppercase tracking-[0.1em] text-muted-foreground">
+          {tags.join(", ")}
+        </span>
         {href && (
           <Link
             href={href}

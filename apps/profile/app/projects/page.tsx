@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { DATA } from "@/lib/constants";
 import { siteConfig } from "@/config/site";
-import { SectionLabel, DividerRule, ArticleBlock } from "@/components/editorial";
+import { DividerRule, ArticleBlock } from "@/components/editorial";
 
 export const metadata: Metadata = {
   title: "Projects",
@@ -18,57 +18,114 @@ export default function ProjectsPage() {
   const secondary = DATA.selectedWorks.projects.filter((p) => !p.featured);
 
   return (
-    <div className="container py-24 space-y-16">
-      <div className="space-y-4">
-        <h1 className="font-serif font-bold text-6xl md:text-7xl tracking-tight">
-          Projects
-        </h1>
-        <p className="font-sans text-xl text-muted-foreground max-w-prose">
-          Things I&apos;ve built — developer tools, simulation systems, and
-          experiments.
+    <div className="container py-8">
+      {/* Compact masthead-style header */}
+      <div className="border-t-[3px] border-double border-foreground pt-1 mb-1">
+        <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-center py-[2px]">
+          Selected Works Archive
         </p>
       </div>
+      <DividerRule variant="thin" className="mb-4" />
 
-      <section className="space-y-0">
-        <div className="flex items-center gap-4 mb-8">
-          <SectionLabel ruled>FEATURED</SectionLabel>
-          <DividerRule className="flex-1" />
+      {/* Featured section */}
+      <section>
+        <div className="border-t-2 border-foreground pt-1 mb-2">
+          <span className="col-header-box">Featured</span>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-border">
-          {featured.map((project, i) => (
-            <div key={project.id} className={i > 0 ? "md:pl-8" : "md:pr-8"}>
+
+        <div className="grid grid-cols-1 md:newspaper-grid">
+          <div className="md:col-span-2 newspaper-col-first">
+            <ArticleBlock
+              featured
+              sectionLabel={featured[0]?.category ?? "PROJECT"}
+              title={featured[0]?.title ?? ""}
+              deck={featured[0]?.subtext ?? ""}
+              tags={featured[0]?.tags ?? []}
+              href={featured[0]?.link}
+              body={featured[0]?.bodyCopy}
+            />
+          </div>
+          {featured.slice(1, 3).map((project, i) => (
+            <div
+              key={project.id}
+              className={i === featured.slice(1, 3).length - 1 ? "newspaper-col-last" : "newspaper-col"}
+            >
               <ArticleBlock
                 sectionLabel={project.category ?? "PROJECT"}
                 title={project.title}
                 deck={project.subtext}
                 tags={project.tags}
                 href={project.link}
-                featured={i === 0}
+                body={project.bodyCopy}
               />
             </div>
           ))}
         </div>
+
+        {featured.length > 3 && (
+          <>
+            <DividerRule variant="thick" className="my-0" />
+            <div className="grid grid-cols-1 md:newspaper-grid">
+              {featured.slice(3).map((project, i) => (
+                <div
+                  key={project.id}
+                  className={
+                    i === 0
+                      ? "newspaper-col-first"
+                      : i === featured.slice(3).length - 1
+                      ? "newspaper-col-last"
+                      : "newspaper-col"
+                  }
+                >
+                  <ArticleBlock
+                    sectionLabel={project.category ?? "PROJECT"}
+                    title={project.title}
+                    deck={project.subtext}
+                    tags={project.tags}
+                    href={project.link}
+                    body={project.bodyCopy}
+                  />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </section>
 
       {secondary.length > 0 && (
-        <section className="space-y-0">
-          <div className="flex items-center gap-4 mb-8">
-            <SectionLabel ruled>MORE PROJECTS</SectionLabel>
-            <DividerRule className="flex-1" />
-          </div>
-          <div className="divide-y divide-border">
-            {secondary.map((project) => (
-              <ArticleBlock
-                key={project.id}
-                sectionLabel={project.category ?? "PROJECT"}
-                title={project.title}
-                deck={project.subtext}
-                tags={project.tags}
-                href={project.link}
-              />
-            ))}
-          </div>
-        </section>
+        <>
+          <DividerRule variant="thick" className="my-4" />
+
+          <section>
+            <div className="border-t-2 border-foreground pt-1 mb-2">
+              <span className="col-header-box">More Projects</span>
+            </div>
+
+            <div className="grid grid-cols-1 md:newspaper-grid">
+              {secondary.map((project, i) => (
+                <div
+                  key={project.id}
+                  className={
+                    i === 0
+                      ? "newspaper-col-first"
+                      : i === secondary.length - 1
+                      ? "newspaper-col-last"
+                      : "newspaper-col"
+                  }
+                >
+                  <ArticleBlock
+                    sectionLabel={project.category ?? "PROJECT"}
+                    title={project.title}
+                    deck={project.subtext}
+                    tags={project.tags}
+                    href={project.link}
+                    body={project.bodyCopy}
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
+        </>
       )}
     </div>
   );
