@@ -25,9 +25,9 @@ export default function BentoGrid({ items, className = "" }: BentoGridProps) {
   return (
     <div
       className={`
-        grid w-full grid-cols-1 gap-4 
-        md:grid-cols-2 md:auto-rows-[25rem] 
-        lg:grid-cols-3 lg:auto-rows-[25rem] 
+        grid w-full grid-cols-1 gap-4
+        md:grid-cols-2 md:auto-rows-[25rem]
+        lg:grid-cols-3 lg:auto-rows-[25rem]
         ${className}
       `}
     >
@@ -52,8 +52,8 @@ function BentoCard({ item, index }: { item: BentoItem; index: number }) {
   return (
     <div
       className={`
-        group relative overflow-hidden rounded-lg bg-card border 
-        min-h-[25rem] flex flex-col justify-end
+        group relative overflow-hidden rounded-lg bg-card border
+        min-h-100 flex flex-col justify-end
         ${colSpanClass}
       `}
     >
@@ -87,10 +87,10 @@ function BentoCard({ item, index }: { item: BentoItem; index: number }) {
         </div>
 
         {/* Content Container */}
-        <div className="relative z-10 w-full p-6 md:p-8 transition-transform duration-300">
+        <div className="z-10 w-full p-6 md:p-8 transition-transform duration-300">
           {/* Arrow Icon */}
           {item.href && (
-            <div className="absolute top-6 right-6 opacity-0 transition-all duration-300 group-hover:opacity-100">
+            <div className="absolute bottom-6 right-6 opacity-0 transition-all duration-300 group-hover:opacity-100">
               <div className="rounded-full bg-card p-2 text-card-foreground shadow-lg transform transition-transform duration-300 group-hover:scale-110">
                 <ArrowUpRight size={20} />
               </div>
