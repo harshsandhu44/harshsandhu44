@@ -1,5 +1,11 @@
 import { BentoItem } from "@/components/ui/bento-grid";
-import { LaptopIcon, ServerIcon, CloudIcon, TerminalIcon, CpuIcon } from "lucide-react";
+import {
+  LaptopIcon,
+  ServerIcon,
+  CloudIcon,
+  TerminalIcon,
+  CpuIcon,
+} from "lucide-react";
 
 export const DATA = {
   global: {
@@ -36,8 +42,8 @@ export const DATA = {
           "Simulation workbench for testing distributed systems behavior. Built for engineers who need reproducible chaos.",
         longDescription:
           "TinkerSim is a simulation workbench that lets you model distributed systems, inject faults, and observe emergent behavior. Built with Rust compiled to WASM for near-native performance in the browser. Define your topology, configure failure modes, and replay scenarios deterministically.",
-        tags: ["Rust", "WASM", "simulation"],
-        link: "https://github.com/harshsandhu44/tinkersim",
+        tags: ["Rust", "WASM", "Simulation", "Nextjs", "Tailwind", "GSAP"],
+        link: "https://tinkersim.com",
         image: "https://placehold.harshsandhu.com/api/img",
         featured: true,
       },
@@ -50,7 +56,7 @@ export const DATA = {
         longDescription:
           "gitpilot is a Rust CLI that hooks into your git workflow to auto-generate commit messages, explain diffs in plain English, and surface risky changes before they land on main. Runs locally — no data leaves your machine.",
         tags: ["Rust", "CLI", "AI"],
-        link: "https://github.com/harshsandhu44/gitpilot",
+        link: "https://crates.io/crates/gitpilot",
         image: "https://placehold.harshsandhu.com/api/img",
         featured: true,
       },
@@ -84,11 +90,10 @@ export const DATA = {
         id: "panj-granth",
         slug: "panj-granth",
         title: "Panj Granth",
-        subtext:
-          "Digital archive and reader for Sikh scripture.",
+        subtext: "Digital archive and reader for Sikh scripture.",
         longDescription:
           "An offline-first reading experience for Panj Granthi. Designed for performance and peace of mind — full text search, bookmarks, and a distraction-free reader mode. Built with React Native and Expo.",
-        tags: ["Next.js", "PWA"],
+        tags: ["React Native", "Expo"],
         link: "https://github.com/harshsandhu44/panj-granth",
         image: "/images/projects/panj-granth.png",
         featured: false,
@@ -97,11 +102,10 @@ export const DATA = {
         id: "moodsync",
         slug: "moodsync",
         title: "MoodSync",
-        subtext:
-          "Mood-based playlist engine using Spotify API.",
+        subtext: "Mood-based playlist engine using Spotify API.",
         longDescription:
           "MoodSync uses psychoacoustics and your current mood to build the perfect Spotify playlist. Answer a few questions, and the engine curates tracks matched to your emotional state using audio feature analysis from the Spotify API.",
-        tags: ["Next.js", "Spotify API"],
+        tags: ["Next.js", "Web Audio API"],
         link: "https://moodsync.harshsandhu.com",
         image: "/images/projects/moodsync.png",
         featured: false,
