@@ -26,7 +26,7 @@ export function AppHeader() {
     >
       <div
         className={cn(
-          "px-4 max-w-7xl mx-auto grid grid-cols-2 items-center gap-4 transition-all duration-300",
+          "container grid grid-cols-2 items-center gap-4 transition-all duration-300",
           scrolled ? "h-16" : "h-24",
         )}
       >

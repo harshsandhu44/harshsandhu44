@@ -68,7 +68,7 @@ export function Navbar() {
     );
   } else {
     return (
-      <nav className="place-self-stretch self-center grid grid-cols-4 place-content-center gap-4">
+      <nav className="flex items-center gap-4">
         {navItems.map((item) => (
           <Link
             key={item.label}
