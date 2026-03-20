@@ -6,6 +6,7 @@ import { flushSync } from "react-dom";
 
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "./button";
+import { DATA } from "@/lib/constants";
 
 interface Props extends React.ComponentPropsWithoutRef<"button"> {
   showLabel?: boolean;
@@ -87,7 +88,13 @@ export const ThemeToggle = ({
       {...props}
     >
       {isDark ? <Sun /> : <Moon />}
-      <span className={cn(showLabel ? "" : "sr-only")}>Toggle theme</span>
+      {showLabel ? (
+        <span className="font-mono text-xs uppercase tracking-widest">
+          {isDark ? DATA.editorial.themeLabels.dark : DATA.editorial.themeLabels.light}
+        </span>
+      ) : (
+        <span className="sr-only">Toggle theme</span>
+      )}
     </button>
   );
 };

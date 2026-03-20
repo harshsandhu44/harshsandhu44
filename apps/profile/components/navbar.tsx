@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/drawer";
 import { useMediaQuery } from "@/lib/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
+import { DividerRule } from "@/components/editorial";
 
 export function Navbar() {
   const [open, setOpen] = useState(false);
@@ -43,13 +44,14 @@ export function Navbar() {
             <DrawerDescription>Sr. Software Engineer</DrawerDescription>
           </DrawerHeader>
 
-          <nav className="p-4 w-full flex flex-col items-start justify-center gap-12">
+          <nav className="p-4 w-full flex flex-col items-start justify-center gap-0">
+            <DividerRule className="w-full mb-8" />
             {navItems.map((item) => (
               <Link
                 key={item.label}
                 href={item.href}
                 className={cn(
-                  "text-3xl text-center font-bold capitalize",
+                  "font-serif font-bold text-2xl capitalize py-4 border-b border-border w-full",
                   path === item.href && "text-primary",
                 )}
                 onClick={() => setOpen(false)}
@@ -71,7 +73,10 @@ export function Navbar() {
           <Link
             key={item.label}
             href={item.href}
-            className="text-center font-medium capitalize"
+            className={cn(
+              "text-center font-mono text-xs uppercase tracking-[0.12em]",
+              path === item.href && "text-primary",
+            )}
           >
             {item.label}
           </Link>

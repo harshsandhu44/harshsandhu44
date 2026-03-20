@@ -20,16 +20,21 @@ export function AppHeader() {
   return (
     <header
       className={cn(
-        "fixed top-0 inset-x-0 bg-transparent z-50 transition-all duration-300 ease-in-out",
+        "fixed top-0 inset-x-0 bg-transparent z-50 transition-all duration-300 ease-in-out border-b border-border",
         scrolled && "backdrop-blur-sm",
       )}
     >
-      <div className="px-4 h-24 max-w-7xl mx-auto grid grid-cols-2 items-center gap-4 transition-all duration-300">
-        <span className="font-black text-lg">Harsh Sandhu</span>
+      <div
+        className={cn(
+          "px-4 max-w-7xl mx-auto grid grid-cols-2 items-center gap-4 transition-all duration-300",
+          scrolled ? "h-16" : "h-24",
+        )}
+      >
+        <span className="font-serif font-bold text-lg">Harsh Sandhu</span>
 
         <div className="place-self-end self-center flex flex-row-reverse md:flex-row items-center gap-6">
           <Navbar />
-          <ThemeToggle />
+          <ThemeToggle showLabel />
         </div>
       </div>
     </header>
