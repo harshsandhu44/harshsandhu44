@@ -1,4 +1,3 @@
-import { DividerRule } from "./divider-rule";
 import { DATA } from "@/lib/constants";
 
 interface LeadStoryProps {
@@ -40,7 +39,7 @@ export function LeadStory({
       </div>
 
       {/* Masthead — Tier 2 */}
-      <div className="border-t-[3px] border-double border-foreground border-b border-foreground py-[2px]">
+      <div className="border-t-[3px] border-double border-foreground border-b py-0.5">
         <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-center">
           {tagline}
         </p>
@@ -56,20 +55,18 @@ export function LeadStory({
       <div className="grid grid-cols-1 md:newspaper-grid mt-4">
         {/* Main content — spans 3 cols */}
         <div className="md:col-span-3 newspaper-col-first space-y-3">
-          <div className="font-serif font-black text-4xl md:text-6xl leading-[1.0] tracking-tight">
+          <div className="font-serif font-black text-4xl md:text-6xl leading-none tracking-tight">
             {headline}
           </div>
 
-          <p className="newspaper-body text-muted-foreground">
-            {deck}
-          </p>
+          <p className="newspaper-body text-muted-foreground">{deck}</p>
 
           <p className="font-mono text-xs uppercase tracking-[0.15em] text-muted-foreground">
             {byline}
           </p>
 
           {statusNote && (
-            <p className="font-mono text-xs italic text-muted-foreground/70 border-l-2 border-primary pl-3">
+            <p className="font-mono text-xs text-muted-foreground/70 border-l-2 border-primary pl-3">
               {statusNote}
             </p>
           )}

@@ -57,7 +57,7 @@ export default function HomePage() {
                   href={DATA.global.socials.linkedin}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block font-mono text-xs uppercase tracking-[0.1em] hover:text-primary transition-colors"
+                  className="block font-mono text-xs uppercase tracking-widest hover:text-primary transition-colors"
                 >
                   LinkedIn ↗
                 </Link>
@@ -65,7 +65,7 @@ export default function HomePage() {
                   href={DATA.global.socials.twitter}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block font-mono text-xs uppercase tracking-[0.1em] hover:text-primary transition-colors"
+                  className="block font-mono text-xs uppercase tracking-widest hover:text-primary transition-colors"
                 >
                   Twitter/X ↗
                 </Link>
@@ -74,7 +74,7 @@ export default function HomePage() {
             <DividerRule />
             <div>
               <p className="col-header-box mb-2">Status</p>
-              <p className="font-mono text-xs italic text-muted-foreground/70 mt-2">
+              <p className="font-mono text-xs text-muted-foreground/70 mt-2">
                 {DATA.hero.statusBadge}
               </p>
             </div>
