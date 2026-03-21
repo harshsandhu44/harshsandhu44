@@ -20,7 +20,7 @@ export function AppHeader() {
   return (
     <header
       className={cn(
-        "fixed top-0 inset-x-0 bg-transparent z-50 transition-all duration-300 ease-in-out border-b border-border",
+        "sticky top-0 inset-x-0 bg-transparent z-50 transition-all duration-300 ease-in-out border-b border-border",
         scrolled && "backdrop-blur-sm",
       )}
     >
