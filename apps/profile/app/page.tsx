@@ -22,7 +22,9 @@ export default function HomePage() {
               <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-sm text-primary font-cursive whitespace-nowrap">
                 {DATA.hero.headline.replace}
               </span>{" "}
-              <Highlighter action="crossed-off">{DATA.hero.headline.strike}</Highlighter>
+              <Highlighter action="crossed-off">
+                {DATA.hero.headline.strike}
+              </Highlighter>
             </span>
             {DATA.hero.headline.end}
           </>
@@ -47,7 +49,7 @@ export default function HomePage() {
                   href={DATA.global.socials.github}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block font-mono text-xs uppercase tracking-[0.1em] hover:text-primary transition-colors"
+                  className="block font-mono text-xs uppercase tracking-widest hover:text-primary transition-colors"
                 >
                   GitHub ↗
                 </Link>
@@ -174,8 +176,8 @@ export default function HomePage() {
                 i === 0
                   ? "newspaper-col-first"
                   : i === DATA.experience.roles.length - 1
-                  ? "newspaper-col-last"
-                  : "newspaper-col"
+                    ? "newspaper-col-last"
+                    : "newspaper-col"
               }
             >
               <ArchiveEntry
