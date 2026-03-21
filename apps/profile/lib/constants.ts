@@ -239,7 +239,14 @@ export const DATA = {
         {
           name: "Backend & Data",
           icon: ServerIcon,
-          items: ["Firebase", "APIs", "Auth systems", "Compiler services"],
+          items: [
+            "Firebase",
+            "AWS",
+            "Cloudflare",
+            "APIs",
+            "Auth systems",
+            "Compiler services",
+          ],
           desc: "The useful plumbing",
         },
         {

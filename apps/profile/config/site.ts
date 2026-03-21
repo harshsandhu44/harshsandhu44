@@ -14,6 +14,7 @@ export const siteConfig = {
     "Product Engineer",
     "Developer Tools",
     "Rust",
+    "AWS",
     "Next.js",
     "Simulation Systems",
     "Software Engineer",
