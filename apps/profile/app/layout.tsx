@@ -75,16 +75,15 @@ export const metadata: Metadata = {
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "Person",
-  name: "Harsh Sandhu",
-  url: "https://harshsandhu.com",
+  name: siteConfig.name,
+  url: siteConfig.url,
   sameAs: [
-    "https://github.com/harshsandhu44",
-    "https://linkedin.com/in/nyxfor13days",
-    "https://twitter.com/harshsandhu44",
+    siteConfig.links.github,
+    siteConfig.links.linkedin,
+    siteConfig.links.twitter,
   ],
   jobTitle: "Product Engineer",
-  description:
-    "Product engineer building developer tools, simulation systems, and fast web products. Rust, Next.js, thoughtful design.",
+  description: siteConfig.description,
   knowsAbout: [
     "Rust",
     "Next.js",

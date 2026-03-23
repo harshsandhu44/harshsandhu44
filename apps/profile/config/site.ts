@@ -7,7 +7,7 @@ export const siteConfig = {
   links: {
     github: "https://github.com/harshsandhu44",
     linkedin: "https://linkedin.com/in/nyxfor13days",
-    twitter: "https://twitter.com/harshsandhu44",
+    twitter: "https://x.com/harshsandhu44",
   },
   keywords: [
     "Harsh Sandhu",
