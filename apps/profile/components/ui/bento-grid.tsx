@@ -46,8 +46,72 @@ function BentoCard({ item, index }: { item: BentoItem; index: number }) {
       ? "md:col-span-2 lg:col-span-2"
       : "md:col-span-1 lg:col-span-1";
 
-  const ContentWrapper = item.href ? Link : "div";
-  const wrapperProps = item.href ? { href: item.href } : {};
+  const innerContent = (
+    <>
+      <div className="absolute inset-0 h-full w-full">
+        {item.image ? (
+          <>
+            <Image
+              src={item.image}
+              alt={item.title}
+              fill
+              className="object-cover transition-transform duration-500 group-hover:scale-105 opacity-80 group-hover:opacity-60"
+            />
+            <div className="absolute inset-0 bg-card/60" />
+          </>
+        ) : item.icon ? (
+          /* creative-tweak: Render Icon as Watermark */
+          <div className="flex h-full w-full items-center justify-center overflow-hidden bg-muted/20">
+            <span className="text-[10rem] opacity-10 grayscale transition-transform duration-500 group-hover:scale-110 group-hover:rotate-12 select-none">
+              {item.icon}
+            </span>
+          </div>
+        ) : (
+          <div className="h-full w-full bg-card" />
+        )}
+      </div>
+
+      {/* Content Container */}
+      <div className="z-10 w-full p-6 md:p-8 transition-transform duration-300">
+        {/* Arrow Icon */}
+        {item.href && (
+          <div className="absolute bottom-6 right-6 opacity-0 transition-all duration-300 group-hover:opacity-100">
+            <div className="rounded-full bg-card p-2 text-card-foreground shadow-lg transform transition-transform duration-300 group-hover:scale-110">
+              <ArrowUpRight size={20} />
+            </div>
+          </div>
+        )}
+
+        <div className="translate-y-4 transition-transform duration-300 group-hover:translate-y-0 space-y-3">
+          {/* Tags */}
+          {item.tags && item.tags.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {item.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full border bg-card px-3 py-1 text-xs font-medium text-card-foreground backdrop-blur-md"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Text Content */}
+          <div>
+            <h3 className="font-serif text-2xl font-bold text-card-foreground md:text-3xl">
+              {item.title}
+            </h3>
+            {item.description && (
+              <p className="mt-2 text-card-foreground md:text-base opacity-100 md:opacity-0 transition-opacity duration-300 group-hover:opacity-100 line-clamp-2">
+                {item.description}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
 
   return (
     <div
@@ -57,75 +121,18 @@ function BentoCard({ item, index }: { item: BentoItem; index: number }) {
         ${colSpanClass}
       `}
     >
-      {/* @ts-expect-error Make the item unclickable on missing href */}
-      <ContentWrapper
-        target="_blank"
-        className="block h-full w-full"
-        {...wrapperProps}
-      >
-        <div className="absolute inset-0 h-full w-full">
-          {item.image ? (
-            <>
-              <Image
-                src={item.image}
-                alt={item.title}
-                fill
-                className="object-cover transition-transform duration-500 group-hover:scale-105 opacity-80 group-hover:opacity-60"
-              />
-              <div className="absolute inset-0 bg-card/60" />
-            </>
-          ) : item.icon ? (
-            /* creative-tweak: Render Icon as Watermark */
-            <div className="flex h-full w-full items-center justify-center overflow-hidden bg-muted/20">
-              <span className="text-[10rem] opacity-10 grayscale transition-transform duration-500 group-hover:scale-110 group-hover:rotate-12 select-none">
-                {item.icon}
-              </span>
-            </div>
-          ) : (
-            <div className="h-full w-full bg-card" />
-          )}
-        </div>
-
-        {/* Content Container */}
-        <div className="z-10 w-full p-6 md:p-8 transition-transform duration-300">
-          {/* Arrow Icon */}
-          {item.href && (
-            <div className="absolute bottom-6 right-6 opacity-0 transition-all duration-300 group-hover:opacity-100">
-              <div className="rounded-full bg-card p-2 text-card-foreground shadow-lg transform transition-transform duration-300 group-hover:scale-110">
-                <ArrowUpRight size={20} />
-              </div>
-            </div>
-          )}
-
-          <div className="translate-y-4 transition-transform duration-300 group-hover:translate-y-0 space-y-3">
-            {/* Tags */}
-            {item.tags && item.tags.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {item.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-full border bg-card px-3 py-1 text-xs font-medium text-card-foreground backdrop-blur-md"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {/* Text Content */}
-            <div>
-              <h3 className="font-serif text-2xl font-bold text-card-foreground md:text-3xl">
-                {item.title}
-              </h3>
-              {item.description && (
-                <p className="mt-2 text-card-foreground md:text-base opacity-100 md:opacity-0 transition-opacity duration-300 group-hover:opacity-100 line-clamp-2">
-                  {item.description}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      </ContentWrapper>
+      {item.href ? (
+        <Link
+          href={item.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block h-full w-full"
+        >
+          {innerContent}
+        </Link>
+      ) : (
+        <div className="block h-full w-full">{innerContent}</div>
+      )}
     </div>
   );
 }
