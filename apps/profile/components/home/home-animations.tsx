@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { useAnimateOnScroll } from "@/lib/animations";
+import { useAnimateOnScroll } from "@harshsandhu44/utils/animations";
 
 export function HomeAnimations({ children }: { children: React.ReactNode }) {
   const containerRef = useRef(null);

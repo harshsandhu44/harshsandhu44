@@ -1,17 +1,17 @@
 import { ArrowDownIcon, BriefcaseIcon, CalendarIcon } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
-import { Highlighter } from "@/components/ui/highlighter";
-import BentoGrid from "@/components/ui/bento-grid";
-import { DATA } from "@/lib/constants";
-import { BlurFade } from "@/components/ui/blur-fade";
 import {
+  Badge,
+  buttonVariants,
+  Highlighter,
+  BentoGrid,
+  BlurFade,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from "@harshsandhu44/ui";
+import { DATA } from "@/lib/constants";
 import { AnchorLink } from "@/components/anchor-link";
 import { HomeAnimations } from "@/components/home/home-animations";
 

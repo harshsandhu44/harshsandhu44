@@ -13,10 +13,10 @@
   "iconLibrary": "lucide",
   "aliases": {
     "components": "@/components",
-    "utils": "@/lib/utils",
-    "ui": "@/components/ui",
+    "utils": "@harshsandhu44/utils",
+    "ui": "@harshsandhu44/ui/src",
     "lib": "@/lib",
-    "hooks": "@/hooks"
+    "hooks": "@harshsandhu44/utils/hooks"
   },
   "registries": {
     "@magicui": "https://magicui.design/r/{name}.json"

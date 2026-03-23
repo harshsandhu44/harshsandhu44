@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
-import { getColSpanClass } from "@/lib/utils";
+import { getColSpanClass } from "@harshsandhu44/utils";
 
 export interface BentoItem {
   id: string | number;

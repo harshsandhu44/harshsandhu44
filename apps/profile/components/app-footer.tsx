@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowBigRightIcon } from "lucide-react";
 import { DATA } from "@/lib/constants";
-import { Button } from "@/components/ui/button";
+import { Button } from "@harshsandhu44/ui";
 
 export function AppFooter() {
   const { tagline, subTagline, cta } = DATA.footer;

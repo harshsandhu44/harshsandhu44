@@ -2,8 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { DATA } from "@/lib/constants";
-import { Badge } from "@/components/ui/badge";
-import { buttonVariants } from "@/components/ui/button";
+import { Badge, buttonVariants } from "@harshsandhu44/ui";
 import { ArrowLeftIcon, ExternalLinkIcon } from "lucide-react";
 import { siteConfig } from "@/config/site";
 

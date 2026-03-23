@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@harshsandhu44/ui";
 import { ExternalLinkIcon, ArrowRightIcon } from "lucide-react";
 
 interface ProjectCardProps {
