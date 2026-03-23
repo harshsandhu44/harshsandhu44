@@ -62,7 +62,7 @@ export default function HomePage() {
         className="py-24 min-h-dvh container flex flex-col md:items-center justify-center space-y-16"
         id="section-journey"
       >
-        <h2 className="text-4xl md:text6xl font-black md:text-center max-w-prose">
+        <h2 className="text-4xl md:text-6xl font-black md:text-center max-w-prose">
           {DATA.selectedWorks.title}
         </h2>
         <BentoGrid items={projectItems} />
@@ -72,7 +72,7 @@ export default function HomePage() {
         className="py-24 min-h-dvh container flex flex-col md:items-center justify-center space-y-16"
         id="section-experience"
       >
-        <h2 className="text-4xl md:text6xl font-black md:text-center max-w-prose">
+        <h2 className="text-4xl md:text-6xl font-black md:text-center max-w-prose">
           {DATA.experience.header}
         </h2>
         <div className="flex flex-col gap-8 relative pl-6 border-l border-muted">
