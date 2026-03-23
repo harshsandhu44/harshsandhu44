@@ -5,7 +5,7 @@ import {
   TerminalIcon,
   CpuIcon,
 } from "lucide-react";
-import { type BentoItem } from "@/components/ui/bento-grid";
+import { type BentoItem } from "@harshsandhu44/ui";
 
 export const about = {
   bio: {

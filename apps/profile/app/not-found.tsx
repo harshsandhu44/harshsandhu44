@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { Terminal } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { WordRotate } from "@/components/ui/word-rotate";
+import { Button, WordRotate } from "@harshsandhu44/ui";
 import { usePathname } from "next/navigation";
 
 export default function NotFound() {

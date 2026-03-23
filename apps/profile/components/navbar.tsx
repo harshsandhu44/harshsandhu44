@@ -10,9 +10,9 @@ import {
   DrawerHeader,
   DrawerTitle,
   DrawerTrigger,
-} from "@/components/ui/drawer";
-import { useMediaQuery } from "@/lib/hooks/useMediaQuery";
-import { cn } from "@/lib/utils";
+} from "@harshsandhu44/ui";
+import { useMediaQuery } from "@harshsandhu44/utils/hooks";
+import { cn } from "@harshsandhu44/utils";
 
 export function Navbar() {
   const [open, setOpen] = useState(false);

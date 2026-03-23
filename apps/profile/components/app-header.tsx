@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Navbar } from "@/components/navbar";
-import { ThemeToggle } from "@/components/ui/theme-toggle";
-import { cn } from "@/lib/utils";
+import { ThemeToggle } from "@harshsandhu44/ui";
+import { cn } from "@harshsandhu44/utils";
 
 export function AppHeader() {
   const [scrolled, setScrolled] = useState(false);

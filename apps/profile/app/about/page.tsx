@@ -1,8 +1,13 @@
 import { DATA } from "@/lib/constants";
-import BentoGrid from "@/components/ui/bento-grid";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { BlurFade } from "@/components/ui/blur-fade";
+import {
+  BentoGrid,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  Badge,
+  BlurFade,
+} from "@harshsandhu44/ui";
 import { AboutImage } from "@/components/about/about-image";
 import { HomeAnimations } from "@/components/home/home-animations";
 
