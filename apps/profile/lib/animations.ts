@@ -7,6 +7,8 @@ gsap.registerPlugin(ScrollTrigger);
 export const useAnimateOnScroll = (scope?: string | ReactRef | Element) => {
   useGSAP(
     () => {
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
       const sections = gsap.utils.toArray<HTMLElement>('[id^="section-"]');
       sections.forEach((section) => {
         gsap.fromTo(

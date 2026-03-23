@@ -15,11 +15,17 @@ export function SmoothScroll({ children }: PropsWithChildren) {
 
   useGSAP(
     () => {
-      ScrollSmoother.create({
-        smooth: 2,
-        effects: true,
+      const prefersReducedMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+
+      const smoother = ScrollSmoother.create({
+        smooth: prefersReducedMotion ? 0 : 2,
+        effects: !prefersReducedMotion,
         ease: "power4.out",
       });
+
+      return () => smoother.kill();
     },
     { scope: wrapper },
   );
