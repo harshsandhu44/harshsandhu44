@@ -2,6 +2,9 @@
 @import "tw-animate-css";
 @import "@harshsandhu44/theme/globals.css";
 
+@source "../../../packages/ui/src";
+@source "../../../packages/utils/src";
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
