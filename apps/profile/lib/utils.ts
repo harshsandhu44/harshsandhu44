@@ -5,7 +5,7 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function getColSpanClass(span: number) {
+export function getColSpanClass(span: 1 | 2 | 3) {
   switch (span) {
     case 2:
       return "md:col-span-2 lg:col-span-2";
