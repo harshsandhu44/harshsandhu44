@@ -1,0 +1,24 @@
+{
+  "name": "@harshsandhu44/utils",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./hooks": "./src/hooks/index.ts",
+    "./animations": "./src/animations.ts"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "gsap": "^3.14.2",
+    "@gsap/react": "^2.1.2",
+    "tailwind-merge": "^3.4.0"
+  },
+  "peerDependencies": {
+    "react": ">=19.0.0"
+  },
+  "devDependencies": {
+    "@harshsandhu44/config": "workspace:*",
+    "@types/react": "^19",
+    "typescript": "^5"
+  }
+}

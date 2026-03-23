@@ -4,6 +4,6 @@
     "build": { "dependsOn": ["^build"], "outputs": [".next/**", "!.next/cache/**"] },
     "dev": { "cache": false, "persistent": true },
     "lint": { "cache": true },
-    "typecheck": { "dependsOn": ["^typecheck"] }
+    "typecheck": { "dependsOn": ["^typecheck"], "outputs": ["*.tsbuildinfo"] }
   }
 }
