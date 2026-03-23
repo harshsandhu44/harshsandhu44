@@ -20,15 +20,15 @@ export function Navbar() {
   const mobile = useMediaQuery("(max-width: 768px)");
   const path = usePathname();
 
+  const resumeUrl = process.env.NEXT_PUBLIC_RESUME_URL;
+
   const navItems = [
     { label: "home", href: "/" },
     { label: "about", href: "/about" },
     { label: "projects", href: "/projects" },
-    {
-      label: "resume",
-      href: process.env.NEXT_PUBLIC_RESUME_URL || "",
-      external: true,
-    },
+    ...(resumeUrl
+      ? [{ label: "resume", href: resumeUrl, external: true }]
+      : []),
   ];
 
   if (mobile) {
@@ -71,7 +71,13 @@ export function Navbar() {
           <Link
             key={item.label}
             href={item.href}
-            className="text-center font-medium capitalize"
+            className={cn(
+              "text-center font-medium capitalize",
+              path === item.href && "text-primary",
+            )}
+            {...(item.external
+              ? { target: "_blank", rel: "noopener noreferrer" }
+              : {})}
           >
             {item.label}
           </Link>
