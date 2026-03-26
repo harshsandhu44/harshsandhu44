@@ -39,7 +39,7 @@ typescript · javascript · rust · next.js · react · tailwind · docker · aw
 </div>
 
 <div align="center">
-  <img src="https://raw.githubusercontent.com/harshsandhu44/harshsandhu44/output/github-contribution-grid-snake.svg" alt="snake animation" />
+  <img src="https://raw.githubusercontent.com/harshsandhu44/harshsandhu44/output/galaxy.svg" alt="pac0 animation" />
 </div>
 
 <p align="center"><code>building useful things, one repo at a time</code></p>
