@@ -23,7 +23,7 @@ Interests:
 <pre>
 Selected projects:
 - tinkersim     -> electronics learning + simulation
-- gitpilot      -> handleing the tedious parts of daily git workflow
+- gitpilot      -> handling the tedious parts of daily git workflow
 - draw          -> whiteboard app for brainstorming
 - placehold     -> placeholder images and text
 </pre>
