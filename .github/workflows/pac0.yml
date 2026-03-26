@@ -16,13 +16,13 @@ jobs:
 
       - uses: harshsandhu44/pac0@main
         with:
-          github_user_name: ${{ github.repository_owner }}
+          username: ${{ github.repository_owner }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          outputs: galaxy.svg
+          output: dist/pac0.svg
 
       - name: Push to output branch
         run: |
-          cp galaxy.svg /tmp/galaxy.svg
+          cp dist/pac0.svg /tmp/pac0.svg
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin
@@ -32,7 +32,7 @@ jobs:
             git checkout --orphan output
             git rm -rf . --quiet
           fi
-          cp /tmp/galaxy.svg galaxy.svg
-          git add galaxy.svg
-          git diff --staged --quiet || git commit -m "chore: update galaxy.svg [skip ci]"
+          cp /tmp/pac0.svg pac0.svg
+          git add pac0.svg
+          git diff --staged --quiet || git commit -m "chore: update pac0.svg [skip ci]"
           git push origin HEAD:output
