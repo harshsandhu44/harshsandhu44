@@ -1,31 +1,40 @@
 <div align="center">
+
 <pre>
 harshsandhu44
 product engineer · web · systems · simulation
 </pre>
+
 </div>
 
 <pre>
 I build products, developer tools, and simulation systems.
 
-Current focus:
-- TinkerSim
-- Rust
-- fast, clean product engineering
+Most of what I make sits at the intersection of product engineering,
+developer experience, and interactive systems.
+</pre>
 
+<pre>
+Featured projects:
+- <a href="https://github.com/harshsandhu44/gitpilot">gitpilot</a>   -> Rust CLI for daily Git workflow automation
+- <a href="https://github.com/harshsandhu44/placehold">placehold</a>  -> placeholder image and text generator for developers
+- <a href="https://github.com/harshsandhu44/tinkersim">tinkersim</a>  -> electronics learning + simulation
+- <a href="https://github.com/harshsandhu44/pac0">pac0</a>       -> Pac-Man contribution graph animation
+</pre>
+
+<pre>
+Current focus:
+- building TinkerSim
+- Rust and systems-oriented tooling
+- clean product architecture
+</pre>
+
+<pre>
 Interests:
 - formula 1
 - football
 - astronomy
 - programming
-</pre>
-
-<pre>
-Selected projects:
-- tinkersim     -> electronics learning + simulation
-- gitpilot      -> handling the tedious parts of daily git workflow
-- draw          -> whiteboard app for brainstorming
-- placehold     -> placeholder images and text
 </pre>
 
 <pre>
