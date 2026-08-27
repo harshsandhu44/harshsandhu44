@@ -32,6 +32,27 @@ alone, use `pnpm --filter <name> dev`.
 | ---------- | ---- |
 | `personal` | 3000 |
 
+## Fonts
+
+- Headings — Stack Sans Headline (variable, wght 200–700). Applied to `h1`–`h6`
+  by the base layer in `globals.css`; `font-heading` for anything else.
+- Everything else — Geist, from the `geist` package (self-hosted, not
+  `next/font/google`). `font-sans` / `font-mono`.
+
+Stack Sans lives in `packages/fonts`, imported as
+`@harshsandhu44/fonts/stack-sans`; apps list the package in `transpilePackages`
+so `next/font` compiles inside it.
+
+`packages/fonts/StackSansHeadline.woff2` is built from
+[Stack-Sans](https://github.com/DylanYoungKoto/Stack-Sans) (OFL, license kept
+beside it) — the project ships sources only, so to rebuild:
+
+```sh
+pip install fontmake                                                  # + woff2
+fontmake -g sources/StackSansHeadline.glyphspackage -o variable --output-dir out
+woff2_compress out/StackSansHeadline-VF.ttf
+```
+
 ## Adding an app
 
 ```sh
