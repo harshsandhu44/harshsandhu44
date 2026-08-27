@@ -1,0 +1,12 @@
+{
+  "name": "@harshsandhu44/fonts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./stack-sans": "./stack-sans.ts"
+  },
+  "peerDependencies": {
+    "next": "^16"
+  }
+}
