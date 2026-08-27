@@ -1,26 +1,26 @@
 @import "tailwindcss";
+@import "@harshsandhu44/ui/base.css";
+@import "@harshsandhu44/ui/tokens.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* Tailwind's source detection roots at this app, so the shared components have
+ * to be pointed at explicitly. Real relative path, not the node_modules
+ * symlink, which the scanner ignores. Resolves once this template has been
+ * copied to apps/<name>/. */
+@source "../../../../packages/ui/src/**/*.{ts,tsx}";
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+body {
+  font-family: var(--font-sans);
+}
+
+@layer base {
+  html {
+    @apply font-sans;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans);
-}
+/* Override any token from @harshsandhu44/ui/tokens.css here. */
