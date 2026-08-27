@@ -7,20 +7,187 @@
  * symlink, which the scanner ignores. */
 @source "../../../../packages/ui/src/**/*.{ts,tsx}";
 
-@theme inline {
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+/* ── Solder mask & copper ───────────────────────────────────────────────────
+ * The palette is a printed circuit board: dark solder mask, copper traces,
+ * immersion-gold pads, silkscreen legend. Dark only — a light board is a
+ * different palette, not an inversion of this one.
+ *
+ * Copper and gold are the entire accent budget, and they mean different things.
+ * Copper is position — the focused pane's rule, focus outlines, the prompt,
+ * selection: you are here. Gold is current — links, the active section, live
+ * status. Nothing else on the board gets an accent.
+ *
+ * Copper and silk-dim are lighter than a board really is, on purpose: every
+ * text colour here has to clear WCAG AA *through* the CRT overlay, measured at
+ * the darkest corner of the vignette. Verified worst case 4.5:1. Darkening
+ * either of them, or strengthening the vignette past 0.14, breaks that. */
+:root {
+  --ground: oklch(0.181 0.016 165.4); /* #0B1410 desktop */
+  --surface: oklch(0.227 0.025 168.3); /* #10201A pane fill */
+  --surface-2: oklch(0.261 0.031 160.2); /* #16291F pane header */
+  --rule: oklch(0.302 0.036 159.4); /* #1E3428 hairline */
+  --copper: oklch(0.73 0.096 59.2); /* #D59969 focus */
+  --gold: oklch(0.801 0.124 85.6); /* #E2B858 active workspace */
+  --silkscreen: oklch(0.942 0.006 153.8); /* #E9EDEA text */
+  --silk-dim: oklch(0.72 0.026 156.5); /* #98AA9E secondary text */
+  --flux: oklch(0.831 0.145 74.2); /* #FFB84D shell errors */
+
+  /* shadcn token set remapped onto the board. */
+  --background: var(--ground);
+  --foreground: var(--silkscreen);
+  --card: var(--surface);
+  --card-foreground: var(--silkscreen);
+  --popover: var(--surface-2);
+  --popover-foreground: var(--silkscreen);
+  --primary: var(--copper);
+  --primary-foreground: var(--ground);
+  --secondary: var(--surface-2);
+  --secondary-foreground: var(--silkscreen);
+  --muted: var(--surface-2);
+  --muted-foreground: var(--silk-dim);
+  --accent: var(--surface-2);
+  --accent-foreground: var(--gold);
+  --destructive: var(--flux);
+  --border: var(--rule);
+  --input: var(--rule);
+  --ring: var(--copper);
+
+  /* A window manager has no rounded corners. */
+  --radius: 0;
+
+  /* Two gutters, deliberately different: 8px between panes, 16px around the
+   * field. Each pane's cell pads 4px on every side, so two neighbouring cells
+   * meet as the 8px interior gutter; the tiling container adds 12px more to
+   * reach 16px at the outer edge. Percentage rects stay correct through both
+   * because an absolutely positioned box resolves percentages against the
+   * containing block's padding box.
+   *
+   * Kept as literal values rather than one token divided inline: a `/` in a
+   * Tailwind arbitrary value parses as an opacity modifier, and calc's `-`
+   * needs spaces that would have to be written as underscores. */
+  --pane-gap-half: 4px; /* x2 -> 8px between panes */
+  --pane-outer: 12px; /* + --pane-gap-half -> 16px at the edge */
+  --pane-edge: 16px; /* the outer gutter itself, for the single-pane case */
 }
 
-body {
-  font-family: var(--font-sans);
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  --color-ground: var(--ground);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-rule: var(--rule);
+  --color-copper: var(--copper);
+  --color-gold: var(--gold);
+  --color-silkscreen: var(--silkscreen);
+  --color-silk-dim: var(--silk-dim);
+  --color-flux: var(--flux);
 }
 
 @layer base {
   html {
+    @apply font-mono;
+    color-scheme: dark;
+    /* The desktop never scrolls; panes do. */
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  /* Every number on this site is data in a column: dates, counts, versions. */
+  body {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Prose is the exception, not the default. */
+  .prose-body {
     @apply font-sans;
+    font-variant-numeric: normal;
+  }
+
+  ::selection {
+    background: var(--copper);
+    color: var(--ground);
+  }
+
+  /* Keyboard is a first-class input here, so focus is never invisible. */
+  :focus-visible {
+    outline: 1px solid var(--copper);
+    outline-offset: 2px;
+  }
+
+  /* Panes scroll; give them a scrollbar that belongs to the board. */
+  .pane-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--rule) transparent;
   }
 }
 
-/* Override any token from @harshsandhu44/ui/tokens.css here. */
+@utility label {
+  @apply font-mono text-[11px] uppercase;
+  letter-spacing: 0.12em;
+}
+
+/* ── CRT ────────────────────────────────────────────────────────────────────
+ * Deliberately restrained: this is a persistent layer over every word on the
+ * site, so it is measured against contrast rather than vibes. */
+.crt-scan {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgb(0 0 0 / 0.07) 0px,
+    rgb(0 0 0 / 0.07) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  animation: crt-flicker 5.5s steps(30) infinite;
+  will-change: opacity;
+}
+
+.crt-vignette {
+  background: radial-gradient(
+    ellipse at center,
+    transparent 55%,
+    rgb(0 0 0 / 0.14) 100%
+  );
+}
+
+@keyframes crt-flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  47% {
+    opacity: 0.985;
+  }
+  52% {
+    opacity: 1;
+  }
+  71% {
+    opacity: 0.99;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crt-scan {
+    animation: none;
+  }
+}
+
+/* ── boot ───────────────────────────────────────────────────────────────────*/
+@keyframes boot-out {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+@keyframes boot-line {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
