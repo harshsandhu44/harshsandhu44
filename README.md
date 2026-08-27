@@ -4,7 +4,7 @@ pnpm workspace monorepo.
 
 ```sh
 pnpm install
-pnpm dev:personal
+pnpm dev
 ```
 
 ## Layout
@@ -16,27 +16,33 @@ pnpm dev:personal
 
 ## Scripts
 
-| Script              | Does                           |
-| ------------------- | ------------------------------ |
-| `pnpm dev:personal` | dev server for `apps/personal` |
-| `pnpm build`        | `pnpm -r build`                |
-| `pnpm lint`         | `pnpm -r lint`                 |
-| `pnpm typecheck`    | `pnpm -r typecheck`            |
-| `pnpm format`       | Prettier over the repo         |
+| Script           | Does                                 |
+| ---------------- | ------------------------------------ |
+| `pnpm dev`       | `pnpm -r --parallel dev` — every app |
+| `pnpm build`     | `pnpm -r build`                      |
+| `pnpm lint`      | `pnpm -r lint`                       |
+| `pnpm typecheck` | `pnpm -r typecheck`                  |
+| `pnpm format`    | Prettier over the repo               |
 
-Each app gets its own `dev:<name>` alias — dev servers all want port 3000, so
-there is no repo-wide `dev`.
+`pnpm dev` runs every app at once with their logs interleaved, so each app pins
+its own port in its `dev` script. `apps/personal` owns 3000. To work on one app
+alone, use `pnpm --filter <name> dev`.
+
+| App        | Port |
+| ---------- | ---- |
+| `personal` | 3000 |
 
 ## Adding an app
 
 ```sh
 cp -r templates/next-app apps/<name>
 grep -rl APP_NAME apps/<name> | xargs sed -i '' "s/APP_NAME/<name>/g"
+sed -i '' "s/APP_PORT/<port>/" apps/<name>/package.json
 pnpm install
 ```
 
-Then add `"dev:<name>": "pnpm --filter <name> dev"` to the root `package.json`,
-and create a Vercel project with Root Directory `apps/<name>`.
+Pick a port no other app uses and add the app to the port table above. Then
+create a Vercel project with Root Directory `apps/<name>`.
 
 The template freezes whatever Next/React versions it was copied at. When you
 upgrade an app, re-copy its configs into the template.
