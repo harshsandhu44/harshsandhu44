@@ -17,9 +17,6 @@ importers:
 
   apps/personal:
     dependencies:
-      '@harshsandhu44/fonts':
-        specifier: workspace:*
-        version: link:../../packages/fonts
       geist:
         specifier: ^1.7.2
         version: 1.7.2(next@16.3.3(@babel/core@7.29.7(supports-color@7.2.0))(@types/node@20.19.43)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))
@@ -81,12 +78,6 @@ importers:
       typescript-eslint:
         specifier: ^8
         version: 8.68.0(eslint@9.39.5(jiti@2.7.0)(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3)
-
-  packages/fonts:
-    dependencies:
-      next:
-        specifier: ^16
-        version: 16.3.3(@babel/core@7.29.7(supports-color@7.2.0))(@types/node@20.19.43)(babel-plugin-react-compiler@1.0.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
 
   packages/tsconfig: {}
 

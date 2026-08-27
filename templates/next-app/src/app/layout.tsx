@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
-import { stackSans } from "@harshsandhu44/fonts/stack-sans";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,7 +12,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${GeistSans.variable} ${GeistMono.variable} ${stackSans.variable} h-full antialiased`}
+      className={`${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">{children}</body>
     </html>
