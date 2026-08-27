@@ -11,6 +11,7 @@ pnpm dev
 
 - `apps/*` — deployable applications
 - `packages/*` — shared internal packages (`@harshsandhu44/*`)
+- `packages/ui` — the shadcn component library every app imports
 - `templates/next-app` — skeleton to copy when adding an app (deliberately outside
   the workspace globs so pnpm never installs or builds it)
 
@@ -31,6 +32,39 @@ alone, use `pnpm --filter <name> dev`.
 | App        | Port |
 | ---------- | ---- |
 | `personal` | 3000 |
+
+## UI components
+
+`packages/ui` (`@harshsandhu44/ui`) owns every shadcn component, the `cn` helper
+and the theme plumbing. It ships raw `.tsx` through its `exports` map with no
+build step — Turbopack transpiles workspace packages automatically.
+
+```sh
+pnpm --filter @harshsandhu44/ui exec shadcn add <name>
+```
+
+Run it from the package, never from an app: the `shadcn` dependency and
+`components.json` live there. Inside the package, files import each other with
+`#...` package imports; apps import them by path:
+
+```ts
+import { Button } from "@harshsandhu44/ui/components/button";
+import { cn } from "@harshsandhu44/ui/lib/utils";
+```
+
+Apps use `#components/*`, `#lib/*` and `#hooks/*` for their own local files.
+There is no `@/*` alias.
+
+Styling splits in two. The package's `base.css` carries the Tailwind theme
+mappings, shadcn's variants and the base layer; `tokens.css` carries the default
+olive `base-lyra` palette. An app imports both, then overrides any token in its
+own `:root`. Fonts stay app-side — the package applies `font-sans`, the app
+decides what it means.
+
+Two things an app's `globals.css` must keep: `@import "tailwindcss"` (Tailwind's
+source detection roots at whichever app owns that import) and the `@source` line
+pointing at `packages/ui/src`, without which classes used only inside the
+package generate no CSS.
 
 ## Adding an app
 
