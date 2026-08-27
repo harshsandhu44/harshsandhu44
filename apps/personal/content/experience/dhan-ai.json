@@ -1,0 +1,16 @@
+{
+  "company": "Dhan AI",
+  "role": "Sr. Frontend Engineer",
+  "start": "2022.11",
+  "end": "2024.04",
+  "location": "",
+  "mode": "Remote",
+  "order": 2,
+  "bullets": [
+    "Built inventory and staff management workflows for an enterprise SaaS platform used by Ziply Fiber.",
+    "Developed Node.js/Express APIs handling 10,000+ daily requests with average response times under 200ms.",
+    "Delivered real-time tracking, reporting, and role-based access, reducing stock discrepancies by 60%.",
+    "Integrated third-party procurement APIs, cutting manual processing time by 45%."
+  ],
+  "stack": ["React", "Node.js", "Express", "TypeScript"]
+}

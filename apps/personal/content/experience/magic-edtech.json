@@ -1,0 +1,23 @@
+{
+  "company": "Magic EdTech",
+  "role": "React Expert",
+  "start": "2024.08",
+  "end": "",
+  "location": "Noida, India",
+  "mode": "Hybrid",
+  "order": 1,
+  "bullets": [
+    "Full-stack development (React, TypeScript, AWS AppSync, DynamoDB) for Spear Education, serving 50k+ dental professionals.",
+    "Implemented PostHog analytics and LaunchDarkly for A/B testing and controlled feature rollouts.",
+    "Optimized frontend performance, reducing initial page load time by 35% through code splitting and lazy loading.",
+    "Built customer ordering and internal dashboard for a restaurant platform managing 1,000+ weekly orders."
+  ],
+  "stack": [
+    "React",
+    "TypeScript",
+    "AWS AppSync",
+    "DynamoDB",
+    "PostHog",
+    "LaunchDarkly"
+  ]
+}

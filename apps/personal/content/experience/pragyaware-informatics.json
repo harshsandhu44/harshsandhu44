@@ -1,0 +1,15 @@
+{
+  "company": "Pragyaware Informatics",
+  "role": "Frontend Developer",
+  "start": "2022.02",
+  "end": "2022.12",
+  "location": "",
+  "mode": "Hybrid",
+  "order": 3,
+  "bullets": [
+    "Developed responsive React applications and reusable UI components.",
+    "Collaborated with design and backend teams to build accessible, user-friendly interfaces.",
+    "Optimized frontend performance via lazy loading, reducing load times by 40%."
+  ],
+  "stack": ["React", "JavaScript", "CSS"]
+}

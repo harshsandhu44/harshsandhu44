@@ -1,0 +1,45 @@
+{
+  "groups": [
+    {
+      "name": "Frontend",
+      "items": [
+        "React",
+        "Next.js",
+        "TypeScript",
+        "React Native",
+        "Expo",
+        "Tailwind CSS",
+        "Material UI"
+      ]
+    },
+    {
+      "name": "Backend",
+      "items": ["Node.js", "Express", "GraphQL", "REST APIs", "Python", "Rust"]
+    },
+    {
+      "name": "Cloud & Data",
+      "items": [
+        "AWS Lambda",
+        "AppSync",
+        "DynamoDB",
+        "S3",
+        "Cognito",
+        "PostgreSQL",
+        "MongoDB"
+      ]
+    },
+    {
+      "name": "Tools",
+      "items": [
+        "Docker",
+        "GitHub Actions",
+        "Playwright",
+        "Jest",
+        "Cypress",
+        "LaunchDarkly",
+        "PostHog",
+        "Git"
+      ]
+    }
+  ]
+}
