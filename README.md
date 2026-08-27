@@ -85,3 +85,8 @@ upgrade an app, re-copy its configs into the template.
 
 One Vercel project per app, Root Directory `apps/<name>`. Each app's
 `vercel.json` skips the build when neither the app nor `packages/` changed.
+
+`apps/personal` additionally wants `KEYSTATIC_GITHUB_CLIENT_ID`,
+`KEYSTATIC_GITHUB_CLIENT_SECRET` and `KEYSTATIC_SECRET` for CMS editing in
+production. Without them the build still succeeds and the site still reads its
+content — only `/keystatic` falls back to local mode. See `apps/personal/README.md`.
