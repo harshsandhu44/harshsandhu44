@@ -11,13 +11,18 @@ import {
 import { useRouter } from "next/navigation";
 import {
   type Dir,
+  type Edge,
   type Node,
   autoDir,
   close as closeNode,
   focusDir,
+  moveTo,
   rects,
+  resizeAt,
+  seamFor,
   setDir,
   split,
+  swap,
 } from "./tree";
 import { STORAGE_KEY, wmHref } from "./views";
 
@@ -32,6 +37,16 @@ type Wm = {
   closePane: (view?: string) => void;
   rotate: (dir: Dir) => void;
   move: (dir: Direction) => void;
+  /** Commits a dragged seam. Replaces rather than pushes: a resize is a tweak
+   * to the current arrangement, not a new one, and fifty history entries per
+   * drag would make the back button useless. */
+  commitResize: (tree: Node) => void;
+  /** Nudges the seam on one side of the focused pane, for ⌥ + direction. */
+  resizeFocused: (dir: Direction, step?: number) => void;
+  /** Drops the dragged pane onto a target: centre swaps, an edge re-splits. */
+  dropPane: (view: string, target: string, edge: Edge) => void;
+  /** Sends the focused pane at its neighbour, for ⇧ + direction. */
+  movePane: (dir: Direction) => void;
 };
 
 const WmContext = createContext<Wm | null>(null);
@@ -64,6 +79,13 @@ export function WmProvider({
   const go = useCallback(
     (nextFocus: string, nextTree: Node) => {
       router.push(wmHref(nextFocus, nextTree), { scroll: false });
+    },
+    [router],
+  );
+
+  const replace = useCallback(
+    (nextFocus: string, nextTree: Node) => {
+      router.replace(wmHref(nextFocus, nextTree), { scroll: false });
     },
     [router],
   );
@@ -110,9 +132,73 @@ export function WmProvider({
     [focus, frame, go, tree],
   );
 
+  const commitResize = useCallback(
+    (next: Node) => replace(focus, next),
+    [focus, replace],
+  );
+
+  const resizeFocused = useCallback(
+    (dir: Direction, step = 0.05) => {
+      const seam = seamFor(tree, focus, dir, frame);
+      if (!seam) return;
+      const next = resizeAt(
+        tree,
+        seam.divider.path,
+        seam.divider.index,
+        seam.sign * step,
+      );
+      replace(focus, next);
+    },
+    [focus, frame, replace, tree],
+  );
+
+  const dropPane = useCallback(
+    (view: string, target: string, edge: Edge) => {
+      const next = moveTo(tree, view, target, edge);
+      if (next === tree) return;
+      go(view, next);
+    },
+    [go, tree],
+  );
+
+  const movePane = useCallback(
+    (dir: Direction) => {
+      const neighbour = focusDir(tree, focus, dir, frame);
+      if (!neighbour) return;
+      go(focus, swap(tree, focus, neighbour));
+    },
+    [focus, frame, go, tree],
+  );
+
   const wm = useMemo<Wm>(
-    () => ({ tree, focus, isNarrow, open, focusPane, closePane, rotate, move }),
-    [tree, focus, isNarrow, open, focusPane, closePane, rotate, move],
+    () => ({
+      tree,
+      focus,
+      isNarrow,
+      open,
+      focusPane,
+      closePane,
+      rotate,
+      move,
+      commitResize,
+      resizeFocused,
+      dropPane,
+      movePane,
+    }),
+    [
+      tree,
+      focus,
+      isNarrow,
+      open,
+      focusPane,
+      closePane,
+      rotate,
+      move,
+      commitResize,
+      resizeFocused,
+      dropPane,
+      movePane,
+    ],
   );
 
   useKeymap(wm);
@@ -128,9 +214,17 @@ function useKeymap(wm: Wm) {
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (isTyping(event.target)) return;
-      if (event.altKey) return;
 
       const meta = event.metaKey || event.ctrlKey;
+
+      // ⌥ + direction resizes. Matched on `code` because on macOS ⌥h produces
+      // "˙" rather than "h", so `key` is useless for alt bindings.
+      if (event.altKey && !meta) {
+        const direction = CODE_DIRECTIONS[event.code];
+        if (!direction) return;
+        event.preventDefault();
+        return wm.resizeFocused(direction);
+      }
 
       if (meta && event.key === "\\") {
         event.preventDefault();
@@ -147,10 +241,10 @@ function useKeymap(wm: Wm) {
       if (meta) return; // leave every other browser shortcut alone
 
       const direction = DIRECTIONS[event.key];
-      if (direction) {
-        event.preventDefault();
-        return wm.move(direction);
-      }
+      if (!direction) return;
+      event.preventDefault();
+      // ⇧ + direction takes the pane with you; plain direction just looks.
+      return event.shiftKey ? wm.movePane(direction) : wm.move(direction);
     }
 
     window.addEventListener("keydown", onKey);
@@ -158,11 +252,26 @@ function useKeymap(wm: Wm) {
   }, [wm]);
 }
 
-const DIRECTIONS: Record<string, "left" | "right" | "up" | "down"> = {
+const DIRECTIONS: Record<string, Direction> = {
   h: "left",
   j: "down",
   k: "up",
   l: "right",
+  H: "left",
+  J: "down",
+  K: "up",
+  L: "right",
+  ArrowLeft: "left",
+  ArrowDown: "down",
+  ArrowUp: "up",
+  ArrowRight: "right",
+};
+
+const CODE_DIRECTIONS: Record<string, Direction> = {
+  KeyH: "left",
+  KeyJ: "down",
+  KeyK: "up",
+  KeyL: "right",
   ArrowLeft: "left",
   ArrowDown: "down",
   ArrowUp: "up",

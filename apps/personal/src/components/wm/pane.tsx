@@ -9,9 +9,13 @@ import { paneTitle } from "./views";
 export function Pane({
   view,
   children,
+  onHeaderPointerDown,
+  draggable = false,
 }: {
   view: string;
   children: React.ReactNode;
+  onHeaderPointerDown?: (event: React.PointerEvent<HTMLElement>) => void;
+  draggable?: boolean;
 }) {
   const { focus, focusPane, closePane, tree } = useWm();
   const isFocused = view === focus;
@@ -26,10 +30,15 @@ export function Pane({
         isFocused ? "border-rule" : "border-rule/60",
       )}
     >
+      {/* The whole header is the grab handle, which is where a title bar's
+       * affordance already points. The close button stops propagation so it
+       * stays a button rather than the start of a drag. */}
       <header
+        onPointerDown={onHeaderPointerDown}
         className={cn(
-          "bg-surface-2 flex shrink-0 items-center justify-between gap-2 border-b px-3 py-1.5",
+          "bg-surface-2 flex shrink-0 touch-none items-center justify-between gap-2 border-b px-3 py-1.5",
           isFocused ? "border-copper" : "border-rule",
+          draggable && "cursor-grab active:cursor-grabbing",
         )}
       >
         <button
@@ -45,6 +54,7 @@ export function Pane({
         {canClose && (
           <button
             type="button"
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();
               closePane(view);

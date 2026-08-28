@@ -48,6 +48,8 @@ export function Terminal({
     open: wm.open,
     closePane: wm.closePane,
     move: wm.move,
+    movePane: wm.movePane,
+    resizeFocused: wm.resizeFocused,
     rotate: wm.rotate,
     clear: () => setLines([]),
     crt,

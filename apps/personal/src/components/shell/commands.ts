@@ -10,6 +10,8 @@ export type ShellEnv = {
   open: (view: string) => void;
   closePane: () => void;
   move: (dir: "left" | "right" | "up" | "down") => void;
+  movePane: (dir: "left" | "right" | "up" | "down") => void;
+  resizeFocused: (dir: "left" | "right" | "up" | "down", step?: number) => void;
   rotate: (dir: Dir) => void;
   clear: () => void;
   setCrt: (on: boolean) => void;
@@ -85,6 +87,9 @@ export const COMMANDS: Command[] = [
       plain("  ⌘\\ / ⌘-    lay the focused group out in columns / rows"),
       plain("  ⌘W          close the focused pane"),
       plain("  h j k l     move focus  ·  1-4 open a section"),
+      plain("  ⇧ + hjkl    take the focused pane with you"),
+      plain("  ⌥ + hjkl    resize the focused pane"),
+      plain("  drag a title bar to move a pane, a seam to resize"),
       plain("  `           toggle this terminal  ·  esc to close"),
     ],
   },
@@ -214,6 +219,34 @@ export const COMMANDS: Command[] = [
     },
   },
   {
+    name: "move",
+    usage: "move <h|j|k|l>",
+    blurb: "send the focused pane at its neighbour",
+    run: (args, env) => {
+      const dir = DIRECTIONS[(args[0] ?? "").toLowerCase()];
+      if (!dir) return [err("move: expected one of h j k l")];
+      env.movePane(dir);
+      return [];
+    },
+  },
+  {
+    name: "resize",
+    usage: "resize <h|j|k|l> [%]",
+    blurb: "move the seam on that side of the focused pane",
+    run: (args, env) => {
+      const dir = DIRECTIONS[(args[0] ?? "").toLowerCase()];
+      if (!dir) return [err("resize: expected one of h j k l")];
+      const step = args[1] === undefined ? 5 : Number(args[1]);
+      if (!Number.isFinite(step) || step <= 0 || step >= 100) {
+        return [
+          err(`resize: ${args[1]}: expected a percentage between 1 and 99`),
+        ];
+      }
+      env.resizeFocused(dir, step / 100);
+      return [];
+    },
+  },
+  {
     name: "rotate",
     usage: "rotate <h|v>",
     blurb: "lay the focused group out in columns or rows",
@@ -317,7 +350,7 @@ export const COMMANDS: Command[] = [
 
 const GROUP = {
   navigate: ["ls", "cd", "pwd", "cat", "open", "grep"],
-  windows: ["close", "focus", "rotate", "clear"],
+  windows: ["close", "focus", "move", "resize", "rotate", "clear"],
 };
 
 const row = (c: Command): Line => ({
