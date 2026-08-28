@@ -4,20 +4,31 @@ import { config, collection, singleton, fields } from "@keystatic/core";
  * /keystatic UI opens commits against the repo. Either way content lands in the
  * repo, which is what lets the shell's vfs read it synchronously at build time.
  *
- * GitHub mode needs a GitHub App (KEYSTATIC_GITHUB_CLIENT_ID / _CLIENT_SECRET /
- * KEYSTATIC_SECRET). Gating on those rather than on NODE_ENV keeps the build
- * green before the app exists: without them Keystatic throws at build time, and
- * a missing CMS login should not be able to stop a deploy. Reading content
- * never goes through storage mode at all. */
+ * GitHub mode needs a GitHub App. Gating on its env vars rather than on
+ * NODE_ENV keeps the build green before the app exists: Keystatic throws at
+ * build time in production when they are missing, and a missing CMS login
+ * should not be able to stop a deploy. Reading content never goes through
+ * storage mode at all.
+ *
+ * KEYSTATIC_STORAGE=github forces GitHub mode in development, which is how you
+ * reach the /keystatic/setup wizard that creates the App in the first place —
+ * without it the missing env vars would select local mode and the wizard would
+ * never appear. Deliberately ignored outside development, so it can never
+ * reintroduce the build-time throw. */
 const hasGithubApp = Boolean(
   process.env.KEYSTATIC_GITHUB_CLIENT_ID &&
   process.env.KEYSTATIC_GITHUB_CLIENT_SECRET &&
   process.env.KEYSTATIC_SECRET,
 );
 
-const storage = hasGithubApp
-  ? ({ kind: "github", repo: "harshsandhu44/harshsandhu44" } as const)
-  : ({ kind: "local" } as const);
+const setupInDev =
+  process.env.NODE_ENV === "development" &&
+  process.env.KEYSTATIC_STORAGE === "github";
+
+const storage =
+  hasGithubApp || setupInDev
+    ? ({ kind: "github", repo: "harshsandhu44/harshsandhu44" } as const)
+    : ({ kind: "local" } as const);
 
 const link = fields.object({
   label: fields.text({ label: "Label" }),

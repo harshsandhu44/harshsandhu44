@@ -102,17 +102,45 @@ content/profile.json  skills.json  experience/*.json  education/*.json  projects
 ```
 
 Edit at `/keystatic`. In development that writes straight to disk. In production
-it opens commits, which needs a GitHub App:
+it opens commits, which needs a GitHub App and four env vars:
 
 ```
 KEYSTATIC_GITHUB_CLIENT_ID
 KEYSTATIC_GITHUB_CLIENT_SECRET
 KEYSTATIC_SECRET
+NEXT_PUBLIC_KEYSTATIC_GITHUB_APP_SLUG
 ```
 
-Storage mode is gated on those three being present rather than on `NODE_ENV`,
-so the build stays green before the app exists. Reading content never goes
-through storage mode at all.
+Storage mode is gated on the first three being present rather than on
+`NODE_ENV`, so the build stays green before the App exists — Keystatic throws at
+build time in production when they are missing, and a missing CMS login should
+not be able to stop a deploy. Reading content never goes through storage mode.
+
+### Creating the App
+
+Chicken-and-egg: the wizard that creates the App only runs in GitHub mode, and
+GitHub mode only switches on once the App exists. `KEYSTATIC_STORAGE=github`
+breaks the loop, and is honoured in development only so it can never
+reintroduce the build-time throw.
+
+```sh
+echo "KEYSTATIC_STORAGE=github" > apps/personal/.env.local
+pnpm --filter personal dev
+```
+
+Then open `/keystatic`. It redirects to `/keystatic/setup`:
+
+1. Put the production origin (`https://harshsandhu.com`) in the deployed-URL
+   field. The App is created with callbacks for localhost **and** that origin,
+   so one App covers both. Skip it and production needs its own App.
+2. Create the App. GitHub takes over, then hands back to
+   `/api/keystatic/github/created-app`, which writes all four values into
+   `apps/personal/.env`.
+3. Delete `.env.local` and restart. The real env vars now select GitHub mode on
+   their own.
+4. Copy the four values into Vercel, Production and Preview.
+
+`.env` and `.env.local` are gitignored; `.env.example` documents the shape.
 
 Note the slug fields: `experience.company`, `education.institution` and
 `projects.name` each store a display name in the file _and_ derive the slug from
