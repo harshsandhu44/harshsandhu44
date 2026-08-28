@@ -37,8 +37,22 @@ function Entry({
   return (
     <li className="space-y-2">
       <div className="flex items-baseline justify-between gap-4">
-        <h3 className="text-silkscreen font-mono text-sm font-medium">
-          {project.name}
+        <h3 className="font-mono text-sm font-medium">
+          {project.href ? (
+            <a
+              href={project.href}
+              target="_blank"
+              rel="noreferrer"
+              className="text-gold decoration-gold/40 underline-offset-4 hover:underline"
+            >
+              {project.name}
+              <span aria-hidden className="text-gold/60 ml-1.5 text-xs">
+                ↗
+              </span>
+            </a>
+          ) : (
+            <span className="text-silkscreen">{project.name}</span>
+          )}
         </h3>
         <span className="text-silk-dim shrink-0 font-mono text-xs">
           {project.year}

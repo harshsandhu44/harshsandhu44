@@ -75,9 +75,14 @@ export async function buildVfs(): Promise<Vfs> {
       path: `/work/${p.slug}`,
       // Case studies are v2; until then the entry lists but does not open.
       openable: false,
-      text: [`${p.name} (${p.year})`, "", p.blurb, "", p.stack.join(", ")].join(
-        "\n",
-      ),
+      text: [
+        `${p.name} (${p.year})`,
+        "",
+        p.blurb,
+        "",
+        p.stack.join(", "),
+        ...(p.href ? ["", p.href] : []),
+      ].join("\n"),
     })),
     {
       path: "/contact",
