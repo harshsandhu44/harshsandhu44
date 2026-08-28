@@ -47,9 +47,37 @@ closing, serialising, tiling and directional focus.
 | ------------------------ | ------------------------------------------- |
 | `1`–`4`                  | open or focus a section                     |
 | `h` `j` `k` `l` / arrows | move focus                                  |
+| `⇧` + `h j k l`          | take the focused pane with you              |
+| `⌥` + `h j k l`          | resize the focused pane                     |
 | `⌘\` / `⌘-`              | lay the focused group out in columns / rows |
 | `⌘W`                     | close the focused pane                      |
 | `` ` ``                  | toggle the terminal, `esc` to close         |
+
+Alt bindings match on `event.code`: on macOS `⌥h` produces `˙`, so `event.key`
+is useless for them.
+
+## Resizing and moving
+
+Drag a seam to resize, or a pane's title bar to move it. The drop preview shows
+where it lands — the middle of a pane swaps the two, an edge pulls the pane out
+and re-splits there.
+
+Both are the existing `close`/`split` pair underneath, so a drag can only ever
+produce a tree the URL could already describe. Resizes `replace` rather than
+`push`: a resize is a tweak to the current arrangement, not a new one, and fifty
+history entries per drag would make the back button useless.
+
+Shares are clamped at `MIN_SHARE`, so dragging cannot collapse a pane out of
+existence — closing stays a deliberate act. A container nobody has dragged has
+no `sizes` at all and stays even when a pane joins it, which is why an untouched
+layout serialises with no numbers in it:
+
+```
+/about?l=h(about,resume)             even
+/about?l=h(about:70,resume:30)       dragged
+```
+
+Neither applies below 768px — both need two panes on screen.
 
 ## The shell
 
@@ -58,7 +86,8 @@ Keystatic reads the panes use, so `ls` cannot list a file the panes do not
 render. Commands live in `src/components/shell/commands.ts`; each one owns its
 usage string, its output and its error message.
 
-`ls` `cd` `pwd` `cat` `open` `grep` · `close` `focus` `rotate` `clear` ·
+`ls` `cd` `pwd` `cat` `open` `grep` · `close` `focus` `move` `resize`
+`rotate` `clear` ·
 `whoami` `uptime` `neofetch` `sudo` `crt` `echo` `help`
 
 Tab completion, arrow-key history, `Ctrl+C`, `Ctrl+L`.
@@ -110,5 +139,4 @@ swipe moves between sections. Same components, same URLs, no second design.
 
 - `/work/[slug]` case studies. Projects list and `cat /work/<slug>` works; `open`
   refuses honestly until the pane exists.
-- Drag-to-resize. Splits are even shares; `rects()` would grow a weights array.
 - Light theme. A light board is a different palette, not an inversion.
