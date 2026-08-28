@@ -1,0 +1,38 @@
+name: Generate pac0 SVG
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: harshsandhu44/pac0@main
+        with:
+          username: ${{ github.repository_owner }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          output: dist/pac0.svg
+
+      - name: Push to output branch
+        run: |
+          cp dist/pac0.svg /tmp/pac0.svg
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin
+          if git show-ref --verify --quiet refs/remotes/origin/output; then
+            git checkout -b output origin/output
+          else
+            git checkout --orphan output
+            git rm -rf . --quiet
+          fi
+          cp /tmp/pac0.svg pac0.svg
+          git add pac0.svg
+          git diff --staged --quiet || git commit -m "chore: update pac0.svg [skip ci]"
+          git push origin HEAD:output
