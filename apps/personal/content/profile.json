@@ -3,13 +3,22 @@
   "role": "Product Engineer",
   "tagline": "building TinkerSim",
   "location": "Ludhiana, Punjab, India",
-  "email": "hello@harshsandhu.com",
+  "email": "me@harshsandhu.com",
   "phone": "+91 73472 37673",
   "website": "harshsandhu.com",
   "summary": "Product Engineer with 5+ years of experience building SaaS platforms, internal tools, and customer-facing products across education, healthcare, and enterprise domains. Strong in React, Next.js, TypeScript, Node.js, and AWS, with a track record of shipping scalable features, improving performance, and working across frontend, backend, and product decisions.",
   "links": [
-    { "label": "GitHub", "href": "https://github.com/harshsandhu44" },
-    { "label": "LinkedIn", "href": "https://linkedin.com/in/nyxfor13days" },
-    { "label": "Twitter", "href": "https://x.com/harshsandhu44" }
+    {
+      "label": "GitHub",
+      "href": "https://github.com/harshsandhu44"
+    },
+    {
+      "label": "LinkedIn",
+      "href": "https://linkedin.com/in/nyxfor13days"
+    },
+    {
+      "label": "Twitter",
+      "href": "https://x.com/harshsandhu44"
+    }
   ]
 }
