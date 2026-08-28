@@ -36,7 +36,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         GeistMono.variable,
       )}
     >
-      <body className="bg-ground text-silkscreen flex h-full flex-col">
+      <body className="bg-ground text-silkscreen flex min-h-dvh flex-col">
         {children}
       </body>
     </html>

@@ -89,9 +89,6 @@
   html {
     @apply font-mono;
     color-scheme: dark;
-    /* The desktop never scrolls; panes do. */
-    overflow: hidden;
-    overscroll-behavior: none;
   }
 
   /* Every number on this site is data in a column: dates, counts, versions. */

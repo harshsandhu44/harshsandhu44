@@ -49,7 +49,10 @@ export function DesktopShell({
     <>
       <Boot />
       <Crt on={crt} />
-      <div className="flex h-full min-h-0 flex-col">
+      {/* The desktop pins itself to the viewport and never scrolls; panes do.
+       * Scoped here rather than on <html> because /keystatic renders a whole
+       * CMS under the same root layout and has to scroll normally. */}
+      <div className="flex h-dvh min-h-0 flex-col overflow-hidden overscroll-none">
         <Bar onToggleTerminal={() => setTerminalOpen((open) => !open)} />
         <Tiler panes={panes} />
         <Terminal
