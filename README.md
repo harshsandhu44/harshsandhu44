@@ -1,92 +1,54 @@
-# harshsandhu44
+<div align="center">
 
-pnpm workspace monorepo.
+<pre>
+harshsandhu44
+product engineer · web · systems · simulation
+</pre>
 
-```sh
-pnpm install
-pnpm dev
-```
+</div>
 
-## Layout
+<pre>
+I build products, developer tools, and simulation systems.
 
-- `apps/*` — deployable applications
-- `packages/*` — shared internal packages (`@harshsandhu44/*`)
-- `packages/ui` — the shadcn component library every app imports
-- `templates/next-app` — skeleton to copy when adding an app (deliberately outside
-  the workspace globs so pnpm never installs or builds it)
+Most of what I make sits at the intersection of product engineering,
+developer experience, and interactive systems.
+</pre>
 
-## Scripts
+<pre>
+Featured projects:
+- <a href="https://github.com/harshsandhu44/gitpilot">gitpilot</a>   -> Rust CLI for daily Git workflow automation
+- <a href="https://github.com/harshsandhu44/placehold">placehold</a>  -> placeholder image and text generator for developers
+- <a href="https://github.com/harshsandhu44/tinkersim">tinkersim</a>  -> electronics learning + simulation
+- <a href="https://github.com/harshsandhu44/pac0">pac0</a>       -> Pac-Man contribution graph animation
+</pre>
 
-| Script           | Does                                 |
-| ---------------- | ------------------------------------ |
-| `pnpm dev`       | `pnpm -r --parallel dev` — every app |
-| `pnpm build`     | `pnpm -r build`                      |
-| `pnpm lint`      | `pnpm -r lint`                       |
-| `pnpm typecheck` | `pnpm -r typecheck`                  |
-| `pnpm format`    | Prettier over the repo               |
+<pre>
+Current focus:
+- building TinkerSim
+- Rust and systems-oriented tooling
+- clean product architecture
+</pre>
 
-`pnpm dev` runs every app at once with their logs interleaved, so each app pins
-its own port in its `dev` script. `apps/personal` owns 3000. To work on one app
-alone, use `pnpm --filter <name> dev`.
+<pre>
+Interests:
+- formula 1
+- football
+- astronomy
+- programming
+</pre>
 
-| App        | Port |
-| ---------- | ---- |
-| `personal` | 3000 |
+<pre>
+Stack:
+typescript · javascript · rust · next.js · react · tailwind · docker · aws
+</pre>
 
-## UI components
+<div align="left">
+  <img src="https://github-readme-stats.vercel.app/api?username=harshsandhu44&show_icons=false&hide_border=true&title_color=808080&text_color=8a8a8a&bg_color=00000000" alt="GitHub stats" />
+  <img src="https://github-readme-stats.vercel.app/api/top-langs/?username=harshsandhu44&layout=compact&hide_border=true&title_color=808080&text_color=8a8a8a&bg_color=00000000" alt="Top languages" />
+</div>
 
-`packages/ui` (`@harshsandhu44/ui`) owns every shadcn component, the `cn` helper
-and the theme plumbing. It ships raw `.tsx` through its `exports` map with no
-build step — Turbopack transpiles workspace packages automatically.
+<div align="center">
+  <img src="https://raw.githubusercontent.com/harshsandhu44/pac0/refs/heads/output/pac0.svg" alt="pac0 animation" />
+</div>
 
-```sh
-pnpm --filter @harshsandhu44/ui exec shadcn add <name>
-```
-
-Run it from the package, never from an app: the `shadcn` dependency and
-`components.json` live there. Inside the package, files import each other with
-`#...` package imports; apps import them by path:
-
-```ts
-import { Button } from "@harshsandhu44/ui/components/button";
-import { cn } from "@harshsandhu44/ui/lib/utils";
-```
-
-Apps use `#components/*`, `#lib/*` and `#hooks/*` for their own local files.
-There is no `@/*` alias.
-
-Styling splits in two. The package's `base.css` carries the Tailwind theme
-mappings, shadcn's variants and the base layer; `tokens.css` carries the default
-olive `base-lyra` palette. An app imports both, then overrides any token in its
-own `:root`. Fonts stay app-side — the package applies `font-sans`, the app
-decides what it means.
-
-Two things an app's `globals.css` must keep: `@import "tailwindcss"` (Tailwind's
-source detection roots at whichever app owns that import) and the `@source` line
-pointing at `packages/ui/src`, without which classes used only inside the
-package generate no CSS.
-
-## Adding an app
-
-```sh
-cp -r templates/next-app apps/<name>
-grep -rl APP_NAME apps/<name> | xargs sed -i '' "s/APP_NAME/<name>/g"
-sed -i '' "s/APP_PORT/<port>/" apps/<name>/package.json
-pnpm install
-```
-
-Pick a port no other app uses and add the app to the port table above. Then
-create a Vercel project with Root Directory `apps/<name>`.
-
-The template freezes whatever Next/React versions it was copied at. When you
-upgrade an app, re-copy its configs into the template.
-
-## Deploys
-
-One Vercel project per app, Root Directory `apps/<name>`. Each app's
-`vercel.json` skips the build when neither the app nor `packages/` changed.
-
-`apps/personal` additionally wants `KEYSTATIC_GITHUB_CLIENT_ID`,
-`KEYSTATIC_GITHUB_CLIENT_SECRET` and `KEYSTATIC_SECRET` for CMS editing in
-production. Without them the build still succeeds and the site still reads its
-content — only `/keystatic` falls back to local mode. See `apps/personal/README.md`.
+<p align="center"><code>building useful things, one repo at a time</code></p>
