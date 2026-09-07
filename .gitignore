@@ -1,0 +1,20 @@
+# deps
+node_modules/
+
+# build output
+.next/
+dist/
+out/
+build/
+
+# turbo
+.turbo/
+
+# env
+.env
+.env.*
+!.env.example
+
+# misc
+.DS_Store
+*.log
