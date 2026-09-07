@@ -6,7 +6,7 @@ pnpm + Turborepo monorepo.
 
 | Path                       | What                                              |
 | -------------------------- | ------------------------------------------------- |
-| `apps/*`                   | Deployable apps (mostly Next.js). Empty for now.  |
+| `apps/web`                 | Next.js app                                       |
 | `packages/tsconfig`        | `@hs95/tsconfig` — shared `tsconfig` bases        |
 | `packages/eslint-config`   | `@hs95/eslint-config` — shared ESLint flat config |
 | `packages/prettier-config` | `@hs95/prettier-config` — shared Prettier config  |
