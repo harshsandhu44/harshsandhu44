@@ -1,0 +1,33 @@
+{
+  "name": "@hs95/eslint-config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./base": "./base.js",
+    "./next": "./next.js"
+  },
+  "files": [
+    "base.js",
+    "next.js"
+  ],
+  "dependencies": {
+    "@eslint/js": "9.39.5",
+    "eslint-config-next": "16.3.4",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-turbo": "2.10.12",
+    "typescript-eslint": "8.69.0"
+  },
+  "devDependencies": {
+    "eslint": "9.39.5"
+  },
+  "peerDependencies": {
+    "eslint": "^9",
+    "typescript": "^6"
+  },
+  "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    }
+  }
+}
