@@ -239,6 +239,14 @@ export const artCredit = {
 };
 
 // --- world geometry (only the game uses these) ---
+//
+// The world is WORLD_W×WORLD_H (see farm-portfolio.tsx). A dirt crossroads
+// splits it into four zones that all front the path: farmhouse yard (NW),
+// barn + animal pen (NE), fenced project field (SW), village square (SE).
+// Coordinates were tuned against screenshots — nudge them, not the structure.
+
+export const WORLD_W = 1920;
+export const WORLD_H = 1200;
 
 // Buildings are whole-image sprites from the Farm RPG Tiny Asset Pack, built by
 // scripts/build-sprites.sh. `l/t/w/h` is the on-screen rect in world space;
@@ -247,33 +255,78 @@ export const artCredit = {
 export type Building = { id: string; sprite: string; l: number; t: number; w: number; h: number };
 
 export const buildings: Building[] = [
-  { id: "house", sprite: "sprites/house.png", l: 176, t: 150, w: 224, h: 168 },
-  { id: "barn", sprite: "sprites/barn.png", l: 1150, t: 150, w: 170, h: 166 },
-  { id: "greenhouse", sprite: "sprites/greenhouse.png", l: 1030, t: 756, w: 126, h: 168 },
-  { id: "silo", sprite: "sprites/silo.png", l: 1210, t: 792, w: 70, h: 132 },
-  { id: "board", sprite: "sprites/noticeboard.png", l: 872, t: 352, w: 60, h: 66 },
-  { id: "mailbox", sprite: "sprites/mailbox.png", l: 686, t: 428, w: 48, h: 48 },
-  { id: "chest", sprite: "sprites/chest.png", l: 1174, t: 666, w: 50, h: 50 },
+  { id: "house", sprite: "sprites/house.png", l: 430, t: 170, w: 224, h: 168 },
+  { id: "barn", sprite: "sprites/barn.png", l: 1120, t: 180, w: 170, h: 166 },
+  { id: "greenhouse", sprite: "sprites/greenhouse.png", l: 1330, t: 180, w: 126, h: 168 },
+  { id: "silo", sprite: "sprites/silo.png", l: 1500, t: 208, w: 70, h: 132 },
+  { id: "board", sprite: "sprites/noticeboard.png", l: 1004, t: 664, w: 38, h: 42 },
+  { id: "mailbox", sprite: "sprites/mailbox.png", l: 574, t: 492, w: 20, h: 32 },
+  { id: "chest", sprite: "sprites/chest.png", l: 676, t: 300, w: 45, h: 42 },
+];
+
+// decorative village cottages + shopfront — backdrop only, no interaction
+export const cottages = [
+  { sprite: "sprites/cottage-a.png", l: 1044, t: 690, w: 125, h: 88 },
+  { sprite: "sprites/cottage-b.png", l: 1226, t: 680, w: 125, h: 88 },
+  { sprite: "sprites/shop.png", l: 1558, t: 700, w: 72, h: 95 },
 ];
 
 // decorative trees (no collision — the farmer walks behind them)
 export const trees = [
-  { sprite: "sprites/tree-pine.png", l: 60, t: 350, w: 68, h: 92 },
-  { sprite: "sprites/tree-pine.png", l: 40, t: 892, w: 68, h: 92 },
-  { sprite: "sprites/tree-pine.png", l: 1476, t: 118, w: 68, h: 92 },
-  { sprite: "sprites/tree-maple.png", l: 556, t: 120, w: 44, h: 68 },
-  { sprite: "sprites/tree-maple.png", l: 980, t: 86, w: 44, h: 68 },
-  { sprite: "sprites/tree-maple.png", l: 1500, t: 636, w: 44, h: 68 },
+  { sprite: "sprites/tree-pine.png", l: 40, t: 60, w: 68, h: 92 },
+  { sprite: "sprites/tree-pine.png", l: 60, t: 1060, w: 68, h: 92 },
+  { sprite: "sprites/tree-pine.png", l: 1820, t: 120, w: 68, h: 92 },
+  { sprite: "sprites/tree-pine.png", l: 1840, t: 1040, w: 68, h: 92 },
+  { sprite: "sprites/tree-maple.png", l: 300, t: 60, w: 44, h: 68 },
+  { sprite: "sprites/tree-maple.png", l: 780, t: 70, w: 44, h: 68 },
+  { sprite: "sprites/tree-maple.png", l: 1720, t: 560, w: 44, h: 68 },
 ];
 
+// dirt/brick path rects, rendered under everything as a tiled sprite
+export type PathRect = { l: number; t: number; w: number; h: number };
+export const paths: PathRect[] = [
+  { l: 0, t: 552, w: 1920, h: 96 }, // horizontal road, full width
+  { l: 896, t: 0, w: 96, h: 1200 }, // vertical road, full height
+  { l: 1000, t: 648, w: 700, h: 300 }, // village-square plaza (SE)
+  { l: 512, t: 340, w: 52, h: 216 }, // spur: farmhouse door → road
+  { l: 1184, t: 340, w: 52, h: 216 }, // spur: barn door → road
+  { l: 406, t: 636, w: 64, h: 116 }, // spur: road → project-field gate
+];
+
+// wooden fence runs. `dir` "h" tiles left→right, "v" tiles top→down. Collision
+// boxes are derived (see fenceSolids) so the farmer can't cross a rail.
+export type Fence = { l: number; t: number; len: number; dir: "h" | "v" };
+export const fences: Fence[] = [
+  // project field (SW) — north edge split for a gate at x 400–480
+  { l: 150, t: 740, len: 250, dir: "h" },
+  { l: 480, t: 740, len: 224, dir: "h" },
+  { l: 150, t: 1124, len: 554, dir: "h" },
+  { l: 150, t: 740, len: 384, dir: "v" },
+  { l: 688, t: 740, len: 400, dir: "v" },
+  // animal pen (NE) — closed rectangle east of the barn spur
+  { l: 1330, t: 360, len: 240, dir: "h" },
+  { l: 1330, t: 520, len: 240, dir: "h" },
+  { l: 1330, t: 360, len: 176, dir: "v" },
+  { l: 1554, t: 360, len: 176, dir: "v" },
+];
+
+export const fenceSolids = fences.map((f) =>
+  f.dir === "h" ? { x: f.l, y: f.t + 4, w: f.len, h: 8 } : { x: f.l + 4, y: f.t, w: 8, h: f.len },
+);
+
 export const solids = [
-  { x: 200, y: 250, w: 176, h: 66 }, // house walls
-  { x: 1164, y: 236, w: 142, h: 72 }, // barn walls
-  { x: 1044, y: 850, w: 100, h: 72 }, // greenhouse
-  { x: 1216, y: 862, w: 60, h: 58 }, // silo
-  { x: 876, y: 386, w: 50, h: 28 }, // notice board
-  { x: 690, y: 450, w: 40, h: 24 }, // mailbox
-  { x: 1180, y: 690, w: 40, h: 24 }, // chest
+  { x: 452, y: 250, w: 180, h: 78 }, // house walls
+  { x: 1128, y: 262, w: 150, h: 78 }, // barn walls
+  { x: 1338, y: 262, w: 106, h: 78 }, // greenhouse
+  { x: 1506, y: 268, w: 58, h: 58 }, // silo
+  { x: 1006, y: 684, w: 34, h: 20 }, // notice board
+  { x: 576, y: 518, w: 22, h: 20 }, // mailbox
+  { x: 678, y: 320, w: 40, h: 22 }, // chest
+  { x: 1326, y: 856, w: 56, h: 36 }, // fountain base
+  { x: 1048, y: 736, w: 118, h: 46 }, // cottage a
+  { x: 1230, y: 726, w: 118, h: 46 }, // cottage b
+  { x: 1560, y: 742, w: 70, h: 48 }, // shop
+  { x: 1540, y: 880, w: 44, h: 26 }, // market stall
 ];
 
 export type Spot = {
@@ -287,13 +340,89 @@ export type Spot = {
 };
 
 export const spots: Spot[] = [
-  { id: "house", x: 256, y: 306, w: 64, h: 34, label: "Knock on the door", act: "dialogue" },
-  { id: "barn", x: 1200, y: 292, w: 66, h: 34, label: "Read the quest board", act: "quests" },
-  { id: "chest", x: 1172, y: 708, w: 54, h: 28, label: "Open the chest", act: "bag" },
-  { id: "board", x: 868, y: 410, w: 66, h: 26, label: "Study the skill tree", act: "skills" },
-  { id: "mail", x: 682, y: 468, w: 56, h: 24, label: "Check the mailbox", act: "social" },
-  { id: "p0", x: 170, y: 600, w: 230, h: 160, label: "gitpilot", act: "proj0" },
-  { id: "p1", x: 430, y: 600, w: 230, h: 160, label: "placehold", act: "proj1" },
-  { id: "p2", x: 170, y: 800, w: 230, h: 160, label: "tinkersim", act: "proj2" },
-  { id: "p3", x: 430, y: 800, w: 230, h: 160, label: "pac0", act: "proj3" },
+  { id: "house", x: 476, y: 392, w: 100, h: 46, label: "Knock on the door", act: "dialogue" },
+  { id: "barn", x: 1156, y: 396, w: 88, h: 40, label: "Read the quest board", act: "quests" },
+  { id: "chest", x: 672, y: 334, w: 56, h: 28, label: "Open the chest", act: "bag" },
+  { id: "board", x: 990, y: 692, w: 62, h: 30, label: "Study the skill tree", act: "skills" },
+  { id: "mail", x: 560, y: 506, w: 52, h: 30, label: "Check the mailbox", act: "social" },
+  { id: "p0", x: 170, y: 760, w: 230, h: 150, label: "gitpilot", act: "proj0" },
+  { id: "p1", x: 430, y: 760, w: 230, h: 150, label: "placehold", act: "proj1" },
+  { id: "p2", x: 170, y: 950, w: 230, h: 150, label: "tinkersim", act: "proj2" },
+  { id: "p3", x: 430, y: 950, w: 230, h: 150, label: "pac0", act: "proj3" },
+];
+
+// Flavour NPCs — talk with E, reuse the typewriter dialogue. NO portfolio facts
+// (project names, tools, contact) so portfolio-fallback.tsx still covers those.
+export type Npc = {
+  id: string;
+  sprite: string; // 4-frame front strip, 32px cells (128x32)
+  portrait: string; // 64x64 dialogue bust
+  name: string; // dialogue name tag
+  label: string; // interact-bubble text
+  x: number;
+  y: number; // feet, world coords (x is the start for pacers)
+  w: number;
+  h: number; // collision box
+  face: 1 | -1;
+  walkFps: number; // sprite frames per second
+  lines: string[];
+  pace?: { from: number; to: number; speed: number }; // world px, px/s
+};
+
+export const npcs: Npc[] = [
+  {
+    id: "neighbour",
+    sprite: "sprites/npc-neighbour.png",
+    portrait: "sprites/portrait-neighbour.png",
+    name: "Odell · the next farm over",
+    label: "Talk to Odell",
+    x: 486,
+    y: 700,
+    w: 22,
+    h: 10,
+    face: 1,
+    walkFps: 4,
+    lines: [
+      "Morning. Your plots are coming in nicer than mine this year — don't tell anyone I said so.",
+      "Rain's due Thursday. Good week to let things sit and grow on their own.",
+      "Stop by when the greenhouse is warm. Always room for one more cup of coffee.",
+    ],
+  },
+  {
+    id: "kid",
+    sprite: "sprites/npc-kid.png",
+    portrait: "sprites/portrait-kid.png",
+    name: "Pip",
+    label: "Talk to Pip",
+    x: 1210,
+    y: 918,
+    w: 16,
+    h: 8,
+    face: 1,
+    walkFps: 8,
+    pace: { from: 1210, to: 1440, speed: 44 },
+    lines: [
+      "You walked the whole crossroads? I can do it in twelve seconds. Watch.",
+      "The fountain ate my coin. I'm pretty sure it owes me a wish now.",
+      "If you see a brown dog around here, he's mine. Sort of. He decides.",
+    ],
+  },
+  {
+    id: "shopkeeper",
+    sprite: "sprites/npc-shopkeeper.png",
+    portrait: "sprites/portrait-shopkeeper.png",
+    name: "Gaston · market cart",
+    label: "Talk to Gaston",
+    x: 1556,
+    y: 900,
+    w: 22,
+    h: 10,
+    face: -1,
+    walkFps: 4,
+    lines: [
+      "Fresh off the cart, still warm. First one's on the house for a new face.",
+      "I set up here every market day. The fountain's good company and the light's better.",
+      "Take your time looking around — the square's the best part of this whole farm.",
+    ],
+  },
 ];
