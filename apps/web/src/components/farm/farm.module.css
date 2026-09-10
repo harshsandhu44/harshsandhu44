@@ -55,6 +55,23 @@
   background: #f2c14e;
 }
 
+/* --- 9-slice panels from the pack's dialogue-box sheet (see build-sprites.sh) --- */
+.panel {
+  border-style: solid;
+  border-width: 16px;
+  border-image: url(/sprites/ui-panel.png) 8 fill;
+  border-image-width: 16px;
+  image-rendering: pixelated;
+}
+/* same frame at 1x slice — for small elements the 16px border would eat */
+.panelSm {
+  border-style: solid;
+  border-width: 8px;
+  border-image: url(/sprites/ui-panel.png) 8 fill;
+  border-image-width: 8px;
+  image-rendering: pixelated;
+}
+
 .btn:focus-visible,
 .btnGold:focus-visible,
 .pick:focus-visible,

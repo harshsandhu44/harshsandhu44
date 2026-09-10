@@ -1,5 +1,10 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element --
+   The world sprites are tiny local pixel-art PNGs scaled by non-integer factors
+   with `image-rendering: pixelated`. next/image would resample them (blurring the
+   pixels) and adds layout wrappers that fight the absolutely-positioned world. */
+
 // Walkable pixel-art farm portfolio. Ported from the Claude Design project
 // "Pixel Farm Portfolio" (ff464567-…): the x-dc template + `class Component`
 // game loop, translated to a React class component (React Compiler skips
@@ -23,6 +28,8 @@ import {
   artCredit,
   solids,
   spots,
+  buildings,
+  trees,
   type Spot,
 } from "./data";
 
@@ -32,6 +39,20 @@ const SCANLINES = false;
 
 // idempotent: "sprites/x.png" -> "/sprites/x.png", but "/sprites/x.png" unchanged
 const S = (bg: string) => bg.replace(/(?<!\/)sprites\//, "/sprites/");
+
+// farmer.png: three stacked rows of 32x32 front-facing cells (built by
+// scripts/build-sprites.sh from the pack's paper-doll layers). Frames advance
+// on a JS clock in loop(); reduced motion freezes idle/walk to frame 0.
+// idle and walk are cropped to the front-facing run of each pack strip (the
+// pack turns the character away to "look around" partway through both) — see
+// build-sprites.sh. So idle = 4 cells (breathing bob), walk = 12.
+const FARMER_ANIMS = {
+  idle: { row: 0, frames: 4, fps: 4 },
+  walk: { row: 1, frames: 12, fps: 10 },
+  act: { row: 2, frames: 16, fps: 14 },
+} as const;
+type FarmerAnim = keyof typeof FARMER_ANIMS;
+const ACT_MS = 380; // the reach pose holds this long before its overlay opens
 
 type World = { l: number; t: number; w: number; h: number; bg: string };
 
@@ -153,6 +174,8 @@ type State = {
   vw: number;
   vh: number;
   hover: number;
+  anim: FarmerAnim;
+  frame: number;
 };
 
 export class FarmPortfolio extends React.Component<object, State> {
@@ -171,6 +194,8 @@ export class FarmPortfolio extends React.Component<object, State> {
     vw: 1200,
     vh: 760,
     hover: 0,
+    anim: "idle",
+    frame: 0,
   };
 
   keys: Record<string, boolean> = {};
@@ -178,6 +203,8 @@ export class FarmPortfolio extends React.Component<object, State> {
   raf = 0;
   last = 0;
   typer: ReturnType<typeof setInterval> | undefined;
+  actUntil = 0;
+  actTimer: ReturnType<typeof setTimeout> | undefined;
   clock = farmClock();
 
   onKey = (e: KeyboardEvent) => {
@@ -236,6 +263,7 @@ export class FarmPortfolio extends React.Component<object, State> {
     window.removeEventListener("resize", this.onResize);
     cancelAnimationFrame(this.raf);
     clearInterval(this.typer);
+    clearTimeout(this.actTimer);
   }
 
   reduceMotion() {
@@ -263,19 +291,30 @@ export class FarmPortfolio extends React.Component<object, State> {
       if (k.right) dx += 1;
       if (k.up) dy -= 1;
       if (k.down) dy += 1;
+      const up: Partial<State> = {};
+      let moving = false;
       if (dx || dy) {
         const l = Math.hypot(dx, dy) || 1;
         const sp = SPEED * dt;
         const nx = Math.max(20, Math.min(1580, this.state.px + (dx / l) * sp));
         const ny = Math.max(60, Math.min(990, this.state.py + (dy / l) * sp));
-        const up: Partial<State> = {};
         if (!this.hit(nx, this.state.py)) {
           up.px = nx;
           if (dx) up.facing = dx > 0 ? 1 : -1;
         }
         if (!this.hit(this.state.px, ny)) up.py = ny;
-        if (Object.keys(up).length) this.setState(up as State);
+        moving = up.px !== undefined || up.py !== undefined;
       }
+
+      // farmer animation: reach pose while acting, else walk/idle by movement
+      const anim: FarmerAnim = t < this.actUntil ? "act" : moving ? "walk" : "idle";
+      const cfg = FARMER_ANIMS[anim];
+      const frame =
+        this.reduceMotion() && anim !== "act" ? 0 : Math.floor((t / 1000) * cfg.fps) % cfg.frames;
+      if (anim !== this.state.anim) up.anim = anim;
+      if (frame !== this.state.frame) up.frame = frame;
+
+      if (Object.keys(up).length) this.setState(up as State);
       this.checkPrompt();
     }
     this.raf = requestAnimationFrame(this.loop);
@@ -310,9 +349,17 @@ export class FarmPortfolio extends React.Component<object, State> {
     if (this.state.screen !== "farm" || this.state.overlay) return;
     const s = this.spot();
     if (!s) return;
-    if (s.act === "dialogue") this.talk();
-    else if (s.act.startsWith("proj")) this.setState({ overlay: "project", proj: +s.act.slice(4) });
-    else this.setState({ overlay: "menu", tab: s.act as State["tab"] });
+    const open = () => {
+      if (s.act === "dialogue") this.talk();
+      else if (s.act.startsWith("proj"))
+        this.setState({ overlay: "project", proj: +s.act.slice(4) });
+      else this.setState({ overlay: "menu", tab: s.act as State["tab"] });
+    };
+    // play the reach pose, then open — unless reduced motion, then open now
+    clearTimeout(this.actTimer);
+    if (this.reduceMotion()) return open();
+    this.actUntil = performance.now() + ACT_MS;
+    this.actTimer = setTimeout(open, ACT_MS - 60);
   };
 
   talk = () => {
@@ -379,9 +426,12 @@ export class FarmPortfolio extends React.Component<object, State> {
       p.name === "tinkersim" ? `${this.clock.seasonLabel}, year ${this.clock.year}` : p.season;
     const it = items[s.hover] || items[0]!;
     const camT = `translate3d(${Math.round(cx)}px,${Math.round(cy)}px,0)`;
-    const playerT = `translate3d(${Math.round(s.px - 16)}px,${Math.round(s.py - 44)}px,0) scaleX(${s.facing})`;
+    const playerT = `translate3d(${Math.round(s.px - 16)}px,${Math.round(s.py - 30)}px,0) scale(${1.35 * s.facing},1.35)`;
+    const farmerBgPos = `${-s.frame * 32}px ${-FARMER_ANIMS[s.anim].row * 32}px`;
+    // float the prompt above the farmer's head — spots now sit on top of the
+    // building sprites, so anchoring to the spot would bury the bubble in a roof
     const promptT = sp
-      ? `translate3d(${Math.round(sp.x + sp.w / 2 - 90)}px,${Math.round(sp.y - 62)}px,0)`
+      ? `translate3d(${Math.round(s.px - 90)}px,${Math.round(s.py - 108)}px,0)`
       : "translate3d(-999px,0,0)";
     const typedLine = (lines[s.line] || "").slice(0, s.typed);
     const atLast = s.line >= lines.length - 1;
@@ -404,11 +454,12 @@ export class FarmPortfolio extends React.Component<object, State> {
               }}
             >
               <div
+                className={styles.px}
                 style={{
                   position: "absolute",
                   inset: 0,
-                  background:
-                    "repeating-linear-gradient(0deg,#5d9b45 0 32px,#65a44b 32px 64px),repeating-linear-gradient(90deg,rgba(255,255,255,.05) 0 32px,rgba(0,0,0,.03) 32px 64px)",
+                  background: "url(/sprites/grass.png)",
+                  backgroundSize: "32px 32px",
                 }}
               />
               {/* fences */}
@@ -434,66 +485,22 @@ export class FarmPortfolio extends React.Component<object, State> {
                   boxShadow: "inset 4px 0 0 #cf9a67,inset -4px 0 0 #96603a",
                 }}
               />
-              <div
-                style={{
-                  position: "absolute",
-                  left: 272,
-                  top: 316,
-                  width: 48,
-                  height: 184,
-                  background: "#b98252",
-                  boxShadow: "inset 4px 0 0 #cf9a67,inset -4px 0 0 #96603a",
-                }}
-              />
-              <div
-                style={{
-                  position: "absolute",
-                  left: 1256,
-                  top: 340,
-                  width: 48,
-                  height: 160,
-                  background: "#b98252",
-                  boxShadow: "inset 4px 0 0 #cf9a67,inset -4px 0 0 #96603a",
-                }}
-              />
-
-              {/* pond */}
-              <div
-                style={{
-                  position: "absolute",
-                  left: 1030,
-                  top: 756,
-                  width: 352,
-                  height: 184,
-                  background: "#3f7fa8",
-                  boxShadow: "inset 0 0 0 8px #2f6a8f,inset 0 12px 0 rgba(255,255,255,.12)",
-                  borderRadius: 6,
-                }}
-              />
-              <div
-                className={styles.px}
-                style={{
-                  position: "absolute",
-                  left: 1074,
-                  top: 800,
-                  width: 32,
-                  height: 32,
-                  background: S("url(sprites/seasons.png) -160px -256px/704px 384px"),
-                  opacity: 0.7,
-                }}
-              />
-              <div
-                className={styles.px}
-                style={{
-                  position: "absolute",
-                  left: 1280,
-                  top: 864,
-                  width: 32,
-                  height: 32,
-                  background: S("url(sprites/seasons.png) -160px -256px/704px 384px"),
-                  opacity: 0.7,
-                }}
-              />
+              {/* trees — behind buildings and the farmer, no collision */}
+              {trees.map((tr, i) => (
+                <img
+                  key={`tree${i}`}
+                  className={styles.px}
+                  src={S(tr.sprite)}
+                  alt=""
+                  style={{
+                    position: "absolute",
+                    left: tr.l,
+                    top: tr.t,
+                    width: tr.w,
+                    height: tr.h,
+                  }}
+                />
+              ))}
 
               {BUSHES.map((b, i) => (
                 <div
@@ -524,321 +531,22 @@ export class FarmPortfolio extends React.Component<object, State> {
                 />
               ))}
 
-              {/* house */}
-              <div style={{ position: "absolute", left: 140, top: 110, width: 300, height: 210 }}>
-                <div
+              {/* buildings — whole-image sprites from the asset pack (see data.ts) */}
+              {buildings.map((b) => (
+                <img
+                  key={b.id}
+                  className={styles.px}
+                  src={S(b.sprite)}
+                  alt=""
                   style={{
                     position: "absolute",
-                    left: 8,
-                    top: 196,
-                    width: 284,
-                    height: 18,
-                    background: "rgba(0,0,0,.22)",
-                    borderRadius: "50%",
+                    left: b.l,
+                    top: b.t,
+                    width: b.w,
+                    height: b.h,
                   }}
                 />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 20,
-                    top: 80,
-                    width: 260,
-                    height: 126,
-                    background: "#c9a06a",
-                    border: "4px solid #4a2f1f",
-                    boxShadow: "inset 0 0 0 4px #ddb886,inset 0 -14px 0 #a8804f",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 0,
-                    top: 36,
-                    width: 300,
-                    height: 52,
-                    background: "#9c4a3c",
-                    border: "4px solid #4a2f1f",
-                    boxShadow: "inset 0 6px 0 #b65a48",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 24,
-                    top: 4,
-                    width: 252,
-                    height: 40,
-                    background: "#8a3f34",
-                    border: "4px solid #4a2f1f",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 236,
-                    top: -28,
-                    width: 36,
-                    height: 44,
-                    background: "#7a4f2c",
-                    border: "4px solid #4a2f1f",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 130,
-                    top: 140,
-                    width: 52,
-                    height: 66,
-                    background: "#7a4f2c",
-                    border: "4px solid #4a2f1f",
-                    boxShadow: "inset -6px 0 0 #5f3c21",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 170,
-                    top: 168,
-                    width: 8,
-                    height: 8,
-                    background: "#f2c14e",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 48,
-                    top: 110,
-                    width: 56,
-                    height: 48,
-                    background: "#8fd0e8",
-                    border: "4px solid #4a2f1f",
-                    boxShadow: "inset 0 0 0 4px #f7e7c3",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 208,
-                    top: 110,
-                    width: 56,
-                    height: 48,
-                    background: "#8fd0e8",
-                    border: "4px solid #4a2f1f",
-                    boxShadow: "inset 0 0 0 4px #f7e7c3",
-                  }}
-                />
-              </div>
-
-              {/* barn (quest board) */}
-              <div style={{ position: "absolute", left: 1120, top: 120, width: 330, height: 220 }}>
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 8,
-                    top: 206,
-                    width: 314,
-                    height: 18,
-                    background: "rgba(0,0,0,.22)",
-                    borderRadius: "50%",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 16,
-                    top: 70,
-                    width: 298,
-                    height: 146,
-                    background: "#a3452f",
-                    border: "4px solid #4a2f1f",
-                    boxShadow: "inset 0 0 0 4px #bb5a41,inset 0 -16px 0 #82351f",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 0,
-                    top: 26,
-                    width: 330,
-                    height: 50,
-                    background: "#5e5b57",
-                    border: "4px solid #4a2f1f",
-                    boxShadow: "inset 0 6px 0 #77736d",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 34,
-                    top: 0,
-                    width: 262,
-                    height: 32,
-                    background: "#4d4a47",
-                    border: "4px solid #4a2f1f",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 115,
-                    top: 120,
-                    width: 100,
-                    height: 96,
-                    background: "#7a4f2c",
-                    border: "4px solid #4a2f1f",
-                    boxShadow: "inset 0 0 0 4px #a97545",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 161,
-                    top: 120,
-                    width: 8,
-                    height: 96,
-                    background: "#4a2f1f",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 150,
-                    top: 84,
-                    width: 30,
-                    height: 26,
-                    background: "#f7e7c3",
-                    border: "4px solid #4a2f1f",
-                  }}
-                />
-              </div>
-
-              {/* chest */}
-              <div style={{ position: "absolute", left: 1180, top: 648, width: 88, height: 66 }}>
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 4,
-                    top: 56,
-                    width: 80,
-                    height: 14,
-                    background: "rgba(0,0,0,.22)",
-                    borderRadius: "50%",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 0,
-                    top: 20,
-                    width: 88,
-                    height: 44,
-                    background: "#8a5a2b",
-                    border: "4px solid #4a2f1f",
-                    boxShadow: "inset 0 0 0 4px #b98252",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 0,
-                    top: 0,
-                    width: 88,
-                    height: 24,
-                    background: "#a97545",
-                    border: "4px solid #4a2f1f",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 36,
-                    top: 14,
-                    width: 16,
-                    height: 20,
-                    background: "#f2c14e",
-                    border: "4px solid #4a2f1f",
-                  }}
-                />
-              </div>
-
-              {/* skill-tree board */}
-              <div style={{ position: "absolute", left: 876, top: 376, width: 76, height: 96 }}>
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 30,
-                    top: 40,
-                    width: 16,
-                    height: 56,
-                    background: "#7a4f2c",
-                    borderLeft: "4px solid #5f3c21",
-                    borderRight: "4px solid #5f3c21",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 0,
-                    top: 0,
-                    width: 76,
-                    height: 52,
-                    background: "#c9a06a",
-                    border: "4px solid #4a2f1f",
-                    boxShadow: "inset 0 0 0 4px #ddb886",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    textAlign: "center",
-                    lineHeight: 1.1,
-                  }}
-                >
-                  SKILL
-                  <br />
-                  TREE
-                </div>
-              </div>
-
-              {/* mailbox */}
-              <div style={{ position: "absolute", left: 692, top: 424, width: 48, height: 76 }}>
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 18,
-                    top: 34,
-                    width: 12,
-                    height: 42,
-                    background: "#7a4f2c",
-                    borderLeft: "4px solid #5f3c21",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 0,
-                    top: 0,
-                    width: 48,
-                    height: 40,
-                    background: "#3d6fa8",
-                    border: "4px solid #4a2f1f",
-                    boxShadow: "inset 0 0 0 4px #5b8ec7",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 40,
-                    top: 6,
-                    width: 8,
-                    height: 22,
-                    background: "#f2c14e",
-                  }}
-                />
-              </div>
-
+              ))}
               {/* project plots */}
               {PLOTS.map((plot, i) => (
                 <div
@@ -901,152 +609,34 @@ export class FarmPortfolio extends React.Component<object, State> {
                 </div>
               ))}
 
-              {/* player */}
+              {/* player — farmer.png sprite; frame/row from state, mirror via facing */}
               <div
                 style={{
                   position: "absolute",
                   left: 0,
                   top: 0,
+                  width: 20,
+                  height: 6,
+                  background: "rgba(0,0,0,.26)",
+                  borderRadius: "50%",
+                  transform: `translate3d(${Math.round(s.px - 10)}px,${Math.round(s.py - 5)}px,0)`,
+                }}
+              />
+              <div
+                className={styles.px}
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  top: 0,
                   width: 32,
-                  height: 48,
+                  height: 32,
                   willChange: "transform",
                   transform: playerT,
+                  backgroundImage: "url(/sprites/farmer.png)",
+                  backgroundPosition: farmerBgPos,
+                  backgroundRepeat: "no-repeat",
                 }}
-              >
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 3,
-                    top: 42,
-                    width: 26,
-                    height: 8,
-                    background: "rgba(0,0,0,.25)",
-                    borderRadius: "50%",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 8,
-                    top: 40,
-                    width: 7,
-                    height: 6,
-                    background: "#4a2f1f",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 17,
-                    top: 40,
-                    width: 7,
-                    height: 6,
-                    background: "#4a2f1f",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 8,
-                    top: 34,
-                    width: 16,
-                    height: 8,
-                    background: "#3b4b6b",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 6,
-                    top: 30,
-                    width: 20,
-                    height: 5,
-                    background: "#4a2f1f",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 6,
-                    top: 22,
-                    width: 20,
-                    height: 9,
-                    background: "#3d6fa8",
-                    boxShadow: "inset 0 -3px 0 #345f8f",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 2,
-                    top: 23,
-                    width: 5,
-                    height: 9,
-                    background: "#345f8f",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 25,
-                    top: 23,
-                    width: 5,
-                    height: 9,
-                    background: "#345f8f",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 9,
-                    top: 11,
-                    width: 14,
-                    height: 12,
-                    background: "#e8b98d",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 11,
-                    top: 16,
-                    width: 3,
-                    height: 3,
-                    background: "#2b1d16",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 18,
-                    top: 16,
-                    width: 3,
-                    height: 3,
-                    background: "#2b1d16",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 2,
-                    top: 6,
-                    width: 28,
-                    height: 5,
-                    background: "#3f6b3a",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: 7,
-                    top: 0,
-                    width: 18,
-                    height: 8,
-                    background: "#4d7f45",
-                    boxShadow: "inset 0 3px 0 #5e9455",
-                  }}
-                />
-              </div>
+              />
 
               {/* interact prompt */}
               {sp && (
@@ -1064,14 +654,13 @@ export class FarmPortfolio extends React.Component<object, State> {
                   }}
                 >
                   <div
+                    className={styles.panelSm}
                     style={{
-                      background: "#f7e7c3",
-                      border: "4px solid #4a2f1f",
-                      padding: "4px 10px",
+                      padding: "1px 8px 3px",
                       fontSize: 13,
                       fontWeight: 700,
                       whiteSpace: "nowrap",
-                      boxShadow: "0 4px 0 rgba(0,0,0,.3)",
+                      color: "#3b2a1a",
                     }}
                   >
                     {sp.label}
@@ -1619,80 +1208,19 @@ export class FarmPortfolio extends React.Component<object, State> {
           >
             <div style={{ width: "min(880px,100%)", animation: "rise .18s steps(3)" }}>
               <div style={{ display: "flex", alignItems: "flex-end", gap: 0 }}>
-                <div
+                <img
+                  className={styles.px}
+                  src="/sprites/portrait.png"
+                  alt=""
                   style={{
-                    width: 104,
-                    height: 104,
-                    background: "#7a4f2c",
+                    width: 96,
+                    height: 96,
                     border: "4px solid #4a2f1f",
-                    boxShadow: "inset 0 0 0 4px #b98252",
-                    position: "relative",
                     flex: "none",
                     marginBottom: -4,
                     zIndex: 2,
                   }}
-                >
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: 26,
-                      top: 38,
-                      width: 48,
-                      height: 40,
-                      background: "#e8b98d",
-                    }}
-                  />
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: 18,
-                      top: 24,
-                      width: 64,
-                      height: 14,
-                      background: "#4d7f45",
-                    }}
-                  />
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: 22,
-                      top: 18,
-                      width: 52,
-                      height: 10,
-                      background: "#3f6b3a",
-                    }}
-                  />
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: 36,
-                      top: 52,
-                      width: 8,
-                      height: 8,
-                      background: "#2b1d16",
-                    }}
-                  />
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: 58,
-                      top: 52,
-                      width: 8,
-                      height: 8,
-                      background: "#2b1d16",
-                    }}
-                  />
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: 44,
-                      top: 68,
-                      width: 14,
-                      height: 4,
-                      background: "#b9765a",
-                    }}
-                  />
-                </div>
+                />
                 <div
                   style={{
                     background: "#f2c14e",
@@ -1709,12 +1237,10 @@ export class FarmPortfolio extends React.Component<object, State> {
                 </div>
               </div>
               <div
+                className={styles.panel}
                 style={{
-                  background: "#f7e7c3",
-                  border: "4px solid #4a2f1f",
-                  boxShadow:
-                    "inset 0 0 0 4px #e3c793,inset 0 0 0 8px #cba876,0 10px 0 rgba(0,0,0,.35)",
-                  padding: "22px 24px",
+                  boxShadow: "0 10px 0 rgba(0,0,0,.35)",
+                  padding: "18px 22px",
                   minHeight: 170,
                   display: "flex",
                   flexDirection: "column",

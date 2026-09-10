@@ -240,13 +240,40 @@ export const artCredit = {
 
 // --- world geometry (only the game uses these) ---
 
+// Buildings are whole-image sprites from the Farm RPG Tiny Asset Pack, built by
+// scripts/build-sprites.sh. `l/t/w/h` is the on-screen rect in world space;
+// `solids` below carries the matching walk blockers (walls only, so you can
+// stand under an eave). Sprite refs are bare `sprites/…` — `S()` rewrites them.
+export type Building = { id: string; sprite: string; l: number; t: number; w: number; h: number };
+
+export const buildings: Building[] = [
+  { id: "house", sprite: "sprites/house.png", l: 176, t: 150, w: 224, h: 168 },
+  { id: "barn", sprite: "sprites/barn.png", l: 1150, t: 150, w: 170, h: 166 },
+  { id: "greenhouse", sprite: "sprites/greenhouse.png", l: 1030, t: 756, w: 126, h: 168 },
+  { id: "silo", sprite: "sprites/silo.png", l: 1210, t: 792, w: 70, h: 132 },
+  { id: "board", sprite: "sprites/noticeboard.png", l: 872, t: 352, w: 60, h: 66 },
+  { id: "mailbox", sprite: "sprites/mailbox.png", l: 686, t: 428, w: 48, h: 48 },
+  { id: "chest", sprite: "sprites/chest.png", l: 1174, t: 666, w: 50, h: 50 },
+];
+
+// decorative trees (no collision — the farmer walks behind them)
+export const trees = [
+  { sprite: "sprites/tree-pine.png", l: 60, t: 350, w: 68, h: 92 },
+  { sprite: "sprites/tree-pine.png", l: 40, t: 892, w: 68, h: 92 },
+  { sprite: "sprites/tree-pine.png", l: 1476, t: 118, w: 68, h: 92 },
+  { sprite: "sprites/tree-maple.png", l: 556, t: 120, w: 44, h: 68 },
+  { sprite: "sprites/tree-maple.png", l: 980, t: 86, w: 44, h: 68 },
+  { sprite: "sprites/tree-maple.png", l: 1500, t: 636, w: 44, h: 68 },
+];
+
 export const solids = [
-  { x: 140, y: 190, w: 300, h: 132 },
-  { x: 1120, y: 190, w: 330, h: 152 },
-  { x: 1180, y: 660, w: 88, h: 54 },
-  { x: 1030, y: 756, w: 352, h: 184 },
-  { x: 876, y: 376, w: 76, h: 96 },
-  { x: 692, y: 424, w: 48, h: 76 },
+  { x: 200, y: 250, w: 176, h: 66 }, // house walls
+  { x: 1164, y: 236, w: 142, h: 72 }, // barn walls
+  { x: 1044, y: 850, w: 100, h: 72 }, // greenhouse
+  { x: 1216, y: 862, w: 60, h: 58 }, // silo
+  { x: 876, y: 386, w: 50, h: 28 }, // notice board
+  { x: 690, y: 450, w: 40, h: 24 }, // mailbox
+  { x: 1180, y: 690, w: 40, h: 24 }, // chest
 ];
 
 export type Spot = {
@@ -260,11 +287,11 @@ export type Spot = {
 };
 
 export const spots: Spot[] = [
-  { id: "house", x: 250, y: 300, w: 80, h: 40, label: "Knock on the door", act: "dialogue" },
-  { id: "barn", x: 1235, y: 320, w: 100, h: 40, label: "Read the quest board", act: "quests" },
-  { id: "chest", x: 1180, y: 714, w: 88, h: 30, label: "Open the chest", act: "bag" },
-  { id: "board", x: 876, y: 472, w: 76, h: 30, label: "Study the skill tree", act: "skills" },
-  { id: "mail", x: 692, y: 500, w: 48, h: 26, label: "Check the mailbox", act: "social" },
+  { id: "house", x: 256, y: 306, w: 64, h: 34, label: "Knock on the door", act: "dialogue" },
+  { id: "barn", x: 1200, y: 292, w: 66, h: 34, label: "Read the quest board", act: "quests" },
+  { id: "chest", x: 1172, y: 708, w: 54, h: 28, label: "Open the chest", act: "bag" },
+  { id: "board", x: 868, y: 410, w: 66, h: 26, label: "Study the skill tree", act: "skills" },
+  { id: "mail", x: 682, y: 468, w: 56, h: 24, label: "Check the mailbox", act: "social" },
   { id: "p0", x: 170, y: 600, w: 230, h: 160, label: "gitpilot", act: "proj0" },
   { id: "p1", x: 430, y: 600, w: 230, h: 160, label: "placehold", act: "proj1" },
   { id: "p2", x: 170, y: 800, w: 230, h: 160, label: "tinkersim", act: "proj2" },
