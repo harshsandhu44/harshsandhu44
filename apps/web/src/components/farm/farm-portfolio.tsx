@@ -43,11 +43,12 @@ const S = (bg: string) => bg.replace(/(?<!\/)sprites\//, "/sprites/");
 // farmer.png: three stacked rows of 32x32 front-facing cells (built by
 // scripts/build-sprites.sh from the pack's paper-doll layers). Frames advance
 // on a JS clock in loop(); reduced motion freezes idle/walk to frame 0.
-// idle uses only the first 4 cells — a quiet breathing bob; cells 4-15 in the
-// pack's idle strip are a "look around" turn we don't want.
+// idle and walk are cropped to the front-facing run of each pack strip (the
+// pack turns the character away to "look around" partway through both) — see
+// build-sprites.sh. So idle = 4 cells (breathing bob), walk = 12.
 const FARMER_ANIMS = {
   idle: { row: 0, frames: 4, fps: 4 },
-  walk: { row: 1, frames: 24, fps: 12 },
+  walk: { row: 1, frames: 12, fps: 10 },
   act: { row: 2, frames: 16, fps: 14 },
 } as const;
 type FarmerAnim = keyof typeof FARMER_ANIMS;

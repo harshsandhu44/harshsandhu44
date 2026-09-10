@@ -22,10 +22,11 @@ trap 'rm -rf "$tmp"' EXIT
 
 # --- farmer: front-facing paper-doll (skin 2 + brown eyes + black hair + blue
 #     farm outfit), one row per animation, 32x32 cells -----------------------
-# row 0 idle  (4 frames  -- just the breathing bob; the pack's idle strip has
-#                          a "look around" turn in cells 4-15 we don't use)
-# row 1 walk  (24 frames, 768 wide)
-# row 2 reach (16 frames, 512 wide  -- "13.3 Carrying - Pick Up", no tool)
+# The pack's idle and walk strips both turn the character away to "look
+# around" partway through, so each row is cropped to the front-facing run:
+# row 0 idle  (4 frames  -- the breathing bob; pack cells 4-15 are the turn)
+# row 1 walk  (12 frames -- pack cells 12-23; cells 6-11 are the back walk)
+# row 2 reach (16 frames -- "13.3 Carrying - Pick Up", no tool)
 compose_anim() { # $1 = anim dir, $2 = crop (or "" for whole strip)  ->  $tmp/row.png
   local d="$CHAR/$1"
   magick "$d/Skins/2.png" \
@@ -35,10 +36,10 @@ compose_anim() { # $1 = anim dir, $2 = crop (or "" for whole strip)  ->  $tmp/ro
     ${2:+-crop "$2" +repage} \
     "$tmp/row.png"
 }
-compose_anim "1. Idle" "128x32+0+0";        cp "$tmp/row.png" "$tmp/idle.png"
-compose_anim "2. Walk" "";                  cp "$tmp/row.png" "$tmp/walk.png"
-compose_anim "13.3 Carrying - Pick Up" "";  cp "$tmp/row.png" "$tmp/reach.png"
-magick -size 768x96 xc:none -gravity NorthWest \
+compose_anim "1. Idle" "128x32+0+0";          cp "$tmp/row.png" "$tmp/idle.png"
+compose_anim "2. Walk" "384x32+384+0";        cp "$tmp/row.png" "$tmp/walk.png"
+compose_anim "13.3 Carrying - Pick Up" "";    cp "$tmp/row.png" "$tmp/reach.png"
+magick -size 512x96 xc:none -gravity NorthWest \
   "$tmp/idle.png"  -geometry +0+0  -composite \
   "$tmp/walk.png"  -geometry +0+32 -composite \
   "$tmp/reach.png" -geometry +0+64 -composite \
