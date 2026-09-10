@@ -1,0 +1,113 @@
+/* Styling for the pixel-farm portfolio. Ported from the <helmet> block of the
+ * Claude Design source. Scoped to .root so it never touches the app's shadcn
+ * tokens. Repeated "panel / button" treatments and every `style-hover` from the
+ * source are folded into classes here. */
+
+.root {
+  position: relative;
+  width: 100%;
+  height: 100dvh;
+  min-height: 520px;
+  overflow: hidden;
+  background: #4f8a3f;
+  font-family: var(--font-pixel), ui-monospace, monospace;
+  color: #2b1d16;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.root a {
+  color: #8f5b2a;
+  text-decoration: none;
+}
+.root a:hover {
+  color: #c2871f;
+}
+
+/* Sprite cells are pixel art scaled by integer (mostly) factors — keep them
+ * crisp. The source left this to the browser default; committing to the
+ * pixel aesthetic is the point here. */
+.px {
+  image-rendering: pixelated;
+}
+
+.mono {
+  font-family: var(--font-vt323), var(--font-pixel), ui-monospace, monospace;
+}
+
+/* --- buttons / pickable rows: base fill lives here so :hover can win --- */
+.btn {
+  background: #e0b877;
+}
+.btn:hover {
+  background: #f2c14e;
+}
+.btnGold {
+  background: #f2c14e;
+}
+.btnGold:hover {
+  background: #f7d377;
+}
+.pick {
+  background: #e9d4a6;
+}
+.pick:hover {
+  background: #f2c14e;
+}
+
+.btn:focus-visible,
+.btnGold:focus-visible,
+.pick:focus-visible,
+.tab:focus-visible,
+.root a:focus-visible {
+  outline: 3px solid #2b1d16;
+  outline-offset: 2px;
+}
+
+/* --- animations (from the source <style>) --- */
+@keyframes bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+@keyframes blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes drift {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-64px);
+  }
+}
+@keyframes rise {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Reduced motion: kill the ambient loops (bob / blink / drift are all authored
+ * `... infinite`), keep the one-shot overlay `rise` and the JS typewriter,
+ * which is disabled separately in the component. */
+@media (prefers-reduced-motion: reduce) {
+  .root [style*="infinite"] {
+    animation: none !important;
+  }
+}
