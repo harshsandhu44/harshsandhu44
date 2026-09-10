@@ -7,9 +7,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-sans: var(--font-pixel);
+  --font-mono: var(--font-vt323);
+  --font-heading: var(--font-pixel);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -123,6 +123,13 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+  /* Single-page site: the farm fills the viewport and manages its own
+     scrolling. Revisit if more routes are added. */
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
   }
   button:not(:disabled),
   [role="button"]:not(:disabled) {
