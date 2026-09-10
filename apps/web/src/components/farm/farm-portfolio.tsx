@@ -29,13 +29,84 @@ import {
   solids,
   spots,
   buildings,
+  cottages,
   trees,
+  paths,
+  fences,
+  fenceSolids,
+  npcs,
+  WORLD_W,
+  WORLD_H,
   type Spot,
+  type Npc,
 } from "./data";
 
 const SPEED = 210; // px/s walk speed (design "Feel" prop, default)
 const START_NIGHT = false;
 const SCANLINES = false;
+
+// camera zoom: cozy/Stardew-like on desktop, pulled back on narrow screens so a
+// usable slice of the 1920-wide world still fits. Applied as scale() on the
+// world div; the camera clamp math in render() works in scaled (screen) units.
+const Z_WIDE = 2.2;
+const Z_NARROW = 1.6;
+const Z_BREAK = 700; // viewport width px
+
+// decorative props: whole-image sprites placed around the world. `anim` is a
+// CSS animation string (authored `… infinite` so the reduced-motion rule in
+// farm.module.css freezes it). Sprite refs are bare `sprites/…` (S() rewrites).
+type Prop = {
+  sprite: string;
+  l: number;
+  t: number;
+  w: number;
+  h: number;
+  anim?: string; // CSS animation string (authored `… infinite`)
+  frames?: number; // >1 = `sprite` is a horizontal strip; `anim` steps the bg-position
+};
+const PROPS: Prop[] = [
+  // village square
+  {
+    sprite: "sprites/fountain.png",
+    l: 1320,
+    t: 780,
+    w: 48,
+    h: 64,
+    frames: 4,
+    anim: "fountain .7s steps(4) infinite",
+  },
+  { sprite: "sprites/stall.png", l: 1540, t: 866, w: 40, h: 60 },
+  { sprite: "sprites/lamp.png", l: 1230, t: 762, w: 16, h: 48 },
+  { sprite: "sprites/lamp.png", l: 1470, t: 762, w: 16, h: 48 },
+  { sprite: "sprites/bench.png", l: 1240, t: 872, w: 30, h: 22 },
+  { sprite: "sprites/bench.png", l: 1416, t: 872, w: 30, h: 22 },
+  { sprite: "sprites/barrels.png", l: 1636, t: 812, w: 18, h: 20 },
+  { sprite: "sprites/barrels.png", l: 1096, t: 852, w: 18, h: 20 },
+  { sprite: "sprites/shipbox.png", l: 1126, t: 848, w: 20, h: 20 },
+  { sprite: "sprites/sign.png", l: 1016, t: 596, w: 28, h: 32 },
+  // farm side
+  { sprite: "sprites/scarecrow.png", l: 628, t: 800, w: 16, h: 28 },
+  { sprite: "sprites/shipbox.png", l: 726, t: 600, w: 20, h: 20 },
+  { sprite: "sprites/haybale.png", l: 760, t: 606, w: 34, h: 18 },
+  { sprite: "sprites/haybale.png", l: 792, t: 598, w: 34, h: 18 },
+  // animal pen
+  {
+    sprite: "sprites/chicken.png",
+    l: 1400,
+    t: 430,
+    w: 18,
+    h: 20,
+    anim: "bob .9s steps(2) infinite",
+  },
+  {
+    sprite: "sprites/chicken.png",
+    l: 1490,
+    t: 470,
+    w: 18,
+    h: 20,
+    anim: "bob 1.1s steps(2) .4s infinite",
+  },
+];
 
 // idempotent: "sprites/x.png" -> "/sprites/x.png", but "/sprites/x.png" unchanged
 const S = (bg: string) => bg.replace(/(?<!\/)sprites\//, "/sprites/");
@@ -56,34 +127,15 @@ const ACT_MS = 380; // the reach pose holds this long before its overlay opens
 
 type World = { l: number; t: number; w: number; h: number; bg: string };
 
-// decorative sprite scatter across the world (all /sprites/seasons.png cells)
-const BUSHES: World[] = [
-  { l: 60, t: 40, w: 96, h: 64, bg: "url(sprites/seasons.png) 0 -320px/704px 384px" },
-  { l: 520, t: 120, w: 160, h: 64, bg: "url(sprites/seasons.png) -128px -320px/704px 384px" },
-  { l: 960, t: 64, w: 96, h: 64, bg: "url(sprites/seasons.png) 0 -320px/704px 384px" },
-  { l: 1480, t: 420, w: 96, h: 64, bg: "url(sprites/seasons.png) 0 -320px/704px 384px" },
-  { l: 40, t: 920, w: 96, h: 64, bg: "url(sprites/seasons.png) 0 -320px/704px 384px" },
-];
-
+// small decorative flower/rock scatter (all /sprites/seasons.png cells), kept to
+// the empty grass away from the crossroads and the four zones
 const SCATTER: World[] = [
-  { l: 600, t: 230, w: 32, h: 32, bg: "url(sprites/seasons.png) 0 0/704px 384px" },
-  { l: 660, t: 300, w: 32, h: 32, bg: "url(sprites/seasons.png) -96px 0/704px 384px" },
-  { l: 470, t: 390, w: 32, h: 32, bg: "url(sprites/seasons.png) -288px 0/704px 384px" },
-  { l: 530, t: 430, w: 32, h: 32, bg: "url(sprites/seasons.png) -352px 0/704px 384px" },
-  { l: 900, t: 180, w: 32, h: 32, bg: "url(sprites/seasons.png) -384px 0/704px 384px" },
-  { l: 980, t: 300, w: 32, h: 32, bg: "url(sprites/seasons.png) -416px 0/704px 384px" },
-  { l: 1060, t: 230, w: 32, h: 32, bg: "url(sprites/seasons.png) -352px -32px/704px 384px" },
-  { l: 860, t: 600, w: 32, h: 32, bg: "url(sprites/seasons.png) -448px -32px/704px 384px" },
-  { l: 940, t: 660, w: 32, h: 32, bg: "url(sprites/seasons.png) -288px -288px/704px 384px" },
-  { l: 1000, t: 600, w: 32, h: 32, bg: "url(sprites/seasons.png) -320px -288px/704px 384px" },
-  { l: 120, t: 420, w: 32, h: 32, bg: "url(sprites/seasons.png) -96px -224px/704px 384px" },
-  { l: 180, t: 460, w: 32, h: 32, bg: "url(sprites/seasons.png) -32px -224px/704px 384px" },
-  { l: 1400, t: 640, w: 32, h: 32, bg: "url(sprites/seasons.png) -224px -224px/704px 384px" },
-  { l: 1460, t: 700, w: 32, h: 32, bg: "url(sprites/seasons.png) -96px -224px/704px 384px" },
-  { l: 700, t: 860, w: 32, h: 32, bg: "url(sprites/seasons.png) -288px -288px/704px 384px" },
-  { l: 640, t: 920, w: 32, h: 32, bg: "url(sprites/seasons.png) -320px -288px/704px 384px" },
-  { l: 1180, t: 180, w: 32, h: 32, bg: "url(sprites/seasons.png) -416px -32px/704px 384px" },
-  { l: 300, t: 960, w: 32, h: 32, bg: "url(sprites/seasons.png) -352px 0/704px 384px" },
+  { l: 60, t: 300, w: 32, h: 32, bg: "url(sprites/seasons.png) 0 0/704px 384px" },
+  { l: 96, t: 430, w: 32, h: 32, bg: "url(sprites/seasons.png) -96px 0/704px 384px" },
+  { l: 770, t: 700, w: 32, h: 32, bg: "url(sprites/seasons.png) -288px 0/704px 384px" },
+  { l: 812, t: 500, w: 32, h: 32, bg: "url(sprites/seasons.png) -352px 0/704px 384px" },
+  { l: 1840, t: 400, w: 32, h: 32, bg: "url(sprites/seasons.png) -384px 0/704px 384px" },
+  { l: 250, t: 1150, w: 32, h: 32, bg: "url(sprites/seasons.png) -416px 0/704px 384px" },
 ];
 
 // project plots: pen of bobbing critters + a signboard, keyed to a project
@@ -100,7 +152,7 @@ type Plot = {
 const PLOTS: Plot[] = [
   {
     l: 170,
-    t: 600,
+    t: 760,
     label: "gitpilot",
     labelW: 130,
     dur: 1.4,
@@ -115,7 +167,7 @@ const PLOTS: Plot[] = [
   },
   {
     l: 430,
-    t: 600,
+    t: 760,
     label: "placehold",
     labelW: 140,
     dur: 1.5,
@@ -129,7 +181,7 @@ const PLOTS: Plot[] = [
   },
   {
     l: 170,
-    t: 800,
+    t: 950,
     label: "tinkersim · in season",
     labelW: 196,
     dur: 1.2,
@@ -146,7 +198,7 @@ const PLOTS: Plot[] = [
   },
   {
     l: 430,
-    t: 800,
+    t: 950,
     label: "pac0",
     labelW: 110,
     dur: 1.7,
@@ -158,6 +210,9 @@ const PLOTS: Plot[] = [
     ],
   },
 ];
+
+// who is talking in the dialogue overlay — Harsh (with topic buttons) or an NPC
+type Speaker = { name: string; portrait: string; lines: string[]; choices: boolean };
 
 type State = {
   screen: "title" | "farm";
@@ -176,6 +231,9 @@ type State = {
   hover: number;
   anim: FarmerAnim;
   frame: number;
+  speaker: Speaker | null;
+  kidX: number;
+  kidFacing: 1 | -1;
 };
 
 export class FarmPortfolio extends React.Component<object, State> {
@@ -185,8 +243,8 @@ export class FarmPortfolio extends React.Component<object, State> {
     tab: "quests",
     proj: 0,
     night: null,
-    px: 784,
-    py: 640,
+    px: 944,
+    py: 600,
     facing: 1,
     promptId: null,
     typed: 0,
@@ -196,6 +254,9 @@ export class FarmPortfolio extends React.Component<object, State> {
     hover: 0,
     anim: "idle",
     frame: 0,
+    speaker: null,
+    kidX: 1360,
+    kidFacing: 1,
   };
 
   keys: Record<string, boolean> = {};
@@ -296,8 +357,8 @@ export class FarmPortfolio extends React.Component<object, State> {
       if (dx || dy) {
         const l = Math.hypot(dx, dy) || 1;
         const sp = SPEED * dt;
-        const nx = Math.max(20, Math.min(1580, this.state.px + (dx / l) * sp));
-        const ny = Math.max(60, Math.min(990, this.state.py + (dy / l) * sp));
+        const nx = Math.max(20, Math.min(WORLD_W - 20, this.state.px + (dx / l) * sp));
+        const ny = Math.max(60, Math.min(WORLD_H - 20, this.state.py + (dy / l) * sp));
         if (!this.hit(nx, this.state.py)) {
           up.px = nx;
           if (dx) up.facing = dx > 0 ? 1 : -1;
@@ -314,18 +375,40 @@ export class FarmPortfolio extends React.Component<object, State> {
       if (anim !== this.state.anim) up.anim = anim;
       if (frame !== this.state.frame) up.frame = frame;
 
+      // pacing NPC (the kid): lerp along a fixed segment, no collision
+      const pacer = npcs.find((n) => n.pace);
+      if (pacer?.pace && !this.reduceMotion()) {
+        const { from, to, speed } = pacer.pace;
+        const period = ((to - from) / speed) * 2 || 1; // s, round trip
+        const ph = (t / 1000) % period;
+        const kx = ph < period / 2 ? from + ph * speed : to - (ph - period / 2) * speed;
+        const kf: 1 | -1 = ph < period / 2 ? 1 : -1;
+        if (Math.round(kx) !== Math.round(this.state.kidX)) up.kidX = kx;
+        if (kf !== this.state.kidFacing) up.kidFacing = kf;
+      }
+
       if (Object.keys(up).length) this.setState(up as State);
       this.checkPrompt();
     }
     this.raf = requestAnimationFrame(this.loop);
   };
 
+  npcX(n: Npc) {
+    return n.pace ? this.state.kidX : n.x;
+  }
+
   hit(x: number, y: number) {
     const fx = x - 10,
       fy = y - 12,
       fw = 20,
       fh = 12;
-    return solids.some((s) => fx < s.x + s.w && fx + fw > s.x && fy < s.y + s.h && fy + fh > s.y);
+    const boxes = [...solids, ...fenceSolids];
+    if (boxes.some((s) => fx < s.x + s.w && fx + fw > s.x && fy < s.y + s.h && fy + fh > s.y))
+      return true;
+    return npcs.some((n) => {
+      const nx = this.npcX(n);
+      return fx < nx + n.w && fx + fw > nx && fy < n.y + n.h && fy + fh > n.y;
+    });
   }
 
   checkPrompt() {
@@ -338,6 +421,16 @@ export class FarmPortfolio extends React.Component<object, State> {
         break;
       }
     }
+    if (!found) {
+      const npad = 40;
+      for (const n of npcs) {
+        const nx = this.npcX(n);
+        if (px > nx - npad && px < nx + n.w + npad && py > n.y - npad && py < n.y + n.h + npad) {
+          found = "npc:" + n.id;
+          break;
+        }
+      }
+    }
     if (found !== this.state.promptId) this.setState({ promptId: found });
   }
 
@@ -345,8 +438,15 @@ export class FarmPortfolio extends React.Component<object, State> {
     return spots.find((s) => s.id === this.state.promptId);
   }
 
+  promptNpc(): Npc | undefined {
+    const id = this.state.promptId;
+    return id?.startsWith("npc:") ? npcs.find((n) => "npc:" + n.id === id) : undefined;
+  }
+
   act = () => {
     if (this.state.screen !== "farm" || this.state.overlay) return;
+    const n = this.promptNpc();
+    if (n) return this.talkTo(n);
     const s = this.spot();
     if (!s) return;
     const open = () => {
@@ -364,17 +464,44 @@ export class FarmPortfolio extends React.Component<object, State> {
 
   talk = () => {
     clearInterval(this.typer);
-    this.setState({ overlay: "dialogue", line: 0, typed: 0 }, () => this.type());
+    this.setState(
+      {
+        overlay: "dialogue",
+        line: 0,
+        typed: 0,
+        speaker: {
+          name: "Harsh · farmer, product engineer",
+          portrait: "/sprites/portrait.png",
+          lines,
+          choices: true,
+        },
+      },
+      () => this.type(),
+    );
+  };
+
+  talkTo = (n: Npc) => {
+    clearInterval(this.typer);
+    this.setState(
+      {
+        overlay: "dialogue",
+        line: 0,
+        typed: 0,
+        speaker: { name: n.name, portrait: S(n.portrait), lines: n.lines, choices: false },
+      },
+      () => this.type(),
+    );
   };
 
   type() {
     clearInterval(this.typer);
+    const lns = () => this.state.speaker?.lines ?? lines;
     if (this.reduceMotion()) {
-      this.setState((s) => ({ typed: (lines[s.line] || "").length }));
+      this.setState((s) => ({ typed: (lns()[s.line] || "").length }));
       return;
     }
     this.typer = setInterval(() => {
-      const full = lines[this.state.line] || "";
+      const full = lns()[this.state.line] || "";
       if (this.state.typed >= full.length) {
         clearInterval(this.typer);
         return;
@@ -384,13 +511,14 @@ export class FarmPortfolio extends React.Component<object, State> {
   }
 
   next = () => {
-    const full = lines[this.state.line] || "";
+    const dl = this.state.speaker?.lines ?? lines;
+    const full = dl[this.state.line] || "";
     if (this.state.typed < full.length) {
       clearInterval(this.typer);
       this.setState({ typed: full.length });
       return;
     }
-    if (this.state.line >= lines.length - 1) return;
+    if (this.state.line >= dl.length - 1) return;
     this.setState(
       (s) => ({ line: s.line + 1, typed: 0 }),
       () => this.type(),
@@ -399,13 +527,14 @@ export class FarmPortfolio extends React.Component<object, State> {
 
   close = () => {
     clearInterval(this.typer);
-    if (this.state.overlay) this.setState({ overlay: null });
+    if (this.state.overlay) this.setState({ overlay: null, speaker: null });
     else if (this.state.screen === "farm") this.setState({ overlay: "menu", tab: "quests" });
   };
 
-  startGame = () => this.setState({ screen: "farm", overlay: null, px: 784, py: 640 });
+  startGame = () =>
+    this.setState({ screen: "farm", overlay: null, speaker: null, px: 944, py: 600 });
   startAtBoard = () =>
-    this.setState({ screen: "farm", px: 860, py: 520, overlay: "menu", tab: "skills" });
+    this.setState({ screen: "farm", px: 1000, py: 560, overlay: "menu", tab: "skills" });
   goTitle = () => this.setState({ screen: "title", overlay: null });
   toggleNight = () => this.setState((s) => ({ night: !(s.night ?? START_NIGHT) }));
   nextProject = () => this.setState((s) => ({ proj: (s.proj + 1) % projects.length }));
@@ -418,23 +547,32 @@ export class FarmPortfolio extends React.Component<object, State> {
     const s = this.state;
     const night = s.night ?? START_NIGHT;
     const { vw, vh } = s;
-    const cx = vw >= 1600 ? (1600 - vw) / 2 : -Math.max(0, Math.min(1600 - vw, s.px - vw / 2));
-    const cy = vh >= 1000 ? (1000 - vh) / 2 : -Math.max(0, Math.min(1000 - vh, s.py - vh / 2));
+    // camera: scale the world by Z, then translate. scale() must be the LAST
+    // token (CSS applies transforms right-to-left) and the clamp math runs in
+    // scaled screen units — SW/SH is the on-screen world size.
+    const Z = vw < Z_BREAK ? Z_NARROW : Z_WIDE;
+    const SW = WORLD_W * Z;
+    const SH = WORLD_H * Z;
+    const cx = vw >= SW ? (SW - vw) / 2 : -Math.max(0, Math.min(SW - vw, s.px * Z - vw / 2));
+    const cy = vh >= SH ? (SH - vh) / 2 : -Math.max(0, Math.min(SH - vh, s.py * Z - vh / 2));
     const sp = this.spot();
+    const promptNpc = this.promptNpc();
+    const promptLabel = sp?.label ?? promptNpc?.label;
     const p = projects[s.proj]!;
     const projSeason =
       p.name === "tinkersim" ? `${this.clock.seasonLabel}, year ${this.clock.year}` : p.season;
     const it = items[s.hover] || items[0]!;
-    const camT = `translate3d(${Math.round(cx)}px,${Math.round(cy)}px,0)`;
+    const camT = `translate3d(${Math.round(cx)}px,${Math.round(cy)}px,0) scale(${Z})`;
     const playerT = `translate3d(${Math.round(s.px - 16)}px,${Math.round(s.py - 30)}px,0) scale(${1.35 * s.facing},1.35)`;
     const farmerBgPos = `${-s.frame * 32}px ${-FARMER_ANIMS[s.anim].row * 32}px`;
-    // float the prompt above the farmer's head — spots now sit on top of the
-    // building sprites, so anchoring to the spot would bury the bubble in a roof
-    const promptT = sp
-      ? `translate3d(${Math.round(s.px - 90)}px,${Math.round(s.py - 108)}px,0)`
-      : "translate3d(-999px,0,0)";
-    const typedLine = (lines[s.line] || "").slice(0, s.typed);
-    const atLast = s.line >= lines.length - 1;
+    // the interact prompt renders in screen space (outside the scaled world) so
+    // its text stays crisp; place it above the farmer's head
+    const promptScreen = promptLabel
+      ? { left: Math.round(cx + s.px * Z), top: Math.round(cy + s.py * Z - 46 * Z) }
+      : null;
+    const dl = s.speaker?.lines ?? lines;
+    const typedLine = (dl[s.line] || "").slice(0, s.typed);
+    const atLast = s.line >= dl.length - 1;
     const tabBg = (t: string) => (s.tab === t ? "#f7e7c3" : "#c9a06a");
 
     return (
@@ -447,8 +585,9 @@ export class FarmPortfolio extends React.Component<object, State> {
                 position: "absolute",
                 left: 0,
                 top: 0,
-                width: 1600,
-                height: 1000,
+                width: WORLD_W,
+                height: WORLD_H,
+                transformOrigin: "0 0",
                 willChange: "transform",
                 transform: camT,
               }}
@@ -462,29 +601,38 @@ export class FarmPortfolio extends React.Component<object, State> {
                   backgroundSize: "32px 32px",
                 }}
               />
-              {/* fences */}
-              <div
-                style={{
-                  position: "absolute",
-                  left: 0,
-                  top: 496,
-                  width: 1600,
-                  height: 64,
-                  background: "#b98252",
-                  boxShadow: "inset 0 4px 0 #cf9a67,inset 0 -4px 0 #96603a",
-                }}
-              />
-              <div
-                style={{
-                  position: "absolute",
-                  left: 752,
-                  top: 0,
-                  width: 64,
-                  height: 1000,
-                  background: "#b98252",
-                  boxShadow: "inset 4px 0 0 #cf9a67,inset -4px 0 0 #96603a",
-                }}
-              />
+              {/* dirt/brick path network — the crossroads + plaza + door spurs */}
+              {paths.map((r, i) => (
+                <div
+                  key={`path${i}`}
+                  className={styles.px}
+                  style={{
+                    position: "absolute",
+                    left: r.l,
+                    top: r.t,
+                    width: r.w,
+                    height: r.h,
+                    background: "url(/sprites/path.png)",
+                    backgroundSize: "16px 16px",
+                  }}
+                />
+              ))}
+              {/* wooden fences — tiled rail sprites; blockers derived in data.ts */}
+              {fences.map((f, i) => (
+                <div
+                  key={`fence${i}`}
+                  className={styles.px}
+                  style={{
+                    position: "absolute",
+                    left: f.l,
+                    top: f.t,
+                    width: f.dir === "h" ? f.len : 16,
+                    height: f.dir === "h" ? 16 : f.len,
+                    background: `url(/sprites/fence-${f.dir}.png)`,
+                    backgroundRepeat: f.dir === "h" ? "repeat-x" : "repeat-y",
+                  }}
+                />
+              ))}
               {/* trees — behind buildings and the farmer, no collision */}
               {trees.map((tr, i) => (
                 <img
@@ -502,20 +650,6 @@ export class FarmPortfolio extends React.Component<object, State> {
                 />
               ))}
 
-              {BUSHES.map((b, i) => (
-                <div
-                  key={`b${i}`}
-                  className={styles.px}
-                  style={{
-                    position: "absolute",
-                    left: b.l,
-                    top: b.t,
-                    width: b.w,
-                    height: b.h,
-                    background: S(b.bg),
-                  }}
-                />
-              ))}
               {SCATTER.map((b, i) => (
                 <div
                   key={`s${i}`}
@@ -531,6 +665,16 @@ export class FarmPortfolio extends React.Component<object, State> {
                 />
               ))}
 
+              {/* decorative village cottages + shopfront — backdrop only */}
+              {cottages.map((c, i) => (
+                <img
+                  key={`cot${i}`}
+                  className={styles.px}
+                  src={S(c.sprite)}
+                  alt=""
+                  style={{ position: "absolute", left: c.l, top: c.t, width: c.w, height: c.h }}
+                />
+              ))}
               {/* buildings — whole-image sprites from the asset pack (see data.ts) */}
               {buildings.map((b) => (
                 <img
@@ -544,6 +688,24 @@ export class FarmPortfolio extends React.Component<object, State> {
                     top: b.t,
                     width: b.w,
                     height: b.h,
+                  }}
+                />
+              ))}
+              {/* props — fountain, benches, lamps, scarecrow, chickens, … */}
+              {PROPS.map((pr, i) => (
+                <div
+                  key={`prop${i}`}
+                  className={styles.px}
+                  style={{
+                    position: "absolute",
+                    left: pr.l,
+                    top: pr.t,
+                    width: pr.w,
+                    height: pr.h,
+                    backgroundImage: `url(${S(pr.sprite)})`,
+                    backgroundRepeat: "no-repeat",
+                    backgroundSize: pr.frames ? `${pr.w * pr.frames}px ${pr.h}px` : "contain",
+                    ...(pr.anim ? { animation: pr.anim } : null),
                   }}
                 />
               ))}
@@ -590,16 +752,16 @@ export class FarmPortfolio extends React.Component<object, State> {
                   <div
                     style={{
                       position: "absolute",
-                      left: 16,
-                      top: -30,
-                      width: plot.labelW,
-                      height: 30,
+                      left: 12,
+                      top: -22,
+                      width: plot.labelW * 0.72,
+                      height: 22,
                       background: plot.gold ? "#f2c14e" : "#c9a06a",
-                      border: "4px solid #4a2f1f",
+                      border: "3px solid #4a2f1f",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      fontSize: 13,
+                      fontSize: 10,
                       fontWeight: 700,
                       letterSpacing: ".5px",
                     }}
@@ -608,6 +770,43 @@ export class FarmPortfolio extends React.Component<object, State> {
                   </div>
                 </div>
               ))}
+
+              {/* flavour NPCs — shadow + 4-frame sprite; the kid (pace) walks */}
+              {npcs.map((n) => {
+                const nx = this.npcX(n);
+                const face = n.pace ? s.kidFacing : n.face;
+                return (
+                  <React.Fragment key={n.id}>
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        top: 0,
+                        width: 18,
+                        height: 6,
+                        background: "rgba(0,0,0,.24)",
+                        borderRadius: "50%",
+                        transform: `translate3d(${Math.round(nx - 9)}px,${Math.round(n.y - 5)}px,0)`,
+                      }}
+                    />
+                    <div
+                      className={styles.px}
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        top: 0,
+                        width: 32,
+                        height: 32,
+                        transform: `translate3d(${Math.round(nx - 16)}px,${Math.round(n.y - 30)}px,0) scale(${1.3 * face},1.3)`,
+                        backgroundImage: `url(${S(n.sprite)})`,
+                        backgroundRepeat: "no-repeat",
+                        backgroundSize: "128px 32px",
+                        animation: `npcCycle ${(4 / n.walkFps).toFixed(2)}s steps(4) infinite`,
+                      }}
+                    />
+                  </React.Fragment>
+                );
+              })}
 
               {/* player — farmer.png sprite; frame/row from state, mirror via facing */}
               <div
@@ -637,52 +836,54 @@ export class FarmPortfolio extends React.Component<object, State> {
                   backgroundRepeat: "no-repeat",
                 }}
               />
+            </div>
 
-              {/* interact prompt */}
-              {sp && (
+            {/* interact prompt — screen space (outside the scaled world) so the
+                text stays crisp; sits above the farmer's head */}
+            {promptScreen && (
+              <div
+                style={{
+                  position: "absolute",
+                  left: promptScreen.left,
+                  top: promptScreen.top,
+                  transform: "translate(-50%,-100%)",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 2,
+                  animation: "bob 1s steps(2) infinite",
+                  pointerEvents: "none",
+                }}
+              >
                 <div
+                  className={styles.panelSm}
                   style={{
-                    position: "absolute",
-                    left: 0,
-                    top: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: 2,
-                    animation: "bob 1s steps(2) infinite",
-                    transform: promptT,
+                    padding: "1px 8px 3px",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    whiteSpace: "nowrap",
+                    color: "#3b2a1a",
                   }}
                 >
-                  <div
-                    className={styles.panelSm}
-                    style={{
-                      padding: "1px 8px 3px",
-                      fontSize: 13,
-                      fontWeight: 700,
-                      whiteSpace: "nowrap",
-                      color: "#3b2a1a",
-                    }}
-                  >
-                    {sp.label}
-                  </div>
-                  <div
-                    style={{
-                      width: 22,
-                      height: 22,
-                      background: "#f2c14e",
-                      border: "4px solid #4a2f1f",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 11,
-                      fontWeight: 700,
-                    }}
-                  >
-                    E
-                  </div>
+                  {promptLabel}
                 </div>
-              )}
-            </div>
+                <div
+                  style={{
+                    width: 22,
+                    height: 22,
+                    background: "#f2c14e",
+                    border: "4px solid #4a2f1f",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 11,
+                    fontWeight: 700,
+                  }}
+                >
+                  E
+                </div>
+              </div>
+            )}
 
             <div
               style={{
@@ -1018,57 +1219,12 @@ export class FarmPortfolio extends React.Component<object, State> {
               </div>
 
               <div className={styles.pick} style={saveRow} onClick={this.startGame}>
-                <div
-                  style={{
-                    width: 56,
-                    height: 56,
-                    background: "#7a4f2c",
-                    border: "4px solid #4a2f1f",
-                    position: "relative",
-                    flex: "none",
-                  }}
-                >
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: 14,
-                      top: 20,
-                      width: 28,
-                      height: 22,
-                      background: "#e8b98d",
-                    }}
-                  />
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: 10,
-                      top: 12,
-                      width: 36,
-                      height: 8,
-                      background: "#4d7f45",
-                    }}
-                  />
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: 20,
-                      top: 28,
-                      width: 4,
-                      height: 4,
-                      background: "#2b1d16",
-                    }}
-                  />
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: 32,
-                      top: 28,
-                      width: 4,
-                      height: 4,
-                      background: "#2b1d16",
-                    }}
-                  />
-                </div>
+                <img
+                  className={styles.px}
+                  src="/sprites/portrait.png"
+                  alt=""
+                  style={{ width: 56, height: 56, border: "4px solid #4a2f1f", flex: "none" }}
+                />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 17, fontWeight: 700 }}>
                     Harsh Sandhu{" "}
@@ -1210,7 +1366,7 @@ export class FarmPortfolio extends React.Component<object, State> {
               <div style={{ display: "flex", alignItems: "flex-end", gap: 0 }}>
                 <img
                   className={styles.px}
-                  src="/sprites/portrait.png"
+                  src={s.speaker?.portrait ?? "/sprites/portrait.png"}
                   alt=""
                   style={{
                     width: 96,
@@ -1233,7 +1389,7 @@ export class FarmPortfolio extends React.Component<object, State> {
                     zIndex: 1,
                   }}
                 >
-                  Harsh · farmer, product engineer
+                  {s.speaker?.name ?? "Harsh · farmer, product engineer"}
                 </div>
               </div>
               <div
@@ -1260,7 +1416,7 @@ export class FarmPortfolio extends React.Component<object, State> {
                   {typedLine}
                   <span style={{ animation: "blink .9s steps(1) infinite" }}>_</span>
                 </div>
-                {atLast ? (
+                {atLast && s.speaker?.choices ? (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
                     <button
                       type="button"
@@ -1293,6 +1449,17 @@ export class FarmPortfolio extends React.Component<object, State> {
                       onClick={this.close}
                     >
                       ▸ Goodbye
+                    </button>
+                  </div>
+                ) : atLast ? (
+                  <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                    <button
+                      type="button"
+                      className={styles.btn}
+                      style={choice}
+                      onClick={this.close}
+                    >
+                      ▸ Leave
                     </button>
                   </div>
                 ) : (

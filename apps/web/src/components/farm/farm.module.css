@@ -119,6 +119,25 @@
     opacity: 1;
   }
 }
+/* sprite-strip frame animations (background-position, driven by steps()) —
+ * authored `... infinite` at the call site so the reduced-motion rule below
+ * freezes them. NPC strips are 4 cells of 32px; the fountain 4 cells of 48px. */
+@keyframes npcCycle {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: -128px 0;
+  }
+}
+@keyframes fountain {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: -192px 0;
+  }
+}
 
 /* Reduced motion: kill the ambient loops (bob / blink / drift are all authored
  * `... infinite`), keep the one-shot overlay `rise` and the JS typewriter,
