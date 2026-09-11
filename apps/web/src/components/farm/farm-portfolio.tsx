@@ -973,97 +973,97 @@ export class FarmPortfolio extends React.Component<object, State> {
               style={{
                 position: "absolute",
                 left: 16,
+                right: 16,
                 top: 16,
                 display: "flex",
                 gap: 12,
-                alignItems: "flex-start",
                 flexWrap: "wrap",
               }}
             >
-              <div
-                style={{
-                  background: "#f7e7c3",
-                  border: "4px solid #4a2f1f",
-                  boxShadow: "inset 0 0 0 4px #e3c793,0 6px 0 rgba(0,0,0,.35)",
-                  padding: "10px 14px",
-                  minWidth: 190,
-                }}
-              >
-                <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: ".5px" }}>
-                  HARSHSANDHU FARM
-                </div>
+              <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
                 <div
-                  className={styles.mono}
-                  style={{ fontSize: 19, lineHeight: 1, color: "#6b4529", marginTop: 4 }}
+                  style={{
+                    background: "#f7e7c3",
+                    border: "4px solid #4a2f1f",
+                    boxShadow: "inset 0 0 0 4px #e3c793,0 6px 0 rgba(0,0,0,.35)",
+                    padding: "10px 14px",
+                    minWidth: 190,
+                  }}
                 >
-                  {this.clock.dateLabel} · Year {this.clock.year}
+                  <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: ".5px" }}>
+                    HARSHSANDHU FARM
+                  </div>
+                  <div
+                    className={styles.mono}
+                    style={{ fontSize: 19, lineHeight: 1, color: "#6b4529", marginTop: 4 }}
+                  >
+                    {this.clock.dateLabel} · Year {this.clock.year}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+                    <div
+                      className={styles.px}
+                      style={{
+                        width: 24,
+                        height: 24,
+                        background: S("url(sprites/bars.png) -72px -96px/288px 240px"),
+                      }}
+                    />
+                    <div
+                      style={{
+                        flex: 1,
+                        height: 14,
+                        background: "#6b4529",
+                        border: "3px solid #4a2f1f",
+                        padding: 1,
+                      }}
+                    >
+                      <div style={{ width: "78%", height: "100%", background: "#8ed14f" }} />
+                    </div>
+                  </div>
+                  <div
+                    className={styles.mono}
+                    style={{ fontSize: 17, color: "#8a5a2b", marginTop: 2 }}
+                  >
+                    energy · shipping {projects.length} repos
+                  </div>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+                <button
+                  type="button"
+                  aria-label="Toggle day / night"
+                  onClick={this.toggleNight}
+                  style={{
+                    width: 64,
+                    height: 64,
+                    background: "#f7e7c3",
+                    border: "4px solid #4a2f1f",
+                    boxShadow: "inset 0 0 0 4px #e3c793,0 6px 0 rgba(0,0,0,.35)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                  }}
+                >
                   <div
                     className={styles.px}
                     style={{
-                      width: 24,
-                      height: 24,
-                      background: S("url(sprites/bars.png) -72px -96px/288px 240px"),
+                      width: 32,
+                      height: 32,
+                      background: night
+                        ? S("url(sprites/weather.png) -96px -64px/320px 96px")
+                        : S("url(sprites/weather.png) 0 0/320px 96px"),
                     }}
                   />
-                  <div
-                    style={{
-                      flex: 1,
-                      height: 14,
-                      background: "#6b4529",
-                      border: "3px solid #4a2f1f",
-                      padding: 1,
-                    }}
-                  >
-                    <div style={{ width: "78%", height: "100%", background: "#8ed14f" }} />
-                  </div>
-                </div>
-                <div
-                  className={styles.mono}
-                  style={{ fontSize: 17, color: "#8a5a2b", marginTop: 2 }}
-                >
-                  energy · shipping {projects.length} repos
-                </div>
+                </button>
               </div>
-              <button
-                type="button"
-                aria-label="Toggle day / night"
-                onClick={this.toggleNight}
-                style={{
-                  width: 64,
-                  height: 64,
-                  background: "#f7e7c3",
-                  border: "4px solid #4a2f1f",
-                  boxShadow: "inset 0 0 0 4px #e3c793,0 6px 0 rgba(0,0,0,.35)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "pointer",
-                }}
-              >
-                <div
-                  className={styles.px}
-                  style={{
-                    width: 32,
-                    height: 32,
-                    background: night
-                      ? S("url(sprites/weather.png) -96px -64px/320px 96px")
-                      : S("url(sprites/weather.png) 0 0/320px 96px"),
-                  }}
-                />
-              </button>
             </div>
 
             <div
               style={{
-                position: "absolute",
-                right: 16,
-                top: 16,
                 display: "flex",
                 flexDirection: "column",
                 gap: 8,
                 alignItems: "flex-end",
+                marginLeft: "auto",
               }}
             >
               <div
