@@ -125,11 +125,16 @@ magick "$EXT/ice cream cart.png" -crop 32x48+0+0  +repage -trim +repage -strip "
 magick "$EXT/Village Barrels.png" -crop 32x32+0+0 +repage -trim +repage -strip "$OUT/barrels.png"
 magick "$PACK/Animals/Farm/Chicken/Chicken White.png" -crop 16x16+0+0 +repage -trim +repage -strip "$OUT/chicken.png"
 
-# --- fences: two tiling pieces from the wood-fence mini-tilesheet ----------
+# --- fences: tiling pieces + corner/gate from the wood-fence mini-tilesheet
 # (top half of the sheet is the non-snow variant; 16px autotile cells)
 FENCEW="$EXT/Fence and Bridge/Fence Wood.png"
 magick "$FENCEW" -crop 16x16+48+0 +repage -strip "$OUT/fence-h.png"   # post + 2 rails, tiles L-R
 magick "$FENCEW" -crop 16x16+0+16 +repage -strip "$OUT/fence-v.png"   # vertical rail, tiles top-down
+# NW corner (rail east + south) — the other 3 corners are this one CSS-mirrored
+magick "$FENCEW" -crop 16x16+0+0  +repage -strip "$OUT/fence-corner.png"
+# closed double gate, post-leaf-leaf-post, fixed 48x16 — drop in place of a
+# 48px run of fence-h to make a gate opening read as a gate, not a bare gap
+magick "$FENCEW" -crop 48x16+48+0 +repage -strip "$OUT/fence-gate.png"
 
 # --- path: one plain-brick fill cell out of the path autotile -------------
 magick "$PACK/Tileset/Path tiles.png" -crop 16x16+96+32 +repage -strip "$OUT/path.png"

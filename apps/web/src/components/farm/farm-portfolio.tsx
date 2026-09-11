@@ -34,6 +34,8 @@ import {
   paths,
   fences,
   fenceSolids,
+  fenceCorners,
+  fenceGates,
   npcs,
   WORLD_W,
   WORLD_H,
@@ -630,6 +632,39 @@ export class FarmPortfolio extends React.Component<object, State> {
                     height: f.dir === "h" ? 16 : f.len,
                     background: `url(/sprites/fence-${f.dir}.png)`,
                     backgroundRepeat: f.dir === "h" ? "repeat-x" : "repeat-y",
+                  }}
+                />
+              ))}
+              {/* fence corner posts — one sprite, CSS-mirrored per corner */}
+              {fenceCorners.map((c, i) => (
+                <div
+                  key={`corner${i}`}
+                  className={styles.px}
+                  style={{
+                    position: "absolute",
+                    left: c.l,
+                    top: c.t,
+                    width: 16,
+                    height: 16,
+                    background: "url(/sprites/fence-corner.png)",
+                    transform: `scale(${c.flipX ? -1 : 1}, ${c.flipY ? -1 : 1})`,
+                    transformOrigin: "center",
+                  }}
+                />
+              ))}
+              {/* gate overlays — sit over an open (non-collidable) gap in a run */}
+              {fenceGates.map((g, i) => (
+                <div
+                  key={`gate${i}`}
+                  className={styles.px}
+                  style={{
+                    position: "absolute",
+                    left: g.l,
+                    top: g.t,
+                    width: g.w,
+                    height: 16,
+                    background: "url(/sprites/fence-gate.png)",
+                    backgroundSize: "100% 100%",
                   }}
                 />
               ))}

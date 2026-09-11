@@ -308,11 +308,48 @@ export const fences: Fence[] = [
   { l: 1330, t: 520, len: 240, dir: "h" },
   { l: 1330, t: 360, len: 176, dir: "v" },
   { l: 1554, t: 360, len: 176, dir: "v" },
+  // farmhouse yard (NW) — south edge split for a gate over the door spur
+  { l: 380, t: 120, len: 360, dir: "h" },
+  { l: 380, t: 374, len: 134, dir: "h" },
+  { l: 562, t: 374, len: 162, dir: "h" },
+  { l: 380, t: 120, len: 254, dir: "v" },
+  { l: 724, t: 120, len: 254, dir: "v" },
 ];
 
 export const fenceSolids = fences.map((f) =>
   f.dir === "h" ? { x: f.l, y: f.t + 4, w: f.len, h: 8 } : { x: f.l + 4, y: f.t, w: 8, h: f.len },
 );
+
+// decorative corner posts — one NW-oriented sprite (rail east+south),
+// CSS-mirrored per corner. Purely visual: the meeting rails above already
+// carry the collision, so a corner is just where two of them overlap.
+export type FenceCorner = { l: number; t: number; flipX?: boolean; flipY?: boolean };
+export const fenceCorners: FenceCorner[] = [
+  // project field (SW)
+  { l: 150, t: 740 },
+  { l: 688, t: 740, flipX: true },
+  { l: 150, t: 1124, flipY: true },
+  { l: 688, t: 1124, flipX: true, flipY: true },
+  // animal pen (NE)
+  { l: 1330, t: 360 },
+  { l: 1554, t: 360, flipX: true },
+  { l: 1330, t: 520, flipY: true },
+  { l: 1554, t: 520, flipX: true, flipY: true },
+  // farmhouse yard (NW)
+  { l: 380, t: 120 },
+  { l: 724, t: 120, flipX: true },
+  { l: 380, t: 374, flipY: true },
+  { l: 724, t: 374, flipX: true, flipY: true },
+];
+
+// decorative gate overlays dropped over an open gap in a fence run — the gap
+// itself still carries no collision (same as before), this just makes it
+// read as a gate instead of a bare hole in the rail.
+export type FenceGate = { l: number; t: number; w: number };
+export const fenceGates: FenceGate[] = [
+  { l: 416, t: 740, w: 48 }, // project field entrance
+  { l: 514, t: 374, w: 48 }, // farmhouse yard entrance
+];
 
 export const solids = [
   { x: 452, y: 250, w: 180, h: 78 }, // house walls
