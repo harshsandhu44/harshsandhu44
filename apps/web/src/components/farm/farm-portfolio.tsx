@@ -12,6 +12,10 @@
 // positional data; repeated visual treatments and every `style-hover` live in
 // farm.module.css. Real content comes from ./data; the crawlable version of it
 // is <PortfolioFallback/>, rendered alongside this on the page.
+//
+// ponytail: no ambient audio (footsteps/birds/music) — the source asset pack
+// (Farm RPG - Tiny Asset Pack) has zero audio files, so this needs a licensed
+// audio source picked first. Add when one's chosen.
 
 import React from "react";
 import styles from "./farm.module.css";
@@ -138,6 +142,10 @@ const SCATTER: World[] = [
   { l: 812, t: 500, w: 32, h: 32, bg: "url(sprites/seasons.png) -352px 0/704px 384px" },
   { l: 1840, t: 400, w: 32, h: 32, bg: "url(sprites/seasons.png) -384px 0/704px 384px" },
   { l: 250, t: 1150, w: 32, h: 32, bg: "url(sprites/seasons.png) -416px 0/704px 384px" },
+  { l: 210, t: 460, w: 32, h: 32, bg: "url(sprites/seasons.png) 0 0/704px 384px" },
+  { l: 850, t: 200, w: 32, h: 32, bg: "url(sprites/seasons.png) -96px 0/704px 384px" },
+  { l: 1700, t: 250, w: 32, h: 32, bg: "url(sprites/seasons.png) -288px 0/704px 384px" },
+  { l: 900, t: 1060, w: 32, h: 32, bg: "url(sprites/seasons.png) -352px 0/704px 384px" },
 ];
 
 // project plots: pen of bobbing critters + a signboard, keyed to a project
