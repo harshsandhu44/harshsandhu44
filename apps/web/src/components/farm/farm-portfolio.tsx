@@ -359,10 +359,10 @@ export class FarmPortfolio extends React.Component<object, State> {
         const sp = SPEED * dt;
         const nx = Math.max(20, Math.min(WORLD_W - 20, this.state.px + (dx / l) * sp));
         const ny = Math.max(60, Math.min(WORLD_H - 20, this.state.py + (dy / l) * sp));
-        if (!this.hit(nx, this.state.py)) {
-          up.px = nx;
-          if (dx) up.facing = dx > 0 ? 1 : -1;
-        }
+        // facing tracks held input, not move success — otherwise it goes stale
+        // while blocked (e.g. pressed against a fence and sliding along it).
+        if (dx) up.facing = dx > 0 ? 1 : -1;
+        if (!this.hit(nx, this.state.py)) up.px = nx;
         if (!this.hit(this.state.px, ny)) up.py = ny;
         moving = up.px !== undefined || up.py !== undefined;
       }
