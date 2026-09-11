@@ -700,17 +700,28 @@ export class FarmPortfolio extends React.Component<object, State> {
                 />
               ))}
 
-              {/* decorative village cottages + shopfront — backdrop only */}
+              {/* decorative village cottages + shopfront — backdrop only.
+                  z-index by the sprite's bottom edge (not DOM order) so the
+                  farmer walking north of one sorts behind its roof instead of
+                  always drawing on top of it. */}
               {cottages.map((c, i) => (
                 <img
                   key={`cot${i}`}
                   className={styles.px}
                   src={S(c.sprite)}
                   alt=""
-                  style={{ position: "absolute", left: c.l, top: c.t, width: c.w, height: c.h }}
+                  style={{
+                    position: "absolute",
+                    left: c.l,
+                    top: c.t,
+                    width: c.w,
+                    height: c.h,
+                    zIndex: c.t + c.h,
+                  }}
                 />
               ))}
-              {/* buildings — whole-image sprites from the asset pack (see data.ts) */}
+              {/* buildings — whole-image sprites from the asset pack (see
+                  data.ts). Same bottom-edge z-index trick as cottages above. */}
               {buildings.map((b) => (
                 <img
                   key={b.id}
@@ -723,6 +734,7 @@ export class FarmPortfolio extends React.Component<object, State> {
                     top: b.t,
                     width: b.w,
                     height: b.h,
+                    zIndex: b.t + b.h,
                   }}
                 />
               ))}
@@ -843,7 +855,11 @@ export class FarmPortfolio extends React.Component<object, State> {
                 );
               })}
 
-              {/* player — farmer.png sprite; frame/row from state, mirror via facing */}
+              {/* player — farmer.png sprite; frame/row from state, mirror via
+                  facing. z-index by feet position (s.py), same scale as the
+                  buildings/cottages above, so walking north of a building's
+                  base sorts the farmer behind its roof instead of always
+                  drawing on top of it. */}
               <div
                 style={{
                   position: "absolute",
@@ -854,6 +870,7 @@ export class FarmPortfolio extends React.Component<object, State> {
                   background: "rgba(0,0,0,.26)",
                   borderRadius: "50%",
                   transform: `translate3d(${Math.round(s.px - 10)}px,${Math.round(s.py - 5)}px,0)`,
+                  zIndex: s.py,
                 }}
               />
               <div
@@ -869,6 +886,7 @@ export class FarmPortfolio extends React.Component<object, State> {
                   backgroundImage: "url(/sprites/farmer.png)",
                   backgroundPosition: farmerBgPos,
                   backgroundRepeat: "no-repeat",
+                  zIndex: s.py,
                 }}
               />
             </div>
