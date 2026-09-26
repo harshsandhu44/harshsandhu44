@@ -1,0 +1,37 @@
+## The problem
+
+To simulate a circuit properly you normally install a desktop SPICE tool, and those tools are hostile to beginners. Students and hobbyists want to put a resistor next to an LED, press run, and see what happens.
+
+tinkersim is a circuit simulator in the browser. You drag components onto a canvas, wire them up, and see voltage, current, power and logic states with nothing to install. Guided lessons turn it into a learning path that schools and clubs can manage.
+
+## What I built
+
+- **A canvas editor** on React Flow with 38 components: 20 analog (from resistors to transistors, op-amps and regulators) and 18 digital (gates, flip-flops, counters, a seven-segment display). Wires route themselves around parts with an A\* router.
+- **An analog engine** that turns the drawing into a SPICE netlist, runs it on ngspice compiled to WebAssembly, and reports results in plain language. When a circuit would burn out a part, the part is flagged, and raw simulator errors become steps to fix them.
+- **A digital engine** with three-state logic, edge-triggered flip-flops and cycle detection, which re-runs a moment after every edit.
+- **An inspector** with waveform charts and a probe panel for watching up to five parts at once.
+- **38 lessons** in seven categories, each with a starter circuit, objectives and a hint, plus organisation accounts with member management and per-organisation component permissions.
+
+That was 338 commits over three months, with releases managed automatically.
+
+## Key decisions
+
+### Move the simulator off the user's tab
+
+ngspice first ran in the browser. A malformed circuit could freeze the tab or leave the engine in a dead state, so I added a pre-flight check for problems like missing power or floating pins, and reset the engine after a crash. Later I moved simulation to an authenticated server route that runs one job at a time. That took the WebAssembly out of the client bundle entirely.
+
+### Two engines side by side, not one co-simulation
+
+Each circuit is classified as analog, digital or mixed, and the right engine or engines run. Wires that cross between the two domains aren't simulated as a coupled signal. The editor warns about them instead. Coupling them properly is far harder, and learners get more from an honest warning than from a result that is quietly wrong.
+
+### Save often, write rarely
+
+Autosave hashes only the parts of a circuit that matter (not what's selected or being dragged), debounces for three seconds with a thirty-second ceiling, and saves when the tab is hidden or closed. Storage later moved to Cloudflare D1 with a server-side write limit per project.
+
+### Share links need no backend
+
+A shared circuit is compressed into the URL itself and validated when it's opened. Anyone can send a working circuit in a chat message, and a read-only embed lets teachers put one on a web page.
+
+## What's next
+
+Microcontroller support is the big one. An Arduino prototype was built and then pulled until it's solid. After that: exporting SPICE files, assignment links that fork a circuit for each student, and an assistant that explains why a circuit behaves the way it does.
