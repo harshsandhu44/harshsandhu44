@@ -1,0 +1,194 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-natural: var(--natural);
+  --font-sans: var(--font-geist-sans);
+  --font-heading: var(--font-bricolage);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+:root {
+  /* Brand */
+  --ivory: oklch(0.9285 0.0463 86.46);
+  --apricot: oklch(0.6999 0.1372 66.17);
+  --natural: oklch(0.6411 0.0454 69.22);
+  --organic: oklch(0.3702 0.0328 114.96);
+
+  /* Base */
+  --background: oklch(0.9285 0.0463 86.46);
+  --foreground: oklch(0.3702 0.0328 114.96);
+
+  /* Surfaces */
+  --card: color-mix(in oklch, var(--ivory) 88%, white);
+  --card-foreground: var(--organic);
+
+  --popover: color-mix(in oklch, var(--ivory) 92%, white);
+  --popover-foreground: var(--organic);
+
+  /* Main actions */
+  --primary: var(--organic);
+  --primary-foreground: var(--ivory);
+
+  /* Supporting surfaces */
+  --secondary: color-mix(in oklch, var(--natural) 18%, var(--ivory));
+  --secondary-foreground: var(--organic);
+
+  --muted: color-mix(in oklch, var(--natural) 13%, var(--ivory));
+  --muted-foreground: color-mix(in oklch, var(--natural) 72%, var(--organic));
+
+  /* Highlight / brand action */
+  --accent: var(--apricot);
+  --accent-foreground: var(--organic);
+
+  /* Status */
+  --destructive: oklch(0.577 0.245 27.325);
+
+  /* Controls */
+  --border: color-mix(in oklch, var(--natural) 28%, var(--ivory));
+  --input: color-mix(in oklch, var(--natural) 35%, var(--ivory));
+  --ring: var(--apricot);
+
+  /* Charts */
+  --chart-1: var(--apricot);
+  --chart-2: var(--organic);
+  --chart-3: var(--natural);
+  --chart-4: color-mix(in oklch, var(--apricot) 55%, var(--ivory));
+  --chart-5: color-mix(in oklch, var(--organic) 65%, var(--natural));
+
+  --radius: 0.875rem;
+
+  /* Sidebar */
+  --sidebar: color-mix(in oklch, var(--ivory) 95%, white);
+  --sidebar-foreground: var(--organic);
+
+  --sidebar-primary: var(--organic);
+  --sidebar-primary-foreground: var(--ivory);
+
+  --sidebar-accent: color-mix(in oklch, var(--apricot) 18%, var(--ivory));
+  --sidebar-accent-foreground: var(--organic);
+
+  --sidebar-border: color-mix(in oklch, var(--natural) 25%, var(--ivory));
+  --sidebar-ring: var(--apricot);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Base */
+    --background: var(--organic);
+    --foreground: var(--ivory);
+
+    /* Surfaces */
+    --card: color-mix(in oklch, var(--organic) 90%, var(--natural));
+    --card-foreground: var(--ivory);
+
+    --popover: color-mix(in oklch, var(--organic) 87%, var(--natural));
+    --popover-foreground: var(--ivory);
+
+    /*
+     * Apricot becomes the primary action in dark mode.
+     * Using Organic here would make the primary button camouflage
+     * itself into the background, which is technically a design.
+     */
+    --primary: var(--apricot);
+    --primary-foreground: var(--organic);
+
+    --secondary: color-mix(in oklch, var(--natural) 30%, var(--organic));
+    --secondary-foreground: var(--ivory);
+
+    --muted: color-mix(in oklch, var(--natural) 20%, var(--organic));
+    --muted-foreground: color-mix(in oklch, var(--natural) 72%, var(--ivory));
+
+    --accent: var(--apricot);
+    --accent-foreground: var(--organic);
+
+    --destructive: oklch(0.704 0.191 22.216);
+
+    --border: color-mix(in oklch, var(--natural) 35%, var(--organic));
+    --input: color-mix(in oklch, var(--natural) 42%, var(--organic));
+    --ring: var(--apricot);
+
+    /* Charts */
+    --chart-1: var(--apricot);
+    --chart-2: var(--ivory);
+    --chart-3: var(--natural);
+    --chart-4: color-mix(in oklch, var(--apricot) 65%, var(--ivory));
+    --chart-5: color-mix(in oklch, var(--natural) 65%, var(--organic));
+
+    /* Sidebar */
+    --sidebar: color-mix(in oklch, var(--organic) 92%, var(--natural));
+    --sidebar-foreground: var(--ivory);
+
+    --sidebar-primary: var(--apricot);
+    --sidebar-primary-foreground: var(--organic);
+
+    --sidebar-accent: color-mix(in oklch, var(--apricot) 14%, var(--organic));
+    --sidebar-accent-foreground: var(--ivory);
+
+    --sidebar-border: color-mix(in oklch, var(--natural) 30%, var(--organic));
+    --sidebar-ring: var(--apricot);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  html {
+    @apply font-sans;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-heading;
+  }
+}
+
+@utility link {
+  @apply underline decoration-natural/60 decoration-1 underline-offset-4 transition-colors hover:decoration-accent focus-visible:decoration-accent;
+}
