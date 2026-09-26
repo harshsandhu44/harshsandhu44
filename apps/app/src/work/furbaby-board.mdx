@@ -1,8 +1,12 @@
+<Shot n={1} />
+
 ## The problem
 
 In a house with pets, care is shared, and shared tasks get done zero times or twice. "Did anyone already feed Milo?" gets asked in the group chat every morning.
 
 furbaby board is a shared list of what's due today. You set the routine once: breakfast at 07:00, a walk at 08:30, thyroid meds at noon. Everyone in the household sees the same board, and each tick is signed with a name and a time. Care history builds up as a side effect.
+
+<Shot n={2} />
 
 ## What I built
 
@@ -15,6 +19,8 @@ furbaby board is a shared list of what's due today. You set the routine once: br
 
 ## Key decisions
 
+<Shot n={3} />
+
 ### Expand recurrence at read time
 
 Routines store a recurrence rule and a clock time, and today's list is computed on every request. Nothing needs backfilling, and because the expansion only deals in dates, 07:00 stays 07:00 across daylight-saving changes. The 14-day history replays the rule backwards, so a missed day can be told apart from a day the routine never ran, without storing anything extra.
@@ -22,6 +28,8 @@ Routines store a recurrence rule and a clock time, and today's list is computed 
 ### Let the database settle races
 
 A unique index on routine and date means that if two people tap the same item at the same moment, the second one is told who got there first. No double feeds, enforced by the database rather than by hoping the UI stays in sync.
+
+<Shot n={4} />
 
 ### One rule, every client
 

@@ -20,8 +20,11 @@ export type Product = {
   role: string;
   year: string;
   stack: string[];
-  image: string;
+  // 4 screens, in the order the hero cycles and the case study places them.
+  shots: Shot[];
 };
+
+export type Shot = { src: string; caption: string };
 
 export const products: Product[] = [
   {
@@ -33,7 +36,12 @@ export const products: Product[] = [
     role: "Solo build",
     year: "2026",
     stack: ["Next.js", "Supabase", "Drizzle", "OpenAI", "Polar", "Turborepo"],
-    image: "/work/bandzen.png",
+    shots: [
+      { src: "/work/bandzen/landing.png", caption: "Landing page" },
+      { src: "/work/bandzen/study-plan.png", caption: "Study plan dashboard" },
+      { src: "/work/bandzen/writing-feedback.png", caption: "Writing feedback" },
+      { src: "/work/bandzen/coach.png", caption: "Coach" },
+    ],
   },
   {
     slug: "tinkersim",
@@ -44,7 +52,12 @@ export const products: Product[] = [
     role: "Solo build",
     year: "2026",
     stack: ["Next.js", "React Flow", "ngspice (WebAssembly)", "Cloudflare D1", "Drizzle", "Clerk"],
-    image: "/work/tinkersim.png",
+    shots: [
+      { src: "/work/tinkersim/landing.png", caption: "Landing page" },
+      { src: "/work/tinkersim/editor.png", caption: "Editor with a running circuit" },
+      { src: "/work/tinkersim/waveforms.png", caption: "Waveform inspector" },
+      { src: "/work/tinkersim/lessons.png", caption: "Lessons" },
+    ],
   },
   {
     slug: "furbaby-board",
@@ -55,7 +68,12 @@ export const products: Product[] = [
     role: "Solo build",
     year: "2026",
     stack: ["Next.js", "Expo", "Clerk", "Neon Postgres", "Drizzle", "MCP", "Alexa"],
-    image: "/work/furbaby-board.png",
+    shots: [
+      { src: "/work/furbaby-board/landing.png", caption: "Landing page" },
+      { src: "/work/furbaby-board/board.png", caption: "Today board" },
+      { src: "/work/furbaby-board/pet.png", caption: "Pet record" },
+      { src: "/work/furbaby-board/reminders.png", caption: "Reminders and Alexa" },
+    ],
   },
 ];
 

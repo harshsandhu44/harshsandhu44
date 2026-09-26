@@ -1,8 +1,12 @@
+<Shot n={1} />
+
 ## The problem
 
 Most IELTS candidates practise a lot and still don't know why their band won't move. Reading and Listening are easy to self-mark. Writing and Speaking are where scores stall, and getting them marked against the band descriptors usually means paying a tutor and waiting.
 
 bandzen marks all four modules on demand, explains what is holding each one back, and turns that into a study plan for the day.
+
+<Shot n={2} />
 
 ## What I built
 
@@ -23,6 +27,8 @@ It went from first commit to a live, paid product in about four weeks.
 
 The browser holds no database credentials at all. One module is allowed to import the database client, and every query that touches a user's data takes the user id as its first argument. That puts the whole isolation story in a single file a reviewer can read in one sitting. Answer keys sit in their own table so a careless query can never leak them.
 
+<Shot n={3} />
+
 ### Mark what you can with code, and the rest with evidence
 
 Reading and Listening are scored by plain, tested functions. Writing is graded against the band descriptors with validated structured output, clamped to half-band steps, and runs after the response is sent so a candidate can close the tab. Speaking is graded from the audio itself, so fluency and pronunciation come from what was said rather than a transcript. Every result is labelled an estimated band.
@@ -30,6 +36,8 @@ Reading and Listening are scored by plain, tested functions. Writing is graded a
 ### Derive, don't store
 
 There are no summary tables. The study plan, trends and insights are recomputed from attempts on every read. A stored plan and the attempt behind it can drift apart. A derived one can't.
+
+<Shot n={4} />
 
 ### Access is one date comparison
 

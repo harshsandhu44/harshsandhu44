@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import { notFound } from "next/navigation";
 import { ArrowUpRight } from "lucide-react";
 import { products, site } from "@/content";
+import { CaseFrame, Shot } from "@/components/frame";
 
 export const dynamicParams = false;
 
@@ -51,20 +51,21 @@ export default async function CaseStudy({ params }: PageProps<"/work/[slug]">) {
         </div>
       </dl>
 
-      <div className="relative mt-12 aspect-[16/9] overflow-hidden rounded-lg border bg-muted">
-        <Image
-          src={p.image}
-          alt={`${p.name} landing page`}
-          fill
-          priority
-          sizes="(min-width: 1152px) 1088px, 100vw"
-          className="object-cover object-top"
-        />
+      <div className="mt-16 md:grid md:grid-cols-[minmax(0,65ch)_1fr] md:gap-12">
+        <article>
+          <Body
+            components={{
+              Shot: ({ n }: { n: number }) => <Shot shot={p.shots[n - 1]!} n={n} name={p.name} />,
+            }}
+          />
+        </article>
+        <div className="hidden md:block">
+          {/* Bleeds into the right margin so dense app screens stay legible. */}
+          <div className="sticky top-24 w-[calc(100%+max(0px,(100vw-72rem)/2)+0.5rem)]">
+            <CaseFrame shots={p.shots} name={p.name} />
+          </div>
+        </div>
       </div>
-
-      <article className="mt-16 max-w-[65ch]">
-        <Body />
-      </article>
 
       <p className="mt-20 border-t pt-10 text-lg">
         Want to talk about it?{" "}

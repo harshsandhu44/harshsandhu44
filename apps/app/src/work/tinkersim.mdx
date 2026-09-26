@@ -1,8 +1,12 @@
+<Shot n={1} />
+
 ## The problem
 
 To simulate a circuit properly you normally install a desktop SPICE tool, and those tools are hostile to beginners. Students and hobbyists want to put a resistor next to an LED, press run, and see what happens.
 
 tinkersim is a circuit simulator in the browser. You drag components onto a canvas, wire them up, and see voltage, current, power and logic states with nothing to install. Guided lessons turn it into a learning path that schools and clubs can manage.
+
+<Shot n={2} />
 
 ## What I built
 
@@ -15,6 +19,8 @@ tinkersim is a circuit simulator in the browser. You drag components onto a canv
 That was 338 commits over three months, with releases managed automatically.
 
 ## Key decisions
+
+<Shot n={3} />
 
 ### Move the simulator off the user's tab
 
@@ -31,6 +37,8 @@ Autosave hashes only the parts of a circuit that matter (not what's selected or 
 ### Share links need no backend
 
 A shared circuit is compressed into the URL itself and validated when it's opened. Anyone can send a working circuit in a chat message, and a read-only embed lets teachers put one on a web page.
+
+<Shot n={4} />
 
 ## What's next
 
