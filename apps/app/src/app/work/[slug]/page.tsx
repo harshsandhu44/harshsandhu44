@@ -51,7 +51,7 @@ export default async function CaseStudy({ params }: PageProps<"/work/[slug]">) {
         </div>
       </dl>
 
-      <div className="mt-16 md:grid md:grid-cols-[minmax(0,65ch)_1fr] md:gap-12">
+      <div className="mt-16 xl:grid xl:grid-cols-[minmax(0,65ch)_1fr] xl:gap-12">
         <article>
           <Body
             components={{
@@ -59,7 +59,7 @@ export default async function CaseStudy({ params }: PageProps<"/work/[slug]">) {
             }}
           />
         </article>
-        <div className="hidden md:block">
+        <div className="hidden xl:block">
           {/* Bleeds into the right margin so dense app screens stay legible. */}
           <div className="sticky top-24 w-[calc(100%+max(0px,(100vw-72rem)/2)+0.5rem)]">
             <CaseFrame shots={p.shots} name={p.name} />

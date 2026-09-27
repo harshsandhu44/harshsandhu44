@@ -111,14 +111,14 @@ export function Deck({
 // on desktop it's an invisible marker that CaseFrame watches.
 export function Shot({ shot, n, name }: { shot: ShotData; n: number; name: string }) {
   return (
-    <figure data-shot={n} className="my-10 md:my-0 md:h-px">
+    <figure data-shot={n} className="my-10 xl:my-0 xl:h-px">
       <MotionConfig reducedMotion="user">
         <motion.div
           initial={{ opacity: 0, y: 32, rotate: n % 2 ? -1.5 : 1.5 }}
           whileInView={{ opacity: 1, y: 0, rotate: 0 }}
           viewport={{ once: true, amount: 0.4 }}
           transition={spring}
-          className={`relative aspect-[16/9] md:hidden ${card}`}
+          className={`relative aspect-[16/9] xl:hidden ${card}`}
         >
           <Image
             src={shot.src}
@@ -129,7 +129,7 @@ export function Shot({ shot, n, name }: { shot: ShotData; n: number; name: strin
           />
         </motion.div>
       </MotionConfig>
-      <figcaption className="mt-3 text-sm text-muted-foreground md:hidden">
+      <figcaption className="mt-3 text-sm text-muted-foreground xl:hidden">
         {shot.caption}
       </figcaption>
     </figure>
