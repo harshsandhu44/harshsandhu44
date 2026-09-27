@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Bricolage_Grotesque, Geist } from "next/font/google";
 import { site } from "@/content";
+import { Rail } from "@/components/rail";
 import "./globals.css";
 
 const geist = Geist({
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             Email me
           </a>
         </header>
+        <Rail />
         {children}
       </body>
     </html>
