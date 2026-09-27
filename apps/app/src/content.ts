@@ -8,7 +8,7 @@ export const site = {
   url: "https://harshsandhu.com",
   email: "me@harshsandhu.com",
   description:
-    "Product engineer with five years of experience. I take ideas from first sketch through architecture, launch and iteration.",
+    "Product engineer with six years of experience. I take ideas from first sketch through architecture, launch and iteration.",
 };
 
 export type Product = {
