@@ -62,7 +62,7 @@ export function Hero() {
   };
 
   return (
-    <section className="grid items-center gap-10 pt-10 pb-20 md:grid-cols-[6fr_5fr] md:pt-16">
+    <section className="grid items-center gap-10 pt-10 pb-20 lg:grid-cols-[6fr_5fr] md:pt-16">
       <div>
         <h1 className="text-4xl leading-[1.1] font-semibold tracking-tight text-balance sm:text-5xl lg:text-[3.5rem]">
           I build products end to end. Right now:{" "}
@@ -96,7 +96,7 @@ export function Hero() {
       </div>
 
       <figure>
-        <Deck shots={all} active={i} dir={dir} sizes="(min-width: 768px) 45vw, 100vw" />
+        <Deck shots={all} active={i} dir={dir} sizes="(min-width: 1024px) 45vw, 100vw" />
         <figcaption className="mt-4 flex items-center justify-between gap-4 text-sm text-muted-foreground">
           <span>
             {shot.name}: {shot.caption}
