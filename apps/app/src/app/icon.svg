@@ -1,0 +1,6 @@
+<!-- ponytail: 16-unit grid, integer coords so it stays pixel-crisp at 16/32px. Hex = globals.css brand tokens. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <rect width="16" height="16" rx="3" fill="#3f422e"/>
+  <rect x="3" y="3" width="10" height="6" fill="#f5e6c5"/>
+  <rect x="3" y="11" width="10" height="2" fill="#d78b30"/>
+</svg>
