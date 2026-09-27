@@ -197,6 +197,12 @@
   }
 }
 
+/* Set by CrosshairCursor. Unlayered so it beats cursor: pointer in base and utilities. */
+html[data-xh],
+html[data-xh] * {
+  cursor: none;
+}
+
 @utility link {
   @apply underline decoration-natural/60 decoration-1 underline-offset-4 transition-colors hover:decoration-accent focus-visible:decoration-accent;
 }

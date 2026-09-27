@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Bricolage_Grotesque, Geist } from "next/font/google";
 import { site } from "@/content";
+import { CrosshairCursor } from "@/components/crosshair-cursor";
 import { Rail } from "@/components/rail";
 import "./globals.css";
 
@@ -36,6 +37,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           </a>
         </header>
         <Rail />
+        <CrosshairCursor />
         {children}
       </body>
     </html>
