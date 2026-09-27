@@ -109,7 +109,7 @@ export const stack = [
 
 export const socials = [
   { name: "GitHub", url: "https://github.com/harshsandhu44" },
-  { name: "LinkedIn", url: "https://www.linkedin.com/in/harshsandhu44" },
+  { name: "LinkedIn", url: "https://www.linkedin.com/in/harshsandhu95" },
   { name: "X", url: "https://x.com/harshsandhu44" },
 ];
 

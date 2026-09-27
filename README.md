@@ -77,7 +77,7 @@ pac0 eating my own contribution graph, regenerated daily:
 |          |                                                               |
 | -------- | ------------------------------------------------------------- |
 | GitHub   | [harshsandhu44](https://github.com/harshsandhu44)             |
-| LinkedIn | [in/harshsandhu44](https://www.linkedin.com/in/harshsandhu44) |
+| LinkedIn | [in/harshsandhu95](https://www.linkedin.com/in/harshsandhu95) |
 | X        | [@harshsandhu44](https://x.com/harshsandhu44)                 |
 | Email    | [say hello](mailto:me@harshsandhu.com)                        |
 
