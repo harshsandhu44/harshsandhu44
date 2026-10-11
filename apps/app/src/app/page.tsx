@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { Hero } from "@/components/hero";
-import { experience, howIWork, offTheClock, products, site, socials, stack } from "@/content";
+import { experience, howIWork, offTheClock, products, site, socials, stack, tools } from "@/content";
 
 export default function Home() {
   return (
@@ -35,6 +35,28 @@ export default function Home() {
           ))}
         </ul>
       </section>
+
+      {tools.length > 0 && (
+        <section aria-labelledby="smaller" className="border-t py-16">
+          <h2 id="smaller" className="text-2xl font-semibold">
+            Smaller things
+          </h2>
+          <ul className="mt-8 space-y-8">
+            {tools.map((t) => (
+              <li key={t.name} className="grid gap-1 md:grid-cols-[1fr_2fr] md:gap-8">
+                <h3 className="text-lg font-semibold">{t.name}</h3>
+                <div className="max-w-[65ch]">
+                  <p className="leading-relaxed">{t.pitch}</p>
+                  <a href={t.url} className="link mt-1 inline-flex items-center gap-1">
+                    {t.label}
+                    <ArrowUpRight aria-hidden className="size-4" />
+                  </a>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {experience.length > 0 && (
         <section aria-labelledby="experience" className="border-t py-16">

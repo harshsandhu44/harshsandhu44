@@ -24,7 +24,8 @@ export type Product = {
   shots: Shot[];
 };
 
-export type Shot = { src: string; caption: string };
+// srcLight, when set, replaces src for visitors in light mode.
+export type Shot = { src: string; srcLight?: string; caption: string };
 
 export const products: Product[] = [
   {
@@ -74,6 +75,34 @@ export const products: Product[] = [
       { src: "/work/furbaby-board/pet.png", caption: "Pet record" },
       { src: "/work/furbaby-board/reminders.png", caption: "Reminders and Alexa" },
     ],
+  },
+  {
+    slug: "pitwall",
+    name: "pitwall",
+    pitch: "A Formula 1 dashboard for live timing, race weekends and replays of every session since 2023.",
+    url: "https://f1.harshsandhu.com",
+    domain: "f1.harshsandhu.com",
+    role: "Solo build",
+    year: "2026",
+    stack: ["Next.js", "Cloudflare Workers", "Durable Objects", "D1", "OpenF1", "MapLibre"],
+    shots: [
+      { src: "/work/pitwall/home.png", srcLight: "/work/pitwall/home-light.png", caption: "Home" },
+      { src: "/work/pitwall/replay.png", srcLight: "/work/pitwall/replay-light.png", caption: "Session replay" },
+      { src: "/work/pitwall/standings.png", srcLight: "/work/pitwall/standings-light.png", caption: "Standings" },
+      { src: "/work/pitwall/calendar.png", srcLight: "/work/pitwall/calendar-light.png", caption: "Calendar" },
+    ],
+  },
+];
+
+export type Tool = { name: string; pitch: string; url: string; label: string };
+
+// Small things without a case study. The section hides itself when this is empty.
+export const tools: Tool[] = [
+  {
+    name: "muxx",
+    pitch: "A Rust CLI that opens or reattaches a tmux session for any project in one command.",
+    url: "https://github.com/harshsandhu44/muxx",
+    label: "github.com/harshsandhu44/muxx",
   },
 ];
 
