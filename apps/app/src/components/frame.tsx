@@ -16,6 +16,23 @@ const fadeOut = { duration: 0.5, ease: "easeIn" } as const;
 const card =
   "overflow-hidden rounded-xl border bg-muted shadow-[0_24px_48px_-24px_oklch(0.2_0.03_115/0.45)]";
 
+// A screenshot, swapped for its light version in light mode when there is one.
+function ShotImage({
+  src,
+  srcLight,
+  alt,
+  className,
+  ...props
+}: { src: string; srcLight?: string; alt: string; sizes: string; priority?: boolean; className: string }) {
+  if (!srcLight) return <Image src={src} alt={alt} fill className={className} {...props} />;
+  return (
+    <>
+      <Image src={srcLight} alt={alt} fill className={`${className} dark:hidden`} {...props} />
+      <Image src={src} alt={alt} fill className={`${className} hidden dark:block`} {...props} />
+    </>
+  );
+}
+
 // Where a card rests k places from the top. k = DEPTH is the slot behind the
 // stack where cards fade in and out; k = -1 is the slot in front of it, below
 // the top card. Cards stay opaque (see-through layers turn to mud); a scrim
@@ -46,7 +63,7 @@ export function Deck({
   dir,
   sizes,
 }: {
-  shots: { src: string; alt: string }[];
+  shots: { src: string; srcLight?: string; alt: string }[];
   active: number;
   dir: -1 | 0 | 1;
   sizes: string;
@@ -87,10 +104,10 @@ export function Deck({
               className={`absolute inset-0 ${card}`}
               aria-hidden={p > 0}
             >
-              <Image
+              <ShotImage
                 src={s.src}
+                srcLight={s.srcLight}
                 alt={p === 0 ? s.alt : ""}
-                fill
                 priority={j === 0}
                 sizes={sizes}
                 className="object-cover object-top"
@@ -120,10 +137,10 @@ export function Shot({ shot, n, name }: { shot: ShotData; n: number; name: strin
           transition={spring}
           className={`relative aspect-[16/9] xl:hidden ${card}`}
         >
-          <Image
+          <ShotImage
             src={shot.src}
+            srcLight={shot.srcLight}
             alt={`${name}: ${shot.caption}`}
-            fill
             sizes="100vw"
             className="object-cover object-top"
           />
@@ -166,7 +183,7 @@ export function CaseFrame({ shots, name }: { shots: ShotData[]; name: string }) 
   return (
     <figure>
       <Deck
-        shots={shots.map((s) => ({ src: s.src, alt: `${name}: ${s.caption}` }))}
+        shots={shots.map((s) => ({ src: s.src, srcLight: s.srcLight, alt: `${name}: ${s.caption}` }))}
         active={active}
         dir={dir}
         sizes="(min-width: 1152px) 560px, 45vw"
