@@ -23,6 +23,7 @@ jobs:
       - name: Push to output branch
         run: |
           cp dist/pac0.svg /tmp/pac0.svg
+          apps=$(ls -d apps/*/)
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin
@@ -33,6 +34,12 @@ jobs:
             git rm -rf . --quiet
           fi
           cp /tmp/pac0.svg pac0.svg
+          # Vercel projects root at apps/<name>; without this each push is a failed deploy
+          for d in $apps; do
+            mkdir -p "$d"
+            echo '{ "git": { "deploymentEnabled": false } }' > "$d/vercel.json"
+            git add "$d/vercel.json"
+          done
           git add pac0.svg
           git diff --staged --quiet || git commit -m "chore: update pac0.svg [skip ci]"
           git push origin HEAD:output
