@@ -1,0 +1,10 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "packages": {
+    "apps/app": {
+      "release-type": "node",
+      "component": "app",
+      "release-as": "1.0.0"
+    }
+  }
+}
