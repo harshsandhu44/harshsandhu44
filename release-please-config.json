@@ -3,8 +3,7 @@
   "packages": {
     "apps/app": {
       "release-type": "node",
-      "component": "app",
-      "release-as": "1.0.0"
+      "component": "app"
     }
   }
 }
