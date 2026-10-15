@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/harshsandhu44/harshsandhu44/compare/app-v1.0.0...app-v1.1.0) (2026-10-15)
+
+
+### Features
+
+* **app:** redesign the site around the F1 broadcast look ([#16](https://github.com/harshsandhu44/harshsandhu44/issues/16)) ([d3cbabf](https://github.com/harshsandhu44/harshsandhu44/commit/d3cbabf949ebcb75b3cce268e1d2156d384cd3a1))
+
 ## [1.0.0](https://github.com/harshsandhu44/harshsandhu44/compare/app-v0.1.0...app-v1.0.0) (2026-10-13)
 
 
