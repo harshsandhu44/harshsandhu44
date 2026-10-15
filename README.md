@@ -1,84 +1,19 @@
-# harshsandhu44
+<a href="https://harshsandhu.com"><img src="https://harshsandhu.com/opengraph-image" alt="Harsh Sandhu, product engineer" /></a>
 
-> Harsh looks up from a half-finished CLI tool, wipes his hands, and nods at you.
+Product engineer with five years of experience. I take ideas from the first sketch through architecture, launch and iteration.
 
-I'm a Product Engineer working across full-stack product development, AI-powered applications, simulation systems, and consumer software.
+## 🏁 Starting grid
 
-My work sits at the intersection of software engineering, product thinking, user experience, and modern infrastructure. I enjoy taking products from an early idea through architecture, implementation, deployment, and iteration.
+| Pos | Product                                       | What it is                                                                      |
+| --- | --------------------------------------------- | ------------------------------------------------------------------------------- |
+| P1  | [bandzen](https://bandzen.com)                | IELTS prep that uses AI to mark writing and speaking, and plans each study day. |
+| P2  | [pitwall](https://f1.harshsandhu.com)         | Formula 1 live timing, race weekends and replays of every session since 2023.   |
+| P3  | [tinkersim](https://tinkersim.com)            | Learn electronics by building a circuit in the browser and watching it run.     |
+| P4  | [furbaby board](https://furbabyboard.com)     | A shared routine board, so each pet is fed once, not twice.                     |
+| P5  | [muxx](https://github.com/harshsandhu44/muxx) | A Rust CLI that opens or reattaches a project's tmux session in one command.    |
 
-Anything you want to know? The plots out back are all open.
+Case studies for each one are at **[harshsandhu.com](https://harshsandhu.com)**.
 
-This page is also a walkable pixel farm at **[harshsandhu.com](https://harshsandhu.com)** — the sections below follow the same map.
+![pac0 eating my contribution graph](https://raw.githubusercontent.com/harshsandhu44/harshsandhu44/refs/heads/output/pac0.svg)
 
-## 📜 The quest board
-
-**In progress**
-
-| Quest                       | Objective                         | Reward                    |
-| --------------------------- | --------------------------------- | ------------------------- |
-| Build TinkerSim             | electronics learning + simulation | a tool people learn from  |
-| Sharpen Rust                | rust and systems-oriented tooling | faster, smaller, sturdier |
-| Keep the architecture clean | clean product architecture        | changes stay cheap        |
-
-**Done**
-
-| Quest     | Objective                                  |
-| --------- | ------------------------------------------ |
-| gitpilot  | rust CLI for daily git workflow automation |
-| placehold | placeholder image and text generator       |
-| pac0      | pac-man contribution graph animation       |
-
-## 🌾 The project field
-
-| Project                                                 | Kind                              | Status                    | Stack                           |
-| ------------------------------------------------------- | --------------------------------- | ------------------------- | ------------------------------- |
-| [gitpilot](https://github.com/harshsandhu44/gitpilot)   | Rust CLI                          | Shipped                   | rust                            |
-| [placehold](https://github.com/harshsandhu44/placehold) | Developer tool                    | Shipped                   | typescript · next.js            |
-| tinkersim                                               | Electronics learning + simulation | In season · current focus | typescript · react · simulation |
-| [pac0](https://github.com/harshsandhu44/pac0)           | Generative animation              | Shipped                   | typescript · svg                |
-
-- **gitpilot** — Rust CLI for daily Git workflow automation. The chore-doer of the farm: the small repetitive motions of a working day, folded into one command.
-- **placehold** — Placeholder image and text generator for developers. Fast filler so a layout can be judged before the real content exists.
-- **tinkersim** — Electronics learning and simulation. An interactive system for building circuits and watching them behave, aimed at learning by tinkering. _(private repo — no public link yet)_
-- **pac0** — Pac-Man style contribution graph animation. A commit history, eaten one square at a time.
-
-## 🌽 The harvest
-
-pac0 eating my own contribution graph, regenerated daily:
-
-![contribution graph](https://raw.githubusercontent.com/harshsandhu44/harshsandhu44/refs/heads/output/pac0.svg)
-
-## 🧰 The chest
-
-| Tag | Item       | Qty | Notes                                           |
-| --- | ---------- | --- | ----------------------------------------------- |
-| TS  | typescript | x9  | Language · the default choice for product work. |
-| JS  | javascript | x9  | Language · everywhere, still.                   |
-| RS  | rust       | x7  | Language · systems-oriented tooling and CLIs.   |
-| NX  | next.js    | x8  | Framework · full-stack product surfaces.        |
-| RE  | react      | x9  | Framework · interactive interfaces.             |
-| TW  | tailwind   | x8  | Styling · fast, consistent UI.                  |
-| DK  | docker     | x6  | Infra · reproducible environments.              |
-| AWS | aws        | x6  | Infra · deployment and hosting.                 |
-| —   | empty      |     | Empty slot. Room for the next thing.            |
-| —   | empty      |     | Empty slot. Room for the next thing.            |
-
-## 🌳 The skill tree
-
-| Branch     | Nodes                                                   | Current focus                    |
-| ---------- | ------------------------------------------------------- | -------------------------------- |
-| PRODUCT    | product thinking, architecture, iteration               | —                                |
-| WEB        | full-stack, user experience, consumer software          | —                                |
-| SYSTEMS    | rust tooling, modern infrastructure, clean architecture | rust tooling, clean architecture |
-| SIMULATION | interactive systems, electronics sim, AI-powered apps   | electronics sim                  |
-
-## 📬 The mailbox
-
-|          |                                                               |
-| -------- | ------------------------------------------------------------- |
-| GitHub   | [harshsandhu44](https://github.com/harshsandhu44)             |
-| LinkedIn | [in/harshsandhu95](https://www.linkedin.com/in/harshsandhu95) |
-| X        | [@harshsandhu44](https://x.com/harshsandhu44)                 |
-| Email    | [say hello](mailto:me@harshsandhu.com)                        |
-
-Off the clock: formula 1 · football · astronomy · programming
+**[Email me](mailto:me@harshsandhu.com)** · [LinkedIn](https://www.linkedin.com/in/harshsandhu95) · [X](https://x.com/harshsandhu44)
