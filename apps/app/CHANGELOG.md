@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/harshsandhu44/harshsandhu44/compare/app-v1.1.0...app-v1.1.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* **app:** remove the old favicon.ico ([#19](https://github.com/harshsandhu44/harshsandhu44/issues/19)) ([0a13e94](https://github.com/harshsandhu44/harshsandhu44/commit/0a13e9492e730c4a11bea34c85abc4f0a03baba4))
+
 ## [1.1.0](https://github.com/harshsandhu44/harshsandhu44/compare/app-v1.0.0...app-v1.1.0) (2026-10-15)
 
 
