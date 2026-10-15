@@ -1,21 +1,19 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { Bricolage_Grotesque, Geist } from "next/font/google";
+import { Archivo, Hanken_Grotesk } from "next/font/google";
 import { site } from "@/content";
-import { BotAvatar } from "@/components/bot-avatar";
-import { CrosshairCursor } from "@/components/crosshair-cursor";
-import { Rail } from "@/components/rail";
 import "./globals.css";
 
-const geist = Geist({
-  variable: "--font-geist-sans",
+// Archivo is only ever set italic, at the widest point of its width axis (see `disp`).
+const archivo = Archivo({
+  variable: "--font-archivo",
   subsets: ["latin"],
+  style: "italic",
+  axes: ["wdth"],
 });
 
-const bricolage = Bricolage_Grotesque({
-  variable: "--font-bricolage",
+const hanken = Hanken_Grotesk({
+  variable: "--font-hanken",
   subsets: ["latin"],
-  axes: ["opsz"],
 });
 
 export const metadata: Metadata = {
@@ -27,21 +25,16 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${geist.variable} ${bricolage.variable} antialiased`}>
-      <body className="min-h-dvh">
-        <header className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-8">
-          <div className="flex items-center gap-2">
-            <BotAvatar type="ghost" size={32} jumpEvery={0} />
-            <Link href="/" className="font-heading text-lg font-semibold">
-              {site.name}
-            </Link>
-          </div>
-          <a href={`mailto:${site.email}`} className="link">
-            Email me
-          </a>
-        </header>
-        <Rail />
-        <CrosshairCursor />
+    <html lang="en" className={`${archivo.variable} ${hanken.variable}`}>
+      <body className="bg-ink font-sans text-lg leading-normal">
+        {/* The hero starts hidden for its GSAP intro (globals.css); without JS, show it. */}
+        <noscript>
+          <style>
+            {
+              "[data-hero-word],[data-gantry]{transform:none!important}[data-hero-fade]{opacity:1!important}"
+            }
+          </style>
+        </noscript>
         {children}
       </body>
     </html>

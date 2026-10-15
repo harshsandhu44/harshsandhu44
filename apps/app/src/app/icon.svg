@@ -1,6 +1,8 @@
-<!-- ponytail: 16-unit grid, integer coords so it stays pixel-crisp at 16/32px. Hex = globals.css brand tokens. -->
+<!-- ponytail: start lights on a carbon tile, two rows of five like the real gantry. Hex = globals.css ink/accent. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
-  <rect width="16" height="16" rx="3" fill="#3f422e"/>
-  <rect x="3" y="3" width="10" height="6" fill="#f5e6c5"/>
-  <rect x="3" y="11" width="10" height="2" fill="#d78b30"/>
+  <rect width="16" height="16" rx="3" fill="#15151e"/>
+  <g fill="#e10600">
+    <circle cx="3.2" cy="6" r="1.1"/><circle cx="5.6" cy="6" r="1.1"/><circle cx="8" cy="6" r="1.1"/><circle cx="10.4" cy="6" r="1.1"/><circle cx="12.8" cy="6" r="1.1"/>
+    <circle cx="3.2" cy="10" r="1.1"/><circle cx="5.6" cy="10" r="1.1"/><circle cx="8" cy="10" r="1.1"/><circle cx="10.4" cy="10" r="1.1"/><circle cx="12.8" cy="10" r="1.1"/>
+  </g>
 </svg>
