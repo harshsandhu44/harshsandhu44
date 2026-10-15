@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/harshsandhu44/harshsandhu44/compare/app-v1.2.0...app-v1.2.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* **app:** speed the start-lights intro back up to 380ms steps ([#23](https://github.com/harshsandhu44/harshsandhu44/issues/23)) ([1529a31](https://github.com/harshsandhu44/harshsandhu44/commit/1529a3119c51059f546d597ad790ce9793737bcd))
+
 ## [1.2.0](https://github.com/harshsandhu44/harshsandhu44/compare/app-v1.1.1...app-v1.2.0) (2026-10-15)
 
 
