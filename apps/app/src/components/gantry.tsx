@@ -6,9 +6,13 @@ type Phase = "idle" | "intro" | "arming" | "go" | "jump" | "slow" | "result";
 
 const now = () => performance.now();
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+// Like F1: reds come on a second apart, then all go out together after an unannounced pause.
+// ponytail: the FIA doesn't publish the range; 0.2–3 s is the commonly quoted one.
+const STEP = 1000;
+const hold = () => 5 * STEP + 200 + Math.random() * 2800;
 
 // F1 start lights between the two halves of the name. On load they run once as an intro; a tap
-// starts a reaction test: five lights at one-second steps, a random hold, then lights out.
+// starts a reaction test with the same timing.
 export function Gantry() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [lit, setLit] = useState(0);
@@ -29,15 +33,12 @@ export function Gantry() {
   useEffect(() => {
     const t = timers.current;
     t.push(window.setTimeout(() => setPhase("intro"), 900));
-    for (let n = 1; n <= 5; n++) t.push(window.setTimeout(() => setLit(n), 900 + n * 380));
+    for (let n = 1; n <= 5; n++) t.push(window.setTimeout(() => setLit(n), 900 + n * STEP));
     t.push(
-      window.setTimeout(
-        () => {
-          setPhase("idle");
-          setLit(0);
-        },
-        900 + 5 * 380 + 800,
-      ),
+      window.setTimeout(() => {
+        setPhase("idle");
+        setLit(0);
+      }, 900 + hold()),
     );
     return () => t.forEach(clearTimeout);
   }, []);
@@ -50,14 +51,14 @@ export function Gantry() {
       later(() => {
         setLit(n);
         buzz(35);
-      }, n * 1000);
-    const hold = 5300 + Math.random() * 2700;
+      }, n * STEP);
+    const out = hold();
     later(() => {
       goAt.current = now();
       setPhase("go");
       setLit(0);
-    }, hold);
-    later(() => setPhase((p) => (p === "go" ? "slow" : p)), hold + 3000);
+    }, out);
+    later(() => setPhase((p) => (p === "go" ? "slow" : p)), out + 3000);
   };
 
   const tap = () => {
