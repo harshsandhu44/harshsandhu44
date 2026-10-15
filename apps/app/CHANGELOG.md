@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/harshsandhu44/harshsandhu44/compare/app-v1.1.1...app-v1.2.0) (2026-10-15)
+
+
+### Features
+
+* **app:** time the hero start lights like a real F1 start ([#21](https://github.com/harshsandhu44/harshsandhu44/issues/21)) ([85dab40](https://github.com/harshsandhu44/harshsandhu44/commit/85dab40d4d96d79a45adbb7e15a4d7b2ac730980))
+
 ## [1.1.1](https://github.com/harshsandhu44/harshsandhu44/compare/app-v1.1.0...app-v1.1.1) (2026-10-15)
 
 
