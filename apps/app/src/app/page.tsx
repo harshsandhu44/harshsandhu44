@@ -13,6 +13,7 @@ import {
   stack,
   tools,
 } from "@/content";
+import { Blueprint } from "@/components/blueprint";
 import { Gantry } from "@/components/gantry";
 import { Menu } from "@/components/menu";
 import { Motion } from "@/components/motion";
@@ -29,6 +30,9 @@ import {
   skip,
 } from "@/components/ui";
 import { Work, type WorkItem } from "@/components/work";
+
+// The GitHub section refreshes hourly.
+export const revalidate = 3600;
 
 const navLink = "py-3 no-underline decoration-2 underline-offset-[6px] hover:underline";
 const section = "py-[104px] md:py-32 lg:py-[168px]";
@@ -315,6 +319,8 @@ export default function Home() {
             />
           </div>
         </section>
+
+        <Blueprint />
 
         <section id="contact" aria-labelledby="contact-h" data-section>
           <div

@@ -24,6 +24,7 @@
   --color-pill: #f0f0f2;
   --color-go: #1f9d55;
   --color-fl: #b86bff;
+  --color-print: #1747d6;
 
   --font-sans: var(--font-hanken), system-ui, sans-serif;
   --font-display: var(--font-archivo), system-ui, sans-serif;
@@ -133,6 +134,21 @@
   @media (width >= 1024px) {
     column-gap: 24px;
   }
+}
+
+/* Blueprint paper: a fine 24px grid under a heavier 120px one. */
+@utility blueprint {
+  background-color: var(--color-print);
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.14) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.14) 1px, transparent 1px),
+    linear-gradient(rgb(255 255 255 / 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.06) 1px, transparent 1px);
+  background-size:
+    120px 120px,
+    120px 120px,
+    24px 24px,
+    24px 24px;
 }
 
 /* Light text on carbon: buttons, ghost buttons and focus rings read these. */
