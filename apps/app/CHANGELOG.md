@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/harshsandhu44/harshsandhu44/compare/app-v1.2.1...app-v1.3.0) (2026-10-16)
+
+
+### Features
+
+* **app:** replace the start-lights favicon with an H monogram ([#26](https://github.com/harshsandhu44/harshsandhu44/issues/26)) ([828844a](https://github.com/harshsandhu44/harshsandhu44/commit/828844af8057482d3f03e9db1b5a6b06620f6031))
+
 ## [1.2.1](https://github.com/harshsandhu44/harshsandhu44/compare/app-v1.2.0...app-v1.2.1) (2026-10-15)
 
 
