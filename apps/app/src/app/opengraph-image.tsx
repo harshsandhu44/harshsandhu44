@@ -1,29 +1,18 @@
 import { ImageResponse } from "next/og";
 import { site } from "@/content";
+import { googleFont } from "@/google-font";
 
 export const alt = `${site.name}, ${site.role}`;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
-
-// Satori needs a static TTF: Google Fonts serves one instance per family/axes/text request.
-async function font(family: string, text: string) {
-  const css = await (
-    await fetch(
-      `https://fonts.googleapis.com/css2?family=${family}&text=${encodeURIComponent(text)}`,
-    )
-  ).text();
-  const url = css.match(/src: url\((.+?)\) format\('truetype'\)/)?.[1];
-  if (!url) throw new Error(`No TTF for ${family}`);
-  return (await fetch(url)).arrayBuffer();
-}
 
 const SQ = 40; // chequer square, px
 
 // Carbon card with the footer's chequered flag and the display wordmark. Hex = globals.css tokens.
 export default async function OpengraphImage() {
   const [archivo, hanken] = await Promise.all([
-    font("Archivo:ital,wdth,wght@1,125,800", site.name),
-    font("Hanken+Grotesk:wght@500", site.role),
+    googleFont("Archivo:ital,wdth,wght@1,125,800", site.name),
+    googleFont("Hanken+Grotesk:wght@500", site.role),
   ]);
   const row = (offset: number) => (
     <div style={{ display: "flex" }}>
