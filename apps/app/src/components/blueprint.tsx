@@ -1,5 +1,3 @@
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import Image from "next/image";
 import { getGarage, handle, type Day, type Garage, type Level } from "@/github";
 
@@ -19,19 +17,22 @@ export async function Blueprint() {
       id="telemetry"
       aria-labelledby="telemetry-h"
       data-section
-      className="blueprint grid-12 gap-y-4 py-[72px] text-white md:gap-y-5 md:py-24 lg:gap-y-6"
+      className="blueprint grid-12 gap-y-4 py-[72px] text-white md:gap-y-5 md:py-24 lg:h-svh lg:min-h-[680px] lg:grid-rows-[auto_minmax(0,1fr)_auto_auto] lg:gap-y-4 lg:py-6"
     >
       <header
         data-rise
-        className={`${panel} col-span-full grid gap-5 p-4 md:row-start-1 md:grid-cols-[1fr_auto] md:items-end md:p-6 lg:grid-cols-[auto_1fr_auto] lg:gap-10`}
+        className={`${panel} col-span-full grid gap-5 p-4 md:row-start-1 md:grid-cols-[1fr_auto] md:items-end md:p-6 lg:grid-cols-[auto_1fr_auto] lg:gap-10 lg:p-4`}
       >
         <div>
-          <h2 id="telemetry-h" className="disp text-[clamp(34px,4.4vw,64px)] leading-none">
+          <h2
+            id="telemetry-h"
+            className="disp text-[clamp(34px,4.4vw,64px)] leading-none lg:text-[clamp(36px,3vw,52px)]"
+          >
             Built lap by lap
           </h2>
           <a
             href={`https://github.com/${handle}`}
-            className="mt-3 inline-block font-mono text-lg underline-offset-4 hover:underline"
+            className="mt-3 inline-block font-mono text-lg underline-offset-4 hover:underline lg:mt-1.5"
           >
             @{handle}
           </a>
@@ -55,21 +56,21 @@ export async function Blueprint() {
 
       <View
         name="front"
-        className="hidden aspect-[4/3] md:col-span-6 md:row-start-2 md:flex lg:col-span-3"
+        className="hidden aspect-[4/3] md:col-span-6 md:row-start-2 md:flex lg:col-span-3 lg:aspect-auto lg:min-h-0"
       />
       <View
         name="side"
-        className="col-span-full aspect-[16/6] md:row-start-3 lg:col-[4/span_6] lg:row-start-2"
+        className="col-span-full aspect-[16/6] md:row-start-3 lg:col-[4/span_6] lg:row-start-2 lg:aspect-auto lg:min-h-0"
       />
       <View
         name="rear"
-        className="hidden aspect-[4/3] md:col-[7/-1] md:row-start-2 md:flex lg:col-[10/-1]"
+        className="hidden aspect-[4/3] md:col-[7/-1] md:row-start-2 md:flex lg:col-[10/-1] lg:aspect-auto lg:min-h-0"
       />
 
       <Gauges g={g} />
       <View
         name="top"
-        className="col-span-full aspect-[16/8] md:row-start-5 lg:col-[4/span_6] lg:row-start-3"
+        className="col-span-full aspect-[16/8] md:row-start-5 lg:col-[4/span_6] lg:row-start-3 lg:aspect-auto lg:min-h-0"
       />
       <Telemetry g={g} />
       <Languages g={g} />
@@ -78,28 +79,21 @@ export async function Blueprint() {
   );
 }
 
-// A car view the owner supplies at public/blueprint/<name>.svg (or .png). Until it exists, the
-// frame and its caption still draw.
+// One drawing of the car from public/blueprint, scaled to fit its frame and wiped in on scroll.
+// Static files rather than inline SVG: the paths are about 190KB, which would otherwise ship in
+// both the HTML and the RSC payload. next/image lazy-loads them; SVGs skip the optimiser.
 function View({ name, className }: { name: string; className: string }) {
-  const file = ["svg", "png"]
-    .map((ext) => `/blueprint/${name}.${ext}`)
-    .find((src) => existsSync(join(process.cwd(), "public", src)));
   return (
     <figure data-rise className={`relative flex flex-col ${className}`}>
-      <div
-        data-shutter="scroll"
-        className={`relative flex-1 overflow-hidden ${file ? "" : "border border-dashed border-white/40"}`}
-      >
-        {file && (
-          <Image
-            data-zoom
-            src={file}
-            alt=""
-            fill
-            unoptimized
-            className="object-contain"
-          />
-        )}
+      <div data-shutter="scroll" className="relative min-h-0 flex-1 overflow-hidden">
+        <Image
+          data-zoom
+          src={`/blueprint/${name}.svg`}
+          alt=""
+          fill
+          unoptimized
+          className="object-contain"
+        />
       </div>
       <figcaption className={`${label} mt-2`}>{name} view</figcaption>
     </figure>
@@ -119,15 +113,17 @@ function Gauges({ g }: { g: Garage }) {
     },
   ];
   return (
-    <ul className="col-span-full grid grid-cols-2 gap-3 md:col-span-6 md:row-start-4 md:grid-cols-1 lg:col-span-3 lg:row-start-3">
+    <ul className="col-span-full grid grid-cols-2 gap-3 md:col-span-6 md:row-start-4 md:grid-cols-1 lg:col-span-3 lg:row-start-3 lg:grid-cols-2">
       {rows.map((r) => (
-        <li key={r.part} data-rise className={`${panel} p-3 md:p-4`}>
+        <li key={r.part} data-rise className={`${panel} p-3 md:p-4 lg:p-3`}>
           <p className={label}>
             {r.part}
             <span className="block text-white/75">{r.what}</span>
           </p>
-          <p className="mt-2 flex flex-wrap items-baseline gap-x-2">
-            <span className="disp text-[clamp(36px,4vw,56px)] tabular-nums">{r.n}</span>
+          <p className="mt-2 flex flex-wrap items-baseline gap-x-2 lg:mt-1">
+            <span className="disp text-[clamp(36px,4vw,56px)] tabular-nums lg:text-[clamp(28px,2.2vw,40px)]">
+              {r.n}
+            </span>
             <span className={`${label} text-white/75`}>{r.unit}</span>
           </p>
         </li>
@@ -158,7 +154,7 @@ function Telemetry({ g }: { g: Garage }) {
   return (
     <div
       data-rise
-      className={`${panel} col-span-full min-w-0 p-4 md:row-start-6 md:p-5 lg:col-span-7 lg:row-start-4`}
+      className={`${panel} col-span-full min-w-0 p-4 md:row-start-6 md:p-5 lg:col-span-7 lg:p-4 lg:row-start-4`}
     >
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
         <h3 className={label}>Contribution telemetry</h3>
@@ -167,7 +163,7 @@ function Telemetry({ g }: { g: Garage }) {
           the last year
         </p>
       </div>
-      <div className="mt-4 flex gap-2">
+      <div className="mt-4 flex gap-2 lg:mt-3">
         <div
           aria-hidden
           className={`${label} grid grid-rows-[16px_repeat(7,11px)] gap-[3px] text-[10px] leading-[11px]`}
@@ -205,7 +201,7 @@ function Telemetry({ g }: { g: Garage }) {
           </div>
         </div>
       </div>
-      <p aria-hidden className={`${label} mt-4 flex items-center gap-[3px] text-[11px]`}>
+      <p aria-hidden className={`${label} mt-4 flex items-center lg:mt-3 gap-[3px] text-[11px]`}>
         <span className="mr-2">Less</span>
         {Object.values(levels).map((c) => (
           <span key={c} className={`${cell} ${c}`} />
@@ -222,10 +218,10 @@ function Languages({ g }: { g: Garage }) {
   return (
     <div
       data-rise
-      className={`${panel} col-span-full p-4 md:row-start-7 md:p-5 lg:col-[8/-1] lg:row-start-4`}
+      className={`${panel} col-span-full p-4 md:row-start-7 md:p-5 lg:col-[8/-1] lg:p-4 lg:row-start-4`}
     >
       <h3 className={label}>Primary language mix</h3>
-      <div className="mt-4 flex h-7 border border-white/70" aria-hidden>
+      <div className="mt-4 flex h-7 lg:mt-3 border border-white/70" aria-hidden>
         {g.languages.map((l, i) => (
           <span
             key={l.name}
@@ -237,7 +233,7 @@ function Languages({ g }: { g: Garage }) {
           />
         ))}
       </div>
-      <ul className="mt-4 grid grid-cols-3 gap-x-4 gap-y-3 md:grid-cols-5">
+      <ul className="mt-4 grid lg:mt-3 grid-cols-3 gap-x-4 gap-y-3 md:grid-cols-5">
         {g.languages.map((l) => (
           <li key={l.name}>
             <span className={`${label} block truncate`}>{l.name}</span>
@@ -266,10 +262,15 @@ function Specs({ g }: { g: Garage }) {
       data-rise
       className={`${panel} col-span-full md:col-[7/-1] md:row-start-4 lg:col-[10/-1] lg:row-start-3`}
     >
-      <h3 className={`${label} border-b border-white/70 p-3 md:p-4`}>Vehicle specifications</h3>
+      <h3 className={`${label} border-b border-white/70 p-3 md:p-4 lg:p-3`}>
+        Vehicle specifications
+      </h3>
       <dl className="grid grid-cols-[auto_1fr] text-[15px]">
         {rows.map(([k, v]) => (
-          <div key={k} className="col-span-full grid grid-cols-subgrid gap-4 px-3 py-2.5 md:px-4">
+          <div
+            key={k}
+            className="col-span-full grid grid-cols-subgrid gap-4 px-3 py-2.5 md:px-4 lg:py-1.5"
+          >
             <dt className={label}>{k}</dt>
             <dd className="text-right font-mono">{v}</dd>
           </div>

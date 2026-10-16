@@ -5,12 +5,13 @@
 export const handle = "harshsandhu44";
 
 export type Level =
-  | "NONE"
-  | "FIRST_QUARTILE"
-  | "SECOND_QUARTILE"
-  | "THIRD_QUARTILE"
-  | "FOURTH_QUARTILE";
-export type Day = { date: string; contributionCount: number; contributionLevel: Level; weekday: number };
+  "NONE" | "FIRST_QUARTILE" | "SECOND_QUARTILE" | "THIRD_QUARTILE" | "FOURTH_QUARTILE";
+export type Day = {
+  date: string;
+  contributionCount: number;
+  contributionLevel: Level;
+  weekday: number;
+};
 type Repo = { languages: { edges: { size: number; node: { name: string } }[] } };
 
 const query = `query($login: String!) {
@@ -105,11 +106,14 @@ export function busiestWeekday(days: Pick<Day, "weekday" | "contributionCount">[
 export function languageMix(repos: Repo[]) {
   const bytes = new Map<string, number>();
   for (const r of repos)
-    for (const e of r.languages.edges) bytes.set(e.node.name, (bytes.get(e.node.name) ?? 0) + e.size);
+    for (const e of r.languages.edges)
+      bytes.set(e.node.name, (bytes.get(e.node.name) ?? 0) + e.size);
   const total = [...bytes.values()].reduce((a, b) => a + b, 0);
   if (!total) return [];
   const sorted = [...bytes].sort((a, b) => b[1] - a[1]);
-  const rows = sorted.slice(0, 4).map(([name, size]) => ({ name, pct: Math.round((size / total) * 100) }));
+  const rows = sorted
+    .slice(0, 4)
+    .map(([name, size]) => ({ name, pct: Math.round((size / total) * 100) }));
   const rest = 100 - rows.reduce((a, r) => a + r.pct, 0);
   if (sorted.length > 4 && rest > 0) rows.push({ name: "Other", pct: rest });
   else rows[0]!.pct += rest;
