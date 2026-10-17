@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useRef, useState } from "react";
+
+// A clean start unlocks a lap of Monza. Loaded on first open so it stays out of the hero bundle.
+const Drive = lazy(() => import("./drive"));
 
 type Phase = "idle" | "intro" | "arming" | "go" | "jump" | "slow" | "result";
 
@@ -20,6 +23,7 @@ export function Gantry() {
   const [lit, setLit] = useState(0);
   const [ms, setMs] = useState(0);
   const [best, setBest] = useState(0);
+  const [driving, setDriving] = useState(false);
   const timers = useRef<number[]>([]);
   const goAt = useRef(0);
 
@@ -115,7 +119,21 @@ export function Gantry() {
         className="mt-2.5 text-center font-sans text-[15px] leading-[1.4] font-normal tracking-normal text-soft not-italic tabular-nums [font-stretch:100%] short:mt-2 short:text-sm md:absolute md:top-[calc(100%+20px)] md:left-1/2 md:mt-0 md:-translate-x-1/2 md:text-base md:whitespace-nowrap"
       >
         {caption}
+        {phase === "result" && (
+          <button
+            type="button"
+            onClick={() => setDriving(true)}
+            className="ml-2 font-semibold text-paper underline underline-offset-4 hover:decoration-[3px]"
+          >
+            Drive it
+          </button>
+        )}
       </span>
+      {driving && (
+        <Suspense>
+          <Drive reaction={ms} onClose={() => setDriving(false)} />
+        </Suspense>
+      )}
     </div>
   );
 }
