@@ -5,6 +5,7 @@ import type { Scene } from "@/scene";
 import {
   LAPS,
   TEAMS,
+  TYRES,
   gap,
   grip,
   gridSlot,
@@ -14,6 +15,7 @@ import {
   tick,
   wrongWay,
   type Race,
+  type Tyre,
 } from "@/race";
 import { LENGTH, PATH, TOP, atDist, fmt, gear, limitAt, nextCorner } from "@/track";
 
@@ -56,6 +58,19 @@ const write = (key: string, value: unknown) => {
 };
 
 const zero = { transform: "scaleX(0)" };
+// Pirelli's colours: red softs, yellow mediums, white hards. In key order, 1 to 3.
+const COMPOUNDS: Tyre[] = ["soft", "medium", "hard"];
+const TYRE_INK: Record<Tyre, string> = {
+  soft: "text-accent",
+  medium: "text-slow",
+  hard: "text-paper",
+};
+const BLURB: Record<Tyre, string> = {
+  soft: "2 to 3 laps",
+  medium: "About 4 laps",
+  hard: "All race, slower",
+};
+const letter = (t: Tyre) => t[0]!.toUpperCase();
 const panel = "rounded-lg bg-ink/85 text-paper tabular-nums";
 const label = "text-sm text-soft";
 const sector = "rounded-sm bg-lamp px-1.5 py-0.5 text-sm text-soft md:px-2 md:text-[15px]";
@@ -81,6 +96,14 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
   const [sound, setSound] = useState(() => read(SOUND, false));
   const engine = useRef<Engine | null>(null);
   const again = useRef<() => void>(() => {});
+  // The grid screen's pick, and what it and the pit lane's chips call into the race.
+  const [grid, setGrid] = useState(true);
+  const [tyre, setTyre] = useState<Tyre>("medium");
+  const go = useRef<(t: Tyre) => void>(() => {});
+  const fit = useRef<(t: Tyre) => void>(() => {});
+  const fitWrap = useRef<HTMLDivElement>(null);
+  const fitEls = useRef<HTMLButtonElement[]>([]);
+  const tyreName = useRef<HTMLSpanElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const map = useRef<HTMLCanvasElement>(null);
@@ -147,10 +170,11 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     const bestSectors: number[] = read(SECTORS, [0, 0, 0]);
     bestEl.current!.textContent = best ? fmt(best) : DASH;
 
-    // The race runs through these phases. The lights come on a second apart once the flyover
-    // ends (or is skipped), then go out after an unannounced pause, as in the hero.
+    // The race runs through these phases. The grid screen waits for your tyres (the flyover
+    // plays behind it), then the lights come on a second apart and go out after an unannounced
+    // pause, as in the hero.
     let race: Race;
-    let phase: "intro" | "lights" | "racing" = "intro";
+    let phase: "grid" | "lights" | "racing" = "grid";
     let phaseAt = 0;
     let pause = 0;
     let thr = 0;
@@ -180,8 +204,11 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     d.addEventListener(
       "keydown",
       (e) => {
+        const pick = COMPOUNDS[+e.key - 1];
+        if (pick && phase === "grid") setTyre(pick);
+        else if (pick) fit.current(pick);
         const k = key(e);
-        if (!k) return;
+        if (!k || phase === "grid") return;
         e.preventDefault();
         keys.add(k);
         touch = false;
@@ -235,9 +262,11 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       posEl.current!.textContent = `P${at + 1}`;
       run.forEach((r, k) => {
         const row = towerEls.current[k]!;
-        const [sw, code, fl, pen, g] = row.children as unknown as HTMLElement[];
+        const [sw, code, tyre, fl, pen, g] = row.children as unknown as HTMLElement[];
         sw!.style.background = colorOf(r.team);
         code!.textContent = TEAMS[r.team]!.code;
+        tyre!.textContent = letter(r.tyre);
+        tyre!.className = `text-xs font-semibold ${TYRE_INK[r.tyre]}`;
         fl!.hidden = race.fastest?.team !== r.team;
         pen!.hidden = !r.penalty;
         pen!.textContent = `+${r.penalty / 1000}s`;
@@ -253,10 +282,10 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
         .join("  ·  ");
     };
 
-    const start = (t: number, intro: boolean) => {
+    const start = () => {
       race = newRace(gridSlot(reaction));
-      phase = intro ? "intro" : "lights";
-      phaseAt = t;
+      phase = "grid";
+      setGrid(true);
       pause = 200 + Math.random() * 2800;
       for (const i of [0, 1, 2]) paintSector(i, "", "");
       lastEl.current!.textContent = DASH;
@@ -266,11 +295,24 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       msgAt = -Infinity;
       drawBoard();
     };
-    start(performance.now(), true);
+    start();
     again.current = () => {
       setResult(null);
-      start(performance.now(), false);
+      start();
+    };
+    go.current = (t) => {
+      race.racers[0]!.tyre = t;
+      drawBoard();
+      scene?.skipIntro();
+      keys.clear();
+      [phase, phaseAt] = ["lights", performance.now()];
+      setGrid(false);
       d.focus();
+    };
+    // Only while there's a stop still to make on this visit.
+    fit.current = (t) => {
+      const me = race.racers[0]!;
+      if (me.pit && !me.served) me.fit = t;
     };
 
     let scene: Scene | null = null;
@@ -296,10 +338,6 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       const brake = touch ? back : keys.has("down");
       const pressing = touch ? fingers.size > 0 : gas || brake || steer !== 0;
 
-      if (phase === "intro" && (pressing || t - phaseAt > 1600)) {
-        scene!.skipIntro();
-        [phase, phaseAt] = ["lights", t];
-      }
       if (phase === "lights") {
         const lit = Math.min(5, Math.floor((t - phaseAt) / 1000));
         lampEls.current.forEach((l, i) => {
@@ -385,6 +423,21 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       tyre.classList.toggle("bg-slow", me.life <= 0.6 && me.life > 0.3);
       tyre.classList.toggle("bg-accent", me.life <= 0.3);
       tyreText.current!.textContent = `${Math.round(me.life * 100)}%`;
+      const name = tyreName.current!;
+      if (name.textContent !== letter(me.tyre)) {
+        name.textContent = letter(me.tyre);
+        name.className = `w-3 font-semibold ${TYRE_INK[me.tyre]}`;
+      }
+      const fitting = me.pit && !me.served && me.finish === null;
+      fitWrap.current!.hidden = !fitting;
+      if (fitting)
+        fitEls.current.forEach((b, i) => {
+          const on = COMPOUNDS[i] === me.fit;
+          b.classList.toggle("bg-lamp", on);
+          b.classList.toggle("ring-paper", on);
+          b.classList.toggle("ring-paper/25", !on);
+          b.setAttribute("aria-pressed", String(on));
+        });
       limiterEl.current!.hidden = !me.pit;
       const banner = bannerEl.current!;
       const say = me.stop > 0 ? me.stop.toFixed(1) : wrongWay(me) ? "Wrong way" : "";
@@ -442,7 +495,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
         ro.observe(cv);
         setStatus("ready");
         last = performance.now();
-        start(last, true);
+        start();
         raf = requestAnimationFrame(frame);
       })
       .catch(() => !dead && setStatus("error"));
@@ -592,6 +645,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
               >
                 <span className="h-3 w-1 rounded-full ring-1 ring-paper/25" />
                 <span className="font-semibold" />
+                <span />
                 <span hidden title="Fastest lap" className="size-2 rounded-full bg-fl" />
                 <span hidden className="rounded-sm bg-slow px-1 text-xs font-semibold text-ink" />
                 <span className="ml-auto text-soft" />
@@ -679,6 +733,9 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
             <span ref={brkEl} className="mt-1 block h-1.5 origin-left bg-accent" style={zero} />
             <div className="mt-1.5 flex items-center gap-2 text-xs text-soft">
               Tyres
+              <span ref={tyreName} className="w-3 font-semibold text-slow">
+                M
+              </span>
               <span className="h-1.5 flex-1 bg-lamp">
                 <span ref={tyreEl} className="block h-full origin-left bg-go" />
               </span>
@@ -686,8 +743,70 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
                 100%
               </span>
             </div>
+            <div
+              ref={fitWrap}
+              hidden
+              className="pointer-events-auto mt-2 flex items-center gap-1.5"
+            >
+              <span className="mr-auto text-xs text-soft">Fitting</span>
+              {COMPOUNDS.map((t, i) => (
+                <button
+                  key={t}
+                  ref={(el) => {
+                    if (el) fitEls.current[i] = el;
+                  }}
+                  type="button"
+                  aria-label={TYRES[t].name}
+                  aria-pressed="false"
+                  onClick={() => fit.current(t)}
+                  className={`h-8 w-9 rounded-sm text-sm font-semibold ring-1 ring-paper/25 ${TYRE_INK[t]}`}
+                >
+                  {letter(t)}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
+
+        {grid && status === "ready" && !result && (
+          <div className="absolute inset-0 grid place-items-center bg-ink/40 p-4">
+            <div className={`${panel} w-full max-w-sm p-4 md:p-5`}>
+              <p className="disp text-xl">Grid P{gridSlot(reaction) + 1}</p>
+              <p className={`${label} mt-1`}>
+                Reaction {(reaction / 1000).toFixed(3)} s. Pick your tyres.
+              </p>
+              <div role="radiogroup" aria-label="Tyres" className="mt-4 grid grid-cols-3 gap-2">
+                {COMPOUNDS.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    role="radio"
+                    aria-checked={tyre === t}
+                    onClick={() => setTyre(t)}
+                    className={`rounded-md p-2.5 text-left ring-1 active:scale-[.98] ${tyre === t ? "bg-lamp ring-paper" : "ring-paper/25"}`}
+                  >
+                    <span className={`disp block text-xl leading-none ${TYRE_INK[t]}`}>
+                      {letter(t)}
+                    </span>
+                    <span className="mt-1.5 block text-sm">{TYRES[t].name.slice(0, -1)}</span>
+                    <span className="block text-xs text-soft">{BLURB[t]}</span>
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                autoFocus
+                onClick={() => go.current(tyre)}
+                className="mt-4 min-h-11 w-full rounded-md bg-paper font-semibold text-ink active:scale-[.98]"
+              >
+                Line up
+              </button>
+              <p className="mt-2 text-xs text-soft pointer-coarse:hidden">
+                1, 2 or 3 to pick, Enter to line up.
+              </p>
+            </div>
+          </div>
+        )}
 
         {result && (
           <div className="absolute inset-0 grid place-items-center bg-ink/60 p-4">
@@ -756,10 +875,11 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
           Hold the left or right side to steer, or both to brake and reverse. The throttle is
           automatic.
         </span>{" "}
-        Go when the lights go out. All four wheels off the track deletes the lap; the third time
-        brings the black and white flag, then time penalties. DRS opens on the straights within a
-        second of the car ahead. The pit lane is on the right after the Parabolica; your car stops
-        at its box for new tyres.
+        Pick tyres on the grid: softs grip most, hards last longest. Go when the lights go out. All
+        four wheels off the track deletes the lap; the third time brings the black and white flag,
+        then time penalties. DRS opens on the straights within a second of the car ahead. The pit
+        lane is on the right after the Parabolica; your car stops at its box for the set the team
+        has ready, or press 1, 2 or 3 in the lane to change it.
         <span className="mt-1 block text-sm">Track data: TUMFTM racetrack-database, LGPL-3.0.</span>
       </p>
     </dialog>,
