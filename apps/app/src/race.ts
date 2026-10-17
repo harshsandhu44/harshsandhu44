@@ -1,40 +1,20 @@
 // The race the drive runs: twenty cars, five laps, tyres that wear and a pit stop to change them.
 // Plain maths like track.ts, so race.check.ts can run whole races headless.
 import {
-  BOXES,
-  CORNERS,
-  DRS_ZONES,
-  HALF,
-  LENGTH,
-  PIT_IN,
-  PIT_OUT,
   TOP,
-  ahead as fwd,
+  WORK,
   allFourOff,
-  atDist,
   bump,
-  collide,
-  cornerAt,
-  dirAt,
   fmt,
-  inPit,
-  inZone,
   lapTick,
-  lateral,
-  limitAt,
-  nearest,
   newLap,
   onGrass,
-  pitOffset,
-  RACING,
-  WORK,
-  pointAt,
-  signed,
   step,
   type Car,
   type Input,
   type Lap,
   type Split,
+  type Track,
 } from "./track.ts";
 
 // Race distances to pick from; the tyres and the paces are tuned on the shortest.
@@ -54,9 +34,11 @@ export type Level = "amateur" | "intermediate" | "pro";
 // ponytail: tuned in race.check.ts so pro's winner finishes in about 7:30, the time a clean
 // race from the player beats by a few seconds, and the field laps 1:26 to 1:29.
 const EDGE = 1.1;
-// A car's grip on its tyres: a computer car's scaled by its level's edge (1 but for pro).
-export const carGrip = (race: Race, r: Racer) =>
-  grip(r.life, r.tyre) * (r.id ? LEVELS[race.level].edge : 1);
+// A computer car's extra grip: its level's edge (1 but for pro), or the track's for pro.
+export const edgeOf = (race: Race) =>
+  race.level === "pro" ? (race.track.PRO_EDGE ?? EDGE) : LEVELS[race.level].edge;
+// A car's grip on its tyres: a computer car's scaled by its edge.
+export const carGrip = (race: Race, r: Racer) => grip(r.life, r.tyre) * (r.id ? edgeOf(race) : 1);
 type Seat = [code: string, name: string];
 type Team = [color: string, a: Seat, b: Seat];
 const level = (
@@ -154,7 +136,10 @@ const gridAt = (slot: number) => -10 - 8 * slot;
 // scales its grip and how fast it wears. ponytail: tuned in race.check.ts so a medium reaches lap
 // 4 before the call, and with tyres this long-lived a no-stop is the quick way round, the stops
 // within about 10 s of it. These are the knobs.
+// Wear is per metre at Monza, where it was tuned, and scaled to the lap elsewhere so a set lasts
+// the same number of laps on every track.
 const WEAR = 1 / 36000;
+const MONZA = 5793;
 const GRASS = 1 / 2000;
 const FADE = 0.45;
 export type Tyre = "soft" | "medium" | "hard";
@@ -253,6 +238,7 @@ export type Msg = {
 };
 
 export type Race = {
+  track: Track;
   level: Level;
   laps: number;
   racers: Racer[];
@@ -271,6 +257,7 @@ export type Race = {
 };
 
 export function newRace(
+  track: Track,
   slot: number,
   rand = Math.random,
   tyre: Tyre = "medium",
@@ -280,6 +267,7 @@ export function newRace(
   // Computer paces spread across the level's range in roster order, your teammate the slowest,
   // and the quickest line up at the front in the slots you didn't take.
   const { pace } = LEVELS[lv];
+  const { HALF, LENGTH, atDist, dirAt, pointAt, DRS_ZONES } = track;
   const ai = [...Array(CARS).keys()].slice(2).concat(1);
   const slots = [...Array(CARS).keys()].filter((s) => s !== slot);
   const racers = [...Array(CARS).keys()].map((id): Racer => {
@@ -328,6 +316,7 @@ export function newRace(
   });
   for (const r of racers) r.lap.start = 0;
   return {
+    track,
     level: lv,
     laps,
     racers,
@@ -348,6 +337,8 @@ export function newRace(
 // lap follows the pit lane, turning into its box and back out.
 export function aiInput(r: Racer, race: Race): Input {
   const { car } = r;
+  const { BOXES, CORNERS, HALF, LENGTH, PIT_IN, PIT_SIDE, RACING } = race.track;
+  const { ahead: fwd, atDist, lateral, limitAt, pitOffset, pointAt, signed } = race.track;
   if (race.t < r.launch) return { gas: false, brake: false, steer: 0 };
   const s = signed(r.p);
   const look = r.p * LENGTH + 10 + Math.abs(car.v) * 0.25;
@@ -391,7 +382,7 @@ export function aiInput(r: Racer, race: Race): Input {
     // In once past the box before, so a car waiting for its teammate's stop is out of the fast
     // lane; out within 6 m.
     const k = r.served ? 1 - (s - box) / 6 : (s - box + 21) / 10;
-    to = pitOffset(i) + WORK * Math.max(0, Math.min(1, k));
+    to = pitOffset(i) + PIT_SIDE * WORK * Math.max(0, Math.min(1, k));
     // No unsafe release: at the box until nothing's coming down the fast lane from 20 m back.
     const fast = (o: Racer) => Math.abs(lateral(o.car.x, o.car.y, o.p) - pitOffset(i)) < 2.5;
     const traffic = race.racers.some(
@@ -440,6 +431,7 @@ export function aiInput(r: Racer, race: Race): Input {
 // that gets there second waits 8 m short of it until the first has gone (a double stack).
 function pitStop(race: Race, r: Racer, dt: number) {
   const { car } = r;
+  const { BOXES, signed } = race.track;
   if (r.stop > 0) {
     car.v = 0;
     r.stop -= dt;
@@ -467,8 +459,6 @@ function pitStop(race: Race, r: Racer, dt: number) {
   if (!wait && d < 1) r.stop = STOP;
 }
 
-const CP = LENGTH / 50;
-
 const say = (race: Race, kind: Msg["kind"], id: number, text: string) =>
   race.msgs.push({ kind, id, text });
 
@@ -481,7 +471,7 @@ function strike(race: Race, r: Racer) {
     race,
     "limits",
     r.id,
-    `Track limits · ${who} · ${cornerAt(r.p)} · Lap ${r.laps + 1} time deleted`,
+    `Track limits · ${who} · ${race.track.cornerAt(r.p)} · Lap ${r.laps + 1} time deleted`,
   );
   if (r.strikes === 3) say(race, "flag", r.id, `Black and white flag · ${who} · Track limits`);
   if (r.strikes < 4) return;
@@ -493,6 +483,7 @@ function strike(race: Race, r: Racer) {
 // DRS: eligible within a second of whoever last crossed the detection line, from lap 2. It
 // opens in the zone and shuts for good on the brakes or at the end of the zone.
 function drs(race: Race, r: Racer, from: number, to: number, brake: boolean) {
+  const { DRS_ZONES, ahead: fwd, inZone } = race.track;
   DRS_ZONES.forEach((z, k) => {
     if (fwd(from, z.detect) > fwd(from, to) || fwd(from, to) > 50) return;
     if (r.laps >= 1 && race.t - race.crossed[k]! < 1000) [r.drs, r.drsZone] = ["eligible", k];
@@ -508,6 +499,10 @@ function drs(race: Race, r: Racer, from: number, to: number, brake: boolean) {
 // Returns the player's split, if this frame made one.
 export function tick(race: Race, you: Input, dt: number): Split | null {
   race.t += dt * 1000;
+  const { LENGTH, PIT_IN, PIT_OUT, PIT_SIDE } = race.track;
+  const { collide, dirAt, inPit, lateral, nearest, signed } = race.track;
+  // Race distance between the checkpoints the gaps are timed at.
+  const CP = LENGTH / 50;
   let mine: Split | null = null;
   for (const r of race.racers) {
     const { car } = r;
@@ -530,7 +525,7 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     if (s > PIT_OUT || s < PIT_IN - 200) r.pitting = false;
 
     // Anyone in the lane drives it to the box and back out: you, when the team takes over, and a
-    // computer car that strays in off the Parabolica.
+    // computer car that strays in off the last corner.
     if (r.pit && r.finish === null) r.pitting = true;
     const input = r.id === 0 && !r.pitting ? you : aiInput(r, race);
     if (Math.abs(dp) < 0.02 && dp > 0) drs(race, r, from, p * LENGTH, input.brake);
@@ -543,12 +538,13 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     const v = Math.abs(car.v);
     r.life = Math.max(
       0,
-      r.life - dt * TYRES[r.tyre].wear * v * (WEAR + (allFourOff(edge) ? GRASS : 0)),
+      r.life -
+        dt * TYRES[r.tyre].wear * v * ((WEAR * MONZA) / LENGTH + (allFourOff(edge) ? GRASS : 0)),
     );
     r.wrong = Math.cos(car.h - dirAt(p)) < -0.5 && car.v > 4.2 ? r.wrong + dt : 0;
-    // Track limits, once per trip off. The pit entry on the right doesn't count, nor being
-    // pushed off: contact in the last second excuses it.
-    const entry = s > PIT_IN && s < PIT_OUT && lateral(car.x, car.y, p) > 0;
+    // Track limits, once per trip off. The pit entry's side doesn't count, nor being pushed
+    // off: contact in the last second excuses it.
+    const entry = s > PIT_IN && s < PIT_OUT && PIT_SIDE * lateral(car.x, car.y, p) > 0;
     const off = allFourOff(edge) && !entry && r.finish === null;
     if (off && !r.off && race.t - r.touchT > 1000) strike(race, r);
     r.off = off;
@@ -608,7 +604,7 @@ export const gap = (race: Race, r: Racer) => (r.cp < 0 ? 0 : (r.cpT - race.cps[r
 // rest of the race at their average speed so far, and lapped cars are shown a lap down.
 // ponytail: estimated, not raced out, so the card can show the moment you finish.
 export function results(race: Race) {
-  const total = race.laps * LENGTH;
+  const total = race.laps * race.track.LENGTH;
   return race.racers
     .map((r) => {
       const run = r.finish ?? race.t + (total - r.dist) / (Math.max(r.dist, 1) / race.t);

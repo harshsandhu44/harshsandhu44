@@ -21,11 +21,14 @@ import {
   type Race,
   type Tyre,
 } from "@/race";
-import { LENGTH, PATH, TOP, atDist, fmt, gear, limitAt, nextCorner } from "@/track";
+import { TOP, fmt, gear } from "@/track";
+import { TRACKS, getTrack } from "@/tracks";
 
-// v2: the real-length track. The v1 keys hold bests from the old short one.
-const BEST = "monza-best-v2";
-const SECTORS = "monza-sectors-v2";
+// Bests per track. v2: Monza's real-length track; the v1 keys hold bests from the old short one.
+const BEST = (id: string) => `${id}-best-v2`;
+const SECTORS = (id: string) => `${id}-sectors-v2`;
+// The rest kept Monza's names from when it was the only track, so picks carry over.
+const TRACK = "drive-track";
 const SOUND = "monza-sound";
 const LEVEL = "monza-level";
 const LAPS = "monza-laps";
@@ -42,11 +45,22 @@ const KEYS: Record<string, "up" | "down" | "left" | "right"> = {
   d: "right",
 };
 
-const xs = PATH.map((p) => p[0]);
-const ys = PATH.map((p) => p[1]);
-const box = { x: Math.min(...xs), y: Math.min(...ys) };
-const box2 = { w: Math.max(...xs) - box.x, h: Math.max(...ys) - box.y };
-const outline = `M${PATH.map(([x, y]) => `${(x - box.x).toFixed(1)} ${(y - box.y).toFixed(1)}`).join("L")}Z`;
+// Each circuit's outline in its own box, from the raw data so drawing one doesn't build the
+// track: for the loading screen and the minimap, and every 6th point for the picker.
+const SHAPES = new Map(
+  TRACKS.map(({ id, data }) => {
+    const xs = data.map((p) => p[0]);
+    const ys = data.map((p) => p[1]);
+    const box = { x: Math.min(...xs), y: Math.min(...ys) };
+    const box2 = { w: Math.max(...xs) - box.x, h: Math.max(...ys) - box.y };
+    const path = (every: number) =>
+      `M${data
+        .filter((_, i) => i % every === 0)
+        .map(([x, y]) => `${(x - box.x).toFixed(1)} ${(y - box.y).toFixed(1)}`)
+        .join("L")}Z`;
+    return [id, { box, box2, outline: path(1), thumb: path(6) }];
+  }),
+);
 
 const read = <T,>(key: string, fallback: T): T => {
   try {
@@ -96,7 +110,7 @@ const RULES: [string, string][] = [
   ],
   [
     "Tyres & pits",
-    "Softs grip most, hards last longest. The pit lane is on the right after the Parabolica: turn in and the team drives you to your box and back out. Press 1, 2 or 3 in the lane to change the set. Only your teammate can hold you up there.",
+    "Softs grip most, hards last longest. The pit lane leaves the main straight before the line: turn in and the team drives you to your box and back out. Press 1, 2 or 3 in the lane to change the set. Only your teammate can hold you up there.",
   ],
   [
     "Track limits",
@@ -129,7 +143,7 @@ const debrief = (pos: number) =>
       ? `Good job, P${pos}.`
       : `P${pos}. We'll get them next time.`;
 
-// The Monza race a clean start unlocks. A modal <dialog> like the phone menu, so Escape, focus
+// The race a clean start unlocks. A modal <dialog> like the phone menu, so Escape, focus
 // and the inert page come free. three.js (in scene.ts) loads on open and draws the circuit; the
 // race (race.ts) runs in one rAF loop here, which writes the HUD straight to the DOM so React
 // doesn't re-render every frame. Portalled to <body> so it doesn't inherit the hero heading's type.
@@ -142,6 +156,12 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
   const again = useRef<() => void>(() => {});
   // The grid screen's pick, and what it and the pit lane's chips call into the race.
   const [grid, setGrid] = useState(true);
+  const [trackId, setTrackId] = useState(() => {
+    const id: string = read(TRACK, TRACKS[0]!.id);
+    return TRACKS.some((t) => t.id === id) ? id : TRACKS[0]!.id;
+  });
+  const def = TRACKS.find((t) => t.id === trackId)!;
+  const { box2, outline } = SHAPES.get(trackId)!;
   const [tyre, setTyre] = useState<Tyre>("medium");
   const [level, setLevel] = useState<Level>(() => {
     const l: string = read(LEVEL, "intermediate");
@@ -219,10 +239,13 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     };
     const paintOf = (id: number) => colorOf(race, id) || C.accent;
     const flat = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const track = getTrack(trackId);
+    const { LENGTH, atDist, limitAt, nextCorner } = track;
+    const { box, box2, outline } = SHAPES.get(trackId)!;
     const road = new Path2D(outline);
 
-    let best: number = read(BEST, 0);
-    const bestSectors: number[] = read(SECTORS, [0, 0, 0]);
+    let best: number = read(BEST(trackId), 0);
+    const bestSectors: number[] = read(SECTORS(trackId), [0, 0, 0]);
     bestEl.current!.textContent = best ? fmt(best) : DASH;
 
     // The race runs through these phases. The grid screen waits for your tyres (the flyover
@@ -342,7 +365,14 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     };
 
     const start = () => {
-      race = newRace(gridSlot(reaction), Math.random, "medium", levelRef.current, lapsRef.current);
+      race = newRace(
+        track,
+        gridSlot(reaction),
+        Math.random,
+        "medium",
+        levelRef.current,
+        lapsRef.current,
+      );
       scene?.paint(LEVELS[race.level].colors);
       phase = "grid";
       setGrid(true);
@@ -431,7 +461,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
           const pb = split.valid && (!bestSectors[s] || split.ms < bestSectors[s]);
           if (pb) {
             bestSectors[s] = split.ms;
-            write(SECTORS, bestSectors);
+            write(SECTORS(trackId), bestSectors);
           }
           paintSector(s, secs(split.ms), pb ? "best" : "slow");
         }
@@ -443,7 +473,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
           if (split.valid && (!best || split.lap < best)) {
             best = split.lap;
             bestEl.current!.textContent = fmt(best);
-            write(BEST, best);
+            write(BEST(trackId), best);
           }
         }
         if (race.done && !wasDone) {
@@ -552,7 +582,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
 
     let dead = false;
     import("@/scene")
-      .then(({ createScene }) => createScene(cv, C, flat))
+      .then(({ createScene }) => createScene(cv, C, flat, track))
       .then((s) => {
         if (dead) return s.dispose();
         scene = s;
@@ -574,7 +604,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       engine.current?.stop();
       engine.current = null;
     };
-  }, [reaction]);
+  }, [reaction, trackId]);
 
   const shown = status === "ready" ? "" : "opacity-0";
   const leader = result?.table[0]?.time ?? 0;
@@ -583,7 +613,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     <dialog
       ref={dialog}
       tabIndex={-1}
-      aria-label="Race at Monza"
+      aria-label={`Race at ${def.name}`}
       onClose={() => {
         document.documentElement.style.overflow = "";
         onClose();
@@ -591,7 +621,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       className="on-dark fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none flex-col gap-3 border-0 bg-ink px-4 pt-3 pb-4 text-paper outline-none [--focus:var(--color-accent)] open:flex open:animate-sheet-in backdrop:bg-ink/80 md:m-auto md:h-[min(780px,92dvh)] md:w-[min(1180px,94vw)] md:rounded-lg md:px-6 md:pt-4 md:pb-5"
     >
       <div className="flex items-center gap-x-6 text-base tabular-nums">
-        <span className="disp text-xl">Monza</span>
+        <span className="disp text-xl">{def.name}</span>
         <span className={`${label} hidden md:inline`}>
           Reaction<span className="ml-2 text-paper">{(reaction / 1000).toFixed(3)} s</span>
         </span>
@@ -624,7 +654,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
               <svg
                 viewBox={`-10 -10 ${box2.w + 20} ${box2.h + 20}`}
                 role="img"
-                aria-label="Loading Monza"
+                aria-label={`Loading ${def.name}`}
                 className="h-full max-h-80 motion-safe:animate-pulse"
               >
                 <path
@@ -835,13 +865,51 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
 
         {grid && status === "ready" && !result && (
           <div className="absolute inset-0 grid place-items-center bg-ink/40 p-4">
-            <div className={`${panel} w-full max-w-sm p-4 md:p-5`}>
+            <div
+              className={`${panel} max-h-full w-full max-w-sm overflow-y-auto p-4 md:max-w-lg md:p-5`}
+            >
               <p className="disp text-xl">Grid P{gridSlot(reaction) + 1}</p>
               <p className={`${label} mt-1`}>
-                Reaction {(reaction / 1000).toFixed(3)} s. Pick the field, the distance and your
-                tyres.
+                Reaction {(reaction / 1000).toFixed(3)} s. Pick the track, the field, the distance
+                and your tyres.
               </p>
-              <div role="radiogroup" aria-label="Field" className="mt-4 grid grid-cols-3 gap-2">
+              <div
+                role="radiogroup"
+                aria-label="Track"
+                className="mt-4 grid grid-cols-3 gap-2 md:grid-cols-5"
+              >
+                {TRACKS.map((t) => {
+                  const { box2: b, thumb } = SHAPES.get(t.id)!;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={trackId === t.id}
+                      onClick={() => {
+                        if (t.id === trackId) return;
+                        write(TRACK, t.id);
+                        setStatus("loading");
+                        setTrackId(t.id);
+                      }}
+                      className={`rounded-md p-2 text-left ring-1 active:scale-[.98] ${trackId === t.id ? "bg-lamp ring-paper" : "ring-paper/25"}`}
+                    >
+                      <svg viewBox={`0 0 ${b.w} ${b.h}`} aria-hidden="true" className="h-9 w-full">
+                        <path
+                          d={thumb}
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinejoin="round"
+                          vectorEffect="non-scaling-stroke"
+                        />
+                      </svg>
+                      <span className="mt-1.5 block truncate text-xs">{t.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div role="radiogroup" aria-label="Field" className="mt-2 grid grid-cols-3 gap-2">
                 {STEPS.map(([l, name, field]) => (
                   <button
                     key={l}
@@ -919,7 +987,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
             onClick={(e) => e.target === e.currentTarget && setRules(false)}
           >
             <div
-              id="monza-rules"
+              id="drive-rules"
               className="max-h-full w-full max-w-lg overflow-y-auto rounded-lg bg-ink p-4 text-paper shadow-[inset_0_0_0_1px_var(--color-lamp)] md:p-5"
             >
               <div className="flex items-baseline justify-between">
@@ -955,7 +1023,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
                 className="text-xs font-semibold tracking-wide text-soft uppercase motion-safe:animate-rowin"
                 style={{ animationDelay: "0.9s" }}
               >
-                Monza · {result.laps} laps · {LEVELS[result.level].series} grid
+                {def.name} · {result.laps} laps · {LEVELS[result.level].series} grid
               </p>
               <div
                 className="mt-1 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 motion-safe:animate-rowin"
@@ -1091,7 +1159,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
         <button
           type="button"
           aria-expanded={rules}
-          aria-controls="monza-rules"
+          aria-controls="drive-rules"
           onClick={() => setRules((o) => !o)}
           className="ml-auto min-h-11 shrink-0 pl-4 font-semibold text-paper active:scale-[.96]"
         >
