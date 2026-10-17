@@ -16,6 +16,12 @@ export const mailto = (subject: string) =>
 
 export type Shot = { src: string; cap: string };
 
+// One thing that runs or stores something, drawn in the case study's exploded view. Parts are
+// listed top layer first; their order is the item number.
+export type Layer = "client" | "compute" | "data" | "external";
+export type Part = { id: string; label: string; tech: string; layer: Layer };
+export type Arch = { parts: Part[]; links: [from: string, to: string][] };
+
 export type Product = {
   slug: string;
   name: string;
@@ -41,6 +47,8 @@ export type Product = {
   builtOutro: string[];
   decisions: { h: string; p: string; shot?: Shot }[];
   next: string;
+  // ponytail: furbaby board has none until its case study catches up with the Supabase rebuild.
+  arch?: Arch;
 };
 
 // In this order on the home page, and the "Next case study" loop follows it.
@@ -122,6 +130,30 @@ export const products: Product[] = [
       },
     ],
     next: "Expanding beyond IELTS to PTE, TOEFL and DET, which the exam registry was built for. PTE scoring already exists behind a feature flag. The speaking grader also has to move to new audio models before the current ones are retired in January 2027.",
+    arch: {
+      parts: [
+        { id: "app", label: "Product", tech: "Next.js, app.bandzen.com", layer: "client" },
+        { id: "coach", label: "Coach", tech: "Next.js, for institutions", layer: "client" },
+        { id: "cms", label: "CMS", tech: "Next.js, Vercel Cron", layer: "client" },
+        { id: "web", label: "Marketing and docs", tech: "Next.js, two sites", layer: "client" },
+        { id: "db", label: "Database and auth", tech: "Supabase Postgres, Drizzle", layer: "data" },
+        { id: "audio", label: "Audio", tech: "Cloudflare R2", layer: "data" },
+        { id: "openai", label: "OpenAI", tech: "Marking and speech", layer: "external" },
+        { id: "polar", label: "Polar", tech: "Payments", layer: "external" },
+      ],
+      links: [
+        ["app", "db"],
+        ["app", "audio"],
+        ["app", "openai"],
+        ["app", "polar"],
+        ["coach", "db"],
+        ["coach", "polar"],
+        ["cms", "db"],
+        ["cms", "audio"],
+        ["cms", "openai"],
+        ["web", "polar"],
+      ],
+    },
   },
   {
     slug: "pitwall",
@@ -196,6 +228,28 @@ export const products: Product[] = [
       },
     ],
     next: "Accessibility scored 100 in Lighthouse before the October redesign, and the audit needs re-running. After that comes car telemetry in replay: speed, throttle and brake traces for the driver comparison.",
+    arch: {
+      parts: [
+        { id: "app", label: "Dashboard", tech: "Next.js static export", layer: "client" },
+        { id: "api", label: "API", tech: "Cloudflare Worker", layer: "compute" },
+        { id: "live", label: "Live feed", tech: "Durable Object, MQTT", layer: "compute" },
+        { id: "db", label: "Database", tech: "Cloudflare D1", layer: "data" },
+        { id: "openf1", label: "OpenF1", tech: "Timing and replay", layer: "external" },
+        { id: "jolpica", label: "Jolpica", tech: "Results and standings", layer: "external" },
+        { id: "meteo", label: "Open-Meteo", tech: "Forecasts", layer: "external" },
+        { id: "radar", label: "RainViewer", tech: "Radar", layer: "external" },
+      ],
+      links: [
+        ["app", "api"],
+        ["api", "live"],
+        ["api", "db"],
+        ["live", "openf1"],
+        ["api", "openf1"],
+        ["api", "jolpica"],
+        ["api", "meteo"],
+        ["api", "radar"],
+      ],
+    },
   },
   {
     slug: "tinkersim",
@@ -271,6 +325,28 @@ export const products: Product[] = [
       },
     ],
     next: "Microcontroller support is the big one. An Arduino prototype was built and then pulled until it's solid. After that: exporting SPICE files, assignment links that fork a circuit for each student, and an assistant that explains why a circuit behaves the way it does.",
+    arch: {
+      parts: [
+        { id: "editor", label: "Circuit editor", tech: "Next.js, React Flow", layer: "client" },
+        { id: "spice", label: "Analog engine", tech: "ngspice in WebAssembly", layer: "compute" },
+        {
+          id: "logic",
+          label: "Digital engine",
+          tech: "TypeScript, in the browser",
+          layer: "compute",
+        },
+        { id: "api", label: "API routes", tech: "Next.js on Vercel", layer: "compute" },
+        { id: "db", label: "Database", tech: "Cloudflare D1, Drizzle", layer: "data" },
+        { id: "clerk", label: "Clerk", tech: "Sign-in and organisations", layer: "external" },
+      ],
+      links: [
+        ["editor", "spice"],
+        ["editor", "logic"],
+        ["editor", "api"],
+        ["api", "db"],
+        ["api", "clerk"],
+      ],
+    },
   },
   {
     slug: "furbaby-board",
