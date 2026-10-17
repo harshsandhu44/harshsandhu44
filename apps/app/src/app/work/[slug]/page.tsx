@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { mailto, products, site, type Shot } from "@/content";
 import { CsIndex } from "@/components/cs-index";
+import { Exploded } from "@/components/exploded";
 import { Motion } from "@/components/motion";
 import { Signature } from "@/components/signature";
 import { Arrow, Legal, Win, Wordmark, btn, skip } from "@/components/ui";
@@ -230,6 +231,7 @@ export default async function CaseStudy({ params }: PageProps<"/work/[slug]">) {
               <h2 data-rise className={secH}>
                 What I built
               </h2>
+              {c.arch && <Exploded arch={c.arch} />}
               {c.builtIntro && (
                 <p data-rise className={para}>
                   {c.builtIntro}
