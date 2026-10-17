@@ -15,13 +15,14 @@ const normals = (pts: readonly (readonly number[])[]) =>
   });
 
 // The source centreline isn't quite central, so shift each point half the difference between
-// its two widths. Then the track is HALF[i] either side of PATH[i].
+// its two widths. Then the track is HALF[i] either side of PATH[i], never under 9.5 m: three of
+// the 3 m-wide cars abreast, with a little room.
 const RAW_NORMALS = normals(MONZA_DATA);
 export const PATH = MONZA_DATA.map(([x, y, right, left], i): Pt => {
   const [nx, ny] = RAW_NORMALS[i]!;
   return [x + (nx * (right - left)) / 2, y + (ny * (right - left)) / 2];
 });
-export const HALF = MONZA_DATA.map(([, , right, left]) => (right + left) / 2);
+export const HALF = MONZA_DATA.map(([, , right, left]) => Math.max(4.75, (right + left) / 2));
 const N = PATH.length;
 // Distance along the lap to each point; CUM[N] is the full lap.
 export const CUM = PATH.reduce(
