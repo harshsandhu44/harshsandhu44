@@ -81,6 +81,32 @@ const STEPS: [Level, string, string][] = [
   ["intermediate", "Intermediate", "F2 grid"],
   ["pro", "Pro", "F1 grid"],
 ];
+const CONTROLS: [string[], string][] = [
+  [["↑", "W"], "Gas"],
+  [["↓", "S"], "Brake, reverse"],
+  [["← →", "A D"], "Steer"],
+  [["1–3"], "Tyres"],
+  [["Esc"], "Leave"],
+];
+const RULES: [string, string][] = [
+  [
+    "Start",
+    "Your reaction in the hero sets your grid slot. Go when the lights go out: moving once the first light is on is a jump start, 5 s added. Amateur races the F3 grid, intermediate F2 and pro F1, on the racing line and with the fewest mistakes. The cars are the same.",
+  ],
+  [
+    "Tyres & pits",
+    "Softs grip most, hards last longest. The pit lane is on the right after the Parabolica: turn in and the team drives you to your box and back out. Press 1, 2 or 3 in the lane to change the set. Only your teammate can hold you up there.",
+  ],
+  [
+    "Track limits",
+    "All four wheels off the track deletes the lap. The third time brings the black and white flag, then 5 s and 10 s penalties.",
+  ],
+  [
+    "DRS",
+    "From lap 2, within a second of the car ahead at a detection line. It opens on the straight that follows and shuts on the brakes.",
+  ],
+];
+const kbd = "rounded-sm bg-lamp px-1.5 py-0.5 text-xs font-semibold text-paper";
 const panel = "rounded-lg bg-ink/85 text-paper tabular-nums";
 const label = "text-sm text-soft";
 const sector = "rounded-sm bg-lamp px-1.5 py-0.5 text-sm text-soft md:px-2 md:text-[15px]";
@@ -108,6 +134,7 @@ const debrief = (pos: number) =>
 export default function Drive({ reaction, onClose }: { reaction: number; onClose: () => void }) {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [result, setResult] = useState<Result | null>(null);
+  const [rules, setRules] = useState(false);
   const [sound, setSound] = useState(() => read(SOUND, false));
   const engine = useRef<Engine | null>(null);
   const again = useRef<() => void>(() => {});
@@ -859,6 +886,39 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
           </div>
         )}
 
+        {rules && (
+          <div
+            className="absolute inset-0 grid place-items-center bg-ink/60 p-4"
+            onClick={(e) => e.target === e.currentTarget && setRules(false)}
+          >
+            <div
+              id="monza-rules"
+              className="max-h-full w-full max-w-lg overflow-y-auto rounded-lg bg-ink p-4 text-paper shadow-[inset_0_0_0_1px_var(--color-lamp)] md:p-5"
+            >
+              <div className="flex items-baseline justify-between">
+                <p className="disp text-xl">Rules</p>
+                <button
+                  type="button"
+                  onClick={() => setRules(false)}
+                  className="min-h-11 pl-4 text-sm font-semibold active:scale-[.96]"
+                >
+                  Close
+                </button>
+              </div>
+              <dl className="mt-1 grid gap-3 text-sm">
+                {RULES.map(([term, text]) => (
+                  <div key={term}>
+                    <dt className="text-xs font-semibold tracking-wide text-accent uppercase">
+                      {term}
+                    </dt>
+                    <dd className="mt-0.5 text-paper/90">{text}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          </div>
+        )}
+
         {result && (
           // The flag: the stage fades to black, then the classification comes in row by row.
           <div className="absolute inset-0 overflow-y-auto bg-pit p-4 motion-safe:animate-blackout md:p-8">
@@ -977,21 +1037,34 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
         )}
       </div>
 
-      <p className="text-[15px] text-soft">
-        <span className="pointer-coarse:hidden">
-          Arrow keys or WASD to drive. Hold down to brake, then reverse. Esc to leave.
-        </span>
-        <span className="hidden pointer-coarse:inline">
+      <div className="flex items-center gap-x-4 text-sm text-soft">
+        <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pointer-coarse:hidden">
+          {CONTROLS.map(([keys, what]) => (
+            <li key={what} className="flex items-center gap-1">
+              {keys.map((k) => (
+                <kbd key={k} className={kbd}>
+                  {k}
+                </kbd>
+              ))}
+              <span className="ml-0.5">{what}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="hidden pointer-coarse:block">
           Hold the left or right side to steer, or both to brake and reverse. The throttle is
           automatic.
-        </span>{" "}
-        Pick tyres on the grid: softs grip most, hards last longest. Go when the lights go out. All
-        four wheels off the track deletes the lap; the third time brings the black and white flag,
-        then time penalties. DRS opens on the straights within a second of the car ahead. The pit
-        lane is on the right after the Parabolica; your car stops at its box for the set the team
-        has ready, or press 1, 2 or 3 in the lane to change it.
-        <span className="mt-1 block text-sm">Track data: TUMFTM racetrack-database, LGPL-3.0.</span>
-      </p>
+        </p>
+        <button
+          type="button"
+          aria-expanded={rules}
+          aria-controls="monza-rules"
+          onClick={() => setRules((o) => !o)}
+          className="ml-auto min-h-11 shrink-0 pl-4 font-semibold text-paper active:scale-[.96]"
+        >
+          Rules
+        </button>
+      </div>
+      <p className="-mt-2 text-xs text-soft">Track data: TUMFTM racetrack-database, LGPL-3.0.</p>
     </dialog>,
     document.body,
   );
