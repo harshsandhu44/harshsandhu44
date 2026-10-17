@@ -2,7 +2,7 @@
 
 import { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-// A clean start unlocks a lap of Monza. Loaded on first open so it stays out of the hero bundle.
+// A clean start unlocks the race. Loaded on first open so it stays out of the hero bundle.
 const Drive = lazy(() => import("./drive"));
 
 type Phase = "idle" | "intro" | "arming" | "go" | "jump" | "slow" | "result";

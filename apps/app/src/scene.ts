@@ -1,29 +1,11 @@
-// The 3D side of the Monza drive: track, park, car and the helicopter camera. The only module that
+// The 3D side of the drive: track, park, car and the helicopter camera. The only module that
 // imports three, and drive.tsx loads it on open so the hero never pays for it. Track (x, y) is
 // three (x, 0, y): y-down canvas space becomes +z on the ground plane. Models are Kenney's Racing
 // Kit (CC0, kenney.nl), recoloured to the site's tokens at load.
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { CARS } from "@/race";
-import {
-  BOARDS,
-  BOXES,
-  BOX,
-  CURVE,
-  HALF,
-  KERB_R,
-  MID,
-  PATH,
-  PIT_HALF,
-  STANDS,
-  STAND_HALF,
-  TREES,
-  WALLS,
-  offset,
-  pitOffset,
-  working,
-  type Car,
-} from "@/track";
+import { KERB_R, PIT_HALF, STAND_HALF, type Car, type Track } from "@/track";
 
 export type Colors = Record<"accent" | "carbon" | "paper" | "chrome" | "ink" | "pit", string>;
 
@@ -56,9 +38,9 @@ function strip(
   const col: number[] = [];
   const lerp = (p: [number, number], q: [number, number], t: number) =>
     [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t] as const;
-  for (let i = 0; i < PATH.length; i++) {
+  for (let i = 0; i < a.length; i++) {
     if (!keep(i)) continue;
-    const j = (i + 1) % PATH.length;
+    const j = (i + 1) % a.length;
     for (let k = 0; k < sub; k++) {
       const [a0, a1] = [lerp(a[i]!, a[j]!, k / sub), lerp(a[i]!, a[j]!, (k + 1) / sub)];
       const [b0, b1] = [lerp(b[i]!, b[j]!, k / sub), lerp(b[i]!, b[j]!, (k + 1) / sub)];
@@ -131,7 +113,9 @@ const place = (x: number, z: number, rot: number, sx: number, sy = sx, sz = sx) 
 
 // Renders into a canvas of its own inside `host`, so a second scene (React's dev double mount, or
 // reopening the dialog) never inherits a context the first one threw away.
-export async function createScene(host: HTMLElement, C: Colors, flat: boolean) {
+export async function createScene(host: HTMLElement, C: Colors, flat: boolean, track: Track) {
+  const { BOARDS, BOXES, BOX, CURVE, HALF, MID, PATH, PIT_SIDE, STANDS, TREES, WALLS } = track;
+  const { offset, pitOffset, working } = track;
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.domElement.className = "block size-full";
   host.append(renderer.domElement);
@@ -225,15 +209,15 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean) {
   // The pit lane: its own tarmac under the track's where they meet, with the working lane beside
   // it along the boxes, a white line along its inner edge once it's clear of the track, and a
   // box per team, painted in its colour by paint().
-  const lane = (k: number) => offset((i) => pitOffset(i) + k);
-  const apart = (i: number) => pitOffset(i) - PIT_HALF > HALF[i]!;
+  const lane = (k: number) => offset((i) => pitOffset(i) + PIT_SIDE * k);
+  const apart = (i: number) => PIT_SIDE * pitOffset(i) - PIT_HALF > HALF[i]!;
   scene.add(
     flatMesh(
       strip(
         lane(-PIT_HALF),
-        offset((i) => pitOffset(i) + PIT_HALF + working(i)),
+        offset((i) => pitOffset(i) + PIT_SIDE * PIT_HALF + working(i)),
         0.015,
-        (i) => pitOffset(i) + PIT_HALF > HALF[i]!,
+        (i) => PIT_SIDE * pitOffset(i) + PIT_HALF > HALF[i]!,
       ),
       { color: PIT_LANE, roughness: 0.9 },
     ),
