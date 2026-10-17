@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.0](https://github.com/harshsandhu44/harshsandhu44/compare/app-v1.5.0...app-v1.6.0) (2026-10-17)
+
+
+### Features
+
+* **app:** race at Spa, Silverstone, Interlagos and the Red Bull Ring ([#38](https://github.com/harshsandhu44/harshsandhu44/issues/38)) ([4973fb5](https://github.com/harshsandhu44/harshsandhu44/commit/4973fb533d91ad45f93668a0ed82e73afc0b0018))
+* **app:** set the name wordmark in DX Brutalist outlines ([#36](https://github.com/harshsandhu44/harshsandhu44/issues/36)) ([ce2bc17](https://github.com/harshsandhu44/harshsandhu44/commit/ce2bc173806b60718ec7a672428444e3cc03b47b))
+
 ## [1.5.0](https://github.com/harshsandhu44/harshsandhu44/compare/app-v1.4.0...app-v1.5.0) (2026-10-17)
 
 
