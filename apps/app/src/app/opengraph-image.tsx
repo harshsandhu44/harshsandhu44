@@ -1,6 +1,7 @@
 import { ImageResponse } from "next/og";
 import { site } from "@/content";
 import { googleFont } from "@/google-font";
+import { Mark, marks } from "@/wordmark";
 
 export const alt = `${site.name}, ${site.role}`;
 export const size = { width: 1200, height: 630 };
@@ -8,12 +9,9 @@ export const contentType = "image/png";
 
 const SQ = 40; // chequer square, px
 
-// Carbon card with the footer's chequered flag and the display wordmark. Hex = globals.css tokens.
+// Carbon card with the footer's chequered flag and the outlined wordmark. Hex = globals.css tokens.
 export default async function OpengraphImage() {
-  const [archivo, hanken] = await Promise.all([
-    googleFont("Archivo:ital,wdth,wght@1,125,800", site.name),
-    googleFont("Hanken+Grotesk:wght@500", site.role),
-  ]);
+  const hanken = await googleFont("Hanken+Grotesk:wght@500", site.role);
   const row = (offset: number) => (
     <div style={{ display: "flex" }}>
       {Array.from({ length: size.width / SQ }, (_, i) => (
@@ -47,9 +45,7 @@ export default async function OpengraphImage() {
           padding: 72,
         }}
       >
-        <div style={{ fontFamily: "Archivo", fontSize: 136, lineHeight: 0.92, letterSpacing: -4 }}>
-          {site.name}
-        </div>
+        <Mark m={marks.full} width={marks.full.w * 1.4} height={marks.full.h * 1.4} />
         <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 36 }}>
           <div style={{ width: 72, height: 12, background: "#e10600" }} />
           <div style={{ fontFamily: "Hanken", fontSize: 40, color: "#a9a9b3" }}>{site.role}</div>
@@ -58,10 +54,7 @@ export default async function OpengraphImage() {
     </div>,
     {
       ...size,
-      fonts: [
-        { name: "Archivo", data: archivo, weight: 800, style: "italic" },
-        { name: "Hanken", data: hanken, weight: 500, style: "normal" },
-      ],
+      fonts: [{ name: "Hanken", data: hanken, weight: 500, style: "normal" }],
     },
   );
 }

@@ -1,5 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
 import { site } from "@/content";
+import { Mark, marks } from "@/wordmark";
 
 // Buttons read --fg/--fgi, so the same classes work on light pages and inside `on-dark` sections.
 const btnBase =
@@ -86,29 +87,10 @@ export function Avail({ className = "" }) {
   );
 }
 
-// The footer's full-width "Harsh Sandhu", stretched to fit with textLength.
+// The footer's full-width "Harsh Sandhu" in the outlined DX Brutalist wordmark.
 export function Wordmark() {
   return (
-    <svg
-      viewBox="0 0 1000 176"
-      role="img"
-      aria-label="Harsh Sandhu"
-      className="block h-auto w-full overflow-visible"
-    >
-      <text
-        x="0"
-        y="158"
-        textLength="1000"
-        lengthAdjust="spacingAndGlyphs"
-        fontWeight="800"
-        fontStyle="italic"
-        fontSize="188"
-        fill="currentColor"
-        style={{ fontFamily: "var(--font-archivo)", fontStretch: "125%" }}
-      >
-        Harsh Sandhu
-      </text>
-    </svg>
+    <Mark m={marks.full} role="img" aria-label="Harsh Sandhu" className="block h-auto w-full" />
   );
 }
 
