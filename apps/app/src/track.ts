@@ -175,6 +175,30 @@ export const LIMIT = profile(1);
 // Worn tyres: profiles every 0.05 of grip down to 0.55 (fully worn), blended between. Downforce means the
 // fast corners lose more than √grip would say, so it's worth the ~10k sums at load.
 const WORN = Array.from({ length: 10 }, (_, k) => profile(1 - k * 0.05));
+
+// The racing line: how far right of the centreline to drive at each point, for the least
+// curvature the width allows with LINE_MARGIN to the tarmac edge. Each pass pulls every point
+// towards where its neighbours' bend would put it (half way, as the full step overshoots) and
+// keeps it on the tarmac. 300 passes at load, about 10 ms. ponytail: cars on it still brake to
+// the centreline's limits; a profile worked out on the line's own curvature promised about
+// 5 s a lap but more speed than the computer's steering could hold through Lesmo 1 and the
+// Parabolica. Worth another go with a follower that tracks the line more tightly.
+const LINE_MARGIN = 1.6;
+export const RACING: number[] = PATH.map(() => 0);
+const onLine = (j: number): Pt => {
+  const i = (j + N) % N;
+  return [PATH[i]![0] + NORMALS[i]![0] * RACING[i]!, PATH[i]![1] + NORMALS[i]![1] * RACING[i]!];
+};
+for (let pass = 0; pass < 300; pass++)
+  for (let i = 0; i < N; i++) {
+    const [a, b, c, d] = [onLine(i - 2), onLine(i - 1), onLine(i + 1), onLine(i + 2)];
+    const tx = (-a[0] + 4 * b[0] + 4 * c[0] - d[0]) / 6;
+    const ty = (-a[1] + 4 * b[1] + 4 * c[1] - d[1]) / 6;
+    const want = (tx - PATH[i]![0]) * NORMALS[i]![0] + (ty - PATH[i]![1]) * NORMALS[i]![1];
+    const room = HALF[i]! - LINE_MARGIN;
+    RACING[i] = Math.max(-room, Math.min(room, RACING[i]! + (want - RACING[i]!) / 2));
+  }
+
 export const limitAt = (i: number, g: number) => {
   const f = Math.min(9, Math.max(0, (1 - g) / 0.05));
   const k = Math.min(8, Math.floor(f));
@@ -216,20 +240,29 @@ export const pitOffset = (i: number) => {
       : ease((PIT_OUT - s) / (PIT_OUT - PIT_TO));
   return k * (HALF[i]! + 8);
 };
-// In the lane: past the tarmac edge and on the lane, between where it leaves and rejoins.
+// Along the flat of the lane the boxes sit in a working lane WORK further out than the fast
+// lane, so a car at its box is out of the way of the cars going by.
+export const WORK = 5.5;
+export const working = (i: number) => {
+  const s = signed(CUM[i]! / LENGTH);
+  return s > PIT_FROM && s < PIT_TO ? WORK : 0;
+};
+// In the lane: past the tarmac edge and on the fast or working lane, between where it leaves and
+// rejoins.
 export const inPit = (x: number, y: number, p: number) => {
   const s = signed(p);
   if (s < PIT_IN || s > PIT_OUT) return false;
   const i = atDist(s);
-  const lat = lateral(x, y, p);
-  return lat > HALF[i]! && Math.abs(lat - pitOffset(i)) < PIT_HALF;
+  const lat = lateral(x, y, p) - pitOffset(i);
+  return lat + pitOffset(i) > HALF[i]! && lat > -PIT_HALF && lat < PIT_HALF + working(i);
 };
-// One box per team, 12 m apart along the flat of the lane, in metres from the line.
+// One box per team, 24 m apart in the working lane, in metres from the line: room for a car
+// pulling out of one not to meet a car turning into the next.
 export const BOXES = Array.from({ length: 10 }, (_, k) => {
-  const i = atDist(-240 + k * 12);
+  const i = atDist(-290 + k * 24);
   // On a path point, so the paint and the stop agree to the centimetre.
   const s = signed(CUM[i]! / LENGTH);
-  const [x, y] = pointAt(s, pitOffset(i));
+  const [x, y] = pointAt(s, pitOffset(i) + WORK);
   return { s, x, y, h: dirAt(CUM[i]! / LENGTH) };
 });
 
