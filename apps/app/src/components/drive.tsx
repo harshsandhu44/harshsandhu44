@@ -66,8 +66,8 @@ const TYRE_INK: Record<Tyre, string> = {
   hard: "text-paper",
 };
 const BLURB: Record<Tyre, string> = {
-  soft: "2 to 3 laps",
-  medium: "About 4 laps",
+  soft: "About 3 laps",
+  medium: "About 5 laps",
   hard: "All race, slower",
 };
 const letter = (t: Tyre) => t[0]!.toUpperCase();
