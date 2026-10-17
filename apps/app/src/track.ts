@@ -48,18 +48,19 @@ export const offset = (d: number | ((i: number) => number)) =>
     return [x + NORMALS[i]![0] * k, y + NORMALS[i]![1] * k];
   });
 
-// Signed curvature (radians per metre) at each point, measured over w points either side.
-// Positive bends right (towards +normal), so the outside of a corner is at offset(-sign * d).
-const curvature = (w: number) =>
-  PATH.map((_, i) => {
+// Signed curvature (radians per metre) at each point of a closed line, the centreline unless
+// given, measured over w points either side. Positive bends right (towards +normal), so the
+// outside of a corner is at offset(-sign * d).
+const curvature = (w: number, pts: readonly Pt[] = PATH, length = LENGTH) =>
+  pts.map((_, i) => {
     const dir = (j: number) => {
-      const [ax, ay] = PATH[(j + N) % N]!;
-      const [bx, by] = PATH[(j + 1 + N) % N]!;
+      const [ax, ay] = pts[(j + N) % N]!;
+      const [bx, by] = pts[(j + 1 + N) % N]!;
       return Math.atan2(by - ay, bx - ax);
     };
     let turn = dir(i + w - 1) - dir(i - w);
     turn = Math.atan2(Math.sin(turn), Math.cos(turn));
-    return turn / ((2 * w * LENGTH) / N);
+    return turn / ((2 * w * length) / N);
   });
 // Smooth, for placing kerbs, gravel and trees.
 export const CURVE = curvature(5);
@@ -153,11 +154,12 @@ export const gear = (v: number) =>
 // Curvature over a short window, so the chicanes keep their bite, and the tightest within 15 m
 // either side, so the limit never promises more than the apex allows.
 const SHARP = curvature(2).map(Math.abs);
-// The profile for tyres with grip g (1 new): grip and braking both scale with it.
-const profile = (g: number) => {
-  const corner = SHARP.map((_, i) => {
+// The profile for tyres with grip g (1 new): grip and braking both scale with it. Along the
+// centreline unless given another line's curvature and distances.
+const profile = (g: number, sharp = SHARP, cum = CUM) => {
+  const corner = sharp.map((_, i) => {
     let k = 0;
-    for (let j = -3; j <= 3; j++) k = Math.max(k, SHARP[(i + j + N) % N]!);
+    for (let j = -3; j <= 3; j++) k = Math.max(k, sharp[(i + j + N) % N]!);
     const r = 1 / Math.max(k, 1e-6);
     const d = g * DOWNFORCE * r;
     return d >= 1 ? TOP : Math.min(TOP, Math.sqrt((g * GRIP * r) / (1 - d)));
@@ -166,23 +168,23 @@ const profile = (g: number) => {
   for (let pass = 0; pass < 2; pass++)
     for (let i = N - 1; i >= 0; i--) {
       const next = limit[(i + 1) % N]!;
-      const ds = CUM[i + 1]! - CUM[i]!;
+      const ds = cum[i + 1]! - cum[i]!;
       limit[i] = Math.min(corner[i]!, Math.sqrt(next * next + 2 * g * brakeAt(next) * ds));
     }
   return limit;
 };
 export const LIMIT = profile(1);
-// Worn tyres: profiles every 0.05 of grip down to 0.55 (fully worn), blended between. Downforce means the
-// fast corners lose more than √grip would say, so it's worth the ~10k sums at load.
-const WORN = Array.from({ length: 10 }, (_, k) => profile(1 - k * 0.05));
+// Profiles every 0.05 of grip from 1.15 (softs, and a pro's extra grip) down to 0.55 (fully
+// worn), blended between. Downforce means the fast corners lose more than √grip would say, so
+// it's worth the ~13k sums at load.
+const STEPS = 13;
+const grips = (k: number) => 1.15 - k * 0.05;
+const WORN = Array.from({ length: STEPS }, (_, k) => profile(grips(k)));
 
 // The racing line: how far right of the centreline to drive at each point, for the least
 // curvature the width allows with LINE_MARGIN to the tarmac edge. Each pass pulls every point
 // towards where its neighbours' bend would put it (half way, as the full step overshoots) and
-// keeps it on the tarmac. 300 passes at load, about 10 ms. ponytail: cars on it still brake to
-// the centreline's limits; a profile worked out on the line's own curvature promised about
-// 5 s a lap but more speed than the computer's steering could hold through Lesmo 1 and the
-// Parabolica. Worth another go with a follower that tracks the line more tightly.
+// keeps it on the tarmac. 300 passes at load, about 10 ms.
 const LINE_MARGIN = 1.6;
 export const RACING: number[] = PATH.map(() => 0);
 const onLine = (j: number): Pt => {
@@ -198,11 +200,38 @@ for (let pass = 0; pass < 300; pass++)
     const room = HALF[i]! - LINE_MARGIN;
     RACING[i] = Math.max(-room, Math.min(room, RACING[i]! + (want - RACING[i]!) / 2));
   }
+// The line's own speed profiles, from its curvature and distances.
+const LINE = PATH.map((_, i) => onLine(i));
+const LINE_CUM = LINE.reduce(
+  (acc, [x, y], i) => {
+    const [nx, ny] = LINE[(i + 1) % N]!;
+    acc.push(acc[i]! + Math.hypot(nx - x, ny - y));
+    return acc;
+  },
+  [0],
+);
+const LINE_CURVE = curvature(2, LINE, LINE_CUM[N]!);
+// Its curvature is the tighter of the short-window one and the circle through each point and
+// the ones 20 m either side. ponytail: the short window alone smooths the centreline's wiggles
+// away and promised more speed through Lesmo 1 than the car has the grip for; 20 m is the
+// span that keeps every level clean at full pace in race.check.ts.
+const circle = (a: Pt, b: Pt, c: Pt) => {
+  const cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+  const l = Math.hypot(b[0] - a[0], b[1] - a[1]) * Math.hypot(c[0] - b[0], c[1] - b[1]);
+  return Math.abs((2 * cross) / (l * Math.hypot(a[0] - c[0], a[1] - c[1])));
+};
+const LINE_SHARP = LINE.map((p, i) =>
+  Math.max(Math.abs(LINE_CURVE[i]!), circle(LINE[(i - 4 + N) % N]!, p, LINE[(i + 4) % N]!)),
+);
+const LINE_WORN = Array.from({ length: STEPS }, (_, k) => profile(grips(k), LINE_SHARP, LINE_CUM));
 
-export const limitAt = (i: number, g: number) => {
-  const f = Math.min(9, Math.max(0, (1 - g) / 0.05));
-  const k = Math.min(8, Math.floor(f));
-  return WORN[k]![i]! + (WORN[k + 1]![i]! - WORN[k]![i]!) * (f - k);
+// The speed limit at point i on tyres with grip g, driving `line` of the way from the
+// centreline (0) to the racing line (1).
+export const limitAt = (i: number, g: number, line = 0) => {
+  const f = Math.min(STEPS - 1, Math.max(0, (1.15 - g) / 0.05));
+  const k = Math.min(STEPS - 2, Math.floor(f));
+  const at = (w: number[][]) => w[k]![i]! + (w[k + 1]![i]! - w[k]![i]!) * (f - k);
+  return line ? at(WORN) + (at(LINE_WORN) - at(WORN)) * line : at(WORN);
 };
 
 // The track's heading at progress p, and how far right of the centreline (x, y) is there.

@@ -379,18 +379,22 @@ const field = (lv: Level) => {
   assert.ok(worst.lane < 5, `${lv}: nobody waits long in the lane (${worst.lane.toFixed(1)} s)`);
   const bests = race.racers.map((r) => r.best);
   assert.ok(
-    Math.min(...bests) > 84_000 && Math.max(...bests) < 106_000,
-    `${lv}: laps from 1:24 to 1:46 (${fmt(Math.min(...bests))} to ${fmt(Math.max(...bests))})`,
+    Math.min(...bests) > 84_000 && Math.max(...bests) < 112_000,
+    `${lv}: laps from 1:24 to 1:52 (${fmt(Math.min(...bests))} to ${fmt(Math.max(...bests))})`,
   );
   assert.ok(
     race.msgs.some((m) => m.kind === "fastest"),
     "fastest laps are called",
   );
   const strikes = race.racers.reduce((n, r) => n + r.strikes, 0);
-  return { lap: median(bests), strikes };
+  return { front: Math.min(...bests), lap: median(bests), win: table[0]!.time, strikes };
 };
 const levels = (["amateur", "intermediate", "pro"] as const).map(field);
-console.log(levels.map(({ lap, strikes }) => `${fmt(lap)} ${strikes} strikes`).join(", "));
+console.log(
+  levels
+    .map((l) => `best ${fmt(l.front)} median ${fmt(l.lap)} win ${fmt(l.win)} ${l.strikes} strikes`)
+    .join("\n"),
+);
 const [am, mid, pro] = levels as [(typeof levels)[0], (typeof levels)[0], (typeof levels)[0]];
 assert.ok(pro.lap < mid.lap && mid.lap < am.lap, "the better the field, the quicker it laps");
 assert.ok(am.strikes > 0, "computer cars make mistakes and pay for them");
@@ -408,3 +412,10 @@ console.log(`soft-stop, medium-stop, medium, hard: ${plans.map(fmt).join(", ")}`
 assert.ok(Math.max(...plans) - Math.min(...plans) < 10_000, "every strategy comes out close");
 
 console.log("race: ok");
+// The ladder: the front of each field laps about 1:36, 1:31 and 1:26, and pro's winner takes
+// about 7:30, which a clean race from the player (about 1:26 laps) only just beats.
+const near = (ms: number, want: number, by: number) => Math.abs(ms - want) < by;
+assert.ok(near(am.front, 95_500, 1500), `amateur's front laps about 1:36 (${fmt(am.front)})`);
+assert.ok(near(mid.front, 91_000, 1500), `intermediate's about 1:31 (${fmt(mid.front)})`);
+assert.ok(near(pro.front, 86_500, 1000), `pro's about 1:26 (${fmt(pro.front)})`);
+assert.ok(near(pro.win, 450_000, 10_000), `pro's winner takes about 7:30 (${fmt(pro.win)})`);

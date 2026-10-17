@@ -39,9 +39,11 @@ import {
 
 export const LAPS = 5;
 
-// Difficulty is the other drivers, not the cars: every car is the same, and a level sets how
-// far from the centreline (0) to the racing line (1) the computer drives, the share of the
-// corner limit its quickest and slowest drivers drive to, and how often it overcooks a corner.
+// Difficulty is mostly the other drivers: a level sets how far from the centreline (0) to the
+// racing line (1) the computer drives, the share of its grip its quickest and slowest drivers
+// dare use (so they brake earlier and corner slower, but run flat out on the straights), and
+// how often it overcooks a corner. Pro cars also get EDGE more grip: on the best line at the
+// limit the computer still laps about 1.5 s off a clean human, so that closes it.
 // The field is ten two-car teams. Driver 0 is you, in the car's own livery, and driver 1 your
 // teammate, the best driver whose team didn't make the top nine; then that series' top nine teams
 // in championship order, each driver above their teammate. Standings as of 17 Oct 2026; F3
@@ -49,6 +51,12 @@ export const LAPS = 5;
 // the paces are tuned in race.check.ts. Refresh the rosters when the seasons turn over.
 export type Level = "amateur" | "intermediate" | "pro";
 type Seat = [code: string, name: string];
+// ponytail: tuned in race.check.ts so pro's winner finishes in about 7:30, the time a clean
+// race from the player beats by a few seconds, and the field laps 1:26 to 1:29.
+const EDGE = 1.1;
+// A car's grip on its tyres: a computer car's scaled by its level's edge (1 but for pro).
+export const carGrip = (race: Race, r: Racer) =>
+  grip(r.life, r.tyre) * (r.id ? LEVELS[race.level].edge : 1);
 type Team = [color: string, a: Seat, b: Seat];
 const level = (
   series: string,
@@ -56,6 +64,7 @@ const level = (
   pace: [fast: number, slow: number],
   slip: number,
   mate: Seat,
+  edge: number,
   teams: Team[],
 ) => {
   const all: Team[] = [["", ["HAR", "You"], mate], ...teams];
@@ -65,6 +74,7 @@ const level = (
     pace,
     slip,
     colors: all.map(([c]) => c),
+    edge,
     drivers: all.flatMap(([, a, b]) => [a, b]).map(([code, name]) => ({ code, name })),
   };
 };
@@ -72,9 +82,10 @@ export const LEVELS: Record<Level, ReturnType<typeof level>> = {
   amateur: level(
     "F3",
     0,
-    [0.89, 0.83],
+    [0.77, 0.71],
     0.1,
     ["RIV", "Ernesto Rivera"],
+    1,
     [
       ["#ff6b1a", ["UGO", "Ugo Ugochukwu"], ["NAE", "Théophile Naël"]],
       ["#1d3b8a", ["SLA", "Freddie Slater"], ["STR", "Noah Strømsted"]],
@@ -90,9 +101,10 @@ export const LEVELS: Record<Level, ReturnType<typeof level>> = {
   intermediate: level(
     "F2",
     0.5,
-    [0.92, 0.87],
+    [0.89, 0.83],
     0.06,
     ["MON", "Sebastián Montoya"],
+    1,
     [
       ["#ff6b1a", ["TSO", "Nikola Tsolov"], ["LEO", "Noel León"]],
       ["#c8a24a", ["CAM", "Rafael Câmara"], ["DUR", "Joshua Dürksen"]],
@@ -108,9 +120,10 @@ export const LEVELS: Record<Level, ReturnType<typeof level>> = {
   pro: level(
     "F1",
     1,
-    [0.95, 0.91],
+    [0.98, 0.93],
     0.02,
     ["ALO", "Fernando Alonso"],
+    EDGE,
     [
       ["#27f4d2", ["ANT", "Kimi Antonelli"], ["RUS", "George Russell"]],
       ["#a6051a", ["HAM", "Lewis Hamilton"], ["LEC", "Charles Leclerc"]],
@@ -324,7 +337,7 @@ export function aiInput(r: Racer, race: Race): Input {
   const s = signed(r.p);
   const look = r.p * LENGTH + 10 + Math.abs(car.v) * 0.25;
   const i = atDist(look);
-  const g = grip(r.life, r.tyre);
+  const g = carGrip(race, r);
   const m = r.p * LENGTH;
   const { line, slip } = LEVELS[race.level];
   // Mistakes: rolled once per braking zone, likelier on worn tyres. A mistake drives into the
@@ -336,7 +349,7 @@ export function aiInput(r: Racer, race: Race): Input {
   }
   if (r.mistake >= 0 && fwd(CORNERS[r.mistake]!.at, m) < 200) r.mistake = -1;
   const at = atDist(m + 5);
-  let want = r.mistake >= 0 ? limitAt(at, g * 1.08) : r.pace * limitAt(at, g);
+  let want = limitAt(at, g * (r.mistake >= 0 ? 1.08 : r.pace), line);
   if (r.finish !== null) want *= 0.8;
 
   const ahead = (lane: number, from: number) =>
@@ -495,7 +508,7 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     if (Math.abs(dp) < 0.02 && dp > 0) drs(race, r, from, p * LENGTH, input.brake);
     else if (input.brake) r.drs = null;
     const top = r.drs === "open" ? DRS_TOP : undefined;
-    const g = grip(r.life, r.tyre);
+    const g = carGrip(race, r);
     step(car, input, dt, onGrass(edge), g, top);
     pitStop(race, r, dt);
     collide(car);

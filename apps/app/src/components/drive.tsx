@@ -91,7 +91,7 @@ const CONTROLS: [string[], string][] = [
 const RULES: [string, string][] = [
   [
     "Start",
-    "Your reaction in the hero sets your grid slot. Go when the lights go out: moving once the first light is on is a jump start, 5 s added. Amateur races the F3 grid, intermediate F2 and pro F1, on the racing line and with the fewest mistakes. The cars are the same.",
+    "Your reaction in the hero sets your grid slot. Go when the lights go out: moving once the first light is on is a jump start, 5 s added. Amateur races the F3 grid, intermediate F2 and pro F1: on the racing line, with the fewest mistakes and a little more grip than your car.",
   ],
   [
     "Tyres & pits",
@@ -921,8 +921,9 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
 
         {result && (
           // The flag: the stage fades to black, then the classification comes in row by row.
-          <div className="absolute inset-0 overflow-y-auto bg-pit p-4 motion-safe:animate-blackout md:p-8">
-            <div className="mx-auto max-w-3xl">
+          // The heading and button stay put; only the positions scroll.
+          <div className="absolute inset-0 flex flex-col bg-pit p-4 motion-safe:animate-blackout md:p-8">
+            <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col">
               <p
                 className="text-xs font-semibold tracking-wide text-soft uppercase motion-safe:animate-rowin"
                 style={{ animationDelay: "0.9s" }}
@@ -960,78 +961,84 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
                   Race again
                 </button>
               </div>
-              <table className="mt-4 w-full text-left text-sm tabular-nums md:text-[15px]">
-                <thead className="text-xs text-soft">
-                  <tr>
-                    <th className="w-8 py-1 font-normal">Pos</th>
-                    <th className="py-1 font-normal">Driver</th>
-                    <th className="py-1 text-right font-normal">Time</th>
-                    <th className="py-1 pl-3 text-right font-normal">Pits</th>
-                    <th className="py-1 pl-3 font-normal">Tyres</th>
-                    <th className="hidden py-1 pl-3 text-right font-normal md:table-cell">Best</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.table.map((r, k) => {
-                    const who = LEVELS[result.level].drivers[r.id]!;
-                    return (
-                      <tr
-                        key={r.id}
-                        className={`motion-safe:animate-rowin ${r.id ? "" : "bg-lamp"}`}
-                        style={{ animationDelay: `${1.1 + k * 0.05}s` }}
-                      >
-                        <td className="py-1 pl-2 text-soft">{k + 1}</td>
-                        <td className="py-1">
-                          <span className="flex items-center gap-2">
+              <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
+                <table className="w-full text-left text-sm tabular-nums md:text-[15px]">
+                  <thead className="sticky top-0 z-10 bg-pit text-xs text-soft">
+                    <tr>
+                      <th className="w-8 py-1 font-normal">Pos</th>
+                      <th className="py-1 font-normal">Driver</th>
+                      <th className="py-1 text-right font-normal">Time</th>
+                      <th className="py-1 pl-3 text-right font-normal">Pits</th>
+                      <th className="py-1 pl-3 font-normal">Tyres</th>
+                      <th className="hidden py-1 pl-3 text-right font-normal md:table-cell">
+                        Best
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.table.map((r, k) => {
+                      const who = LEVELS[result.level].drivers[r.id]!;
+                      return (
+                        <tr
+                          key={r.id}
+                          className={`motion-safe:animate-rowin ${r.id ? "" : "bg-lamp"}`}
+                          style={{ animationDelay: `${1.1 + k * 0.05}s` }}
+                        >
+                          <td className="py-1 pl-2 text-soft">{k + 1}</td>
+                          <td className="py-1">
+                            <span className="flex items-center gap-2">
+                              <span
+                                className="h-3 w-1 shrink-0 rounded-full ring-1 ring-paper/25"
+                                style={{
+                                  background:
+                                    LEVELS[result.level].colors[r.id >> 1] || "var(--color-accent)",
+                                }}
+                              />
+                              <span className="font-semibold">{who.code}</span>
+                              <span className="hidden truncate text-soft md:inline">
+                                {who.name}
+                              </span>
+                              {r.penalty ? (
+                                <span className="rounded-sm bg-slow px-1 text-xs font-semibold text-ink">
+                                  +{r.penalty / 1000}s
+                                </span>
+                              ) : null}
+                            </span>
+                          </td>
+                          <td className="py-1 text-right">
+                            {r.down
+                              ? `+${r.down} lap${r.down > 1 ? "s" : ""}`
+                              : k
+                                ? `+${secs(r.time - leader)}`
+                                : fmt(r.time)}
+                          </td>
+                          <td className="py-1 pl-3 text-right">{r.stops}</td>
+                          <td className="py-1 pl-3">
                             <span
-                              className="h-3 w-1 shrink-0 rounded-full ring-1 ring-paper/25"
-                              style={{
-                                background:
-                                  LEVELS[result.level].colors[r.id >> 1] || "var(--color-accent)",
-                              }}
-                            />
-                            <span className="font-semibold">{who.code}</span>
-                            <span className="hidden truncate text-soft md:inline">{who.name}</span>
-                            {r.penalty ? (
-                              <span className="rounded-sm bg-slow px-1 text-xs font-semibold text-ink">
-                                +{r.penalty / 1000}s
-                              </span>
-                            ) : null}
-                          </span>
-                        </td>
-                        <td className="py-1 text-right">
-                          {r.down
-                            ? `+${r.down} lap${r.down > 1 ? "s" : ""}`
-                            : k
-                              ? `+${secs(r.time - leader)}`
-                              : fmt(r.time)}
-                        </td>
-                        <td className="py-1 pl-3 text-right">{r.stops}</td>
-                        <td className="py-1 pl-3">
-                          <span
-                            className="flex gap-1 font-semibold"
-                            aria-label={r.stints.map((t) => TYRES[t].name).join(", then ")}
-                          >
-                            {r.stints.map((t, i) => (
-                              <span key={i} className={TYRE_INK[t]} aria-hidden>
-                                {letter(t)}
-                              </span>
-                            ))}
-                          </span>
-                        </td>
-                        <td className="hidden py-1 pr-2 pl-3 text-right md:table-cell">
-                          <span className="inline-flex items-center gap-1.5">
-                            {result.fastest === r.id && (
-                              <span title="Fastest lap" className="size-2 rounded-full bg-fl" />
-                            )}
-                            {r.best ? fmt(r.best) : DASH}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                              className="flex gap-1 font-semibold"
+                              aria-label={r.stints.map((t) => TYRES[t].name).join(", then ")}
+                            >
+                              {r.stints.map((t, i) => (
+                                <span key={i} className={TYRE_INK[t]} aria-hidden>
+                                  {letter(t)}
+                                </span>
+                              ))}
+                            </span>
+                          </td>
+                          <td className="hidden py-1 pr-2 pl-3 text-right md:table-cell">
+                            <span className="inline-flex items-center gap-1.5">
+                              {result.fastest === r.id && (
+                                <span title="Fastest lap" className="size-2 rounded-full bg-fl" />
+                              )}
+                              {r.best ? fmt(r.best) : DASH}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
