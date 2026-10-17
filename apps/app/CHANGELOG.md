@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.0](https://github.com/harshsandhu44/harshsandhu44/compare/app-v1.3.0...app-v1.4.0) (2026-10-17)
+
+
+### Features
+
+* **app:** add a live GitHub blueprint section to the home page ([#29](https://github.com/harshsandhu44/harshsandhu44/issues/29)) ([40d0dcd](https://github.com/harshsandhu44/harshsandhu44/commit/40d0dcd5322e9a057e6e6fe66417e8ce55ba362c))
+* **app:** add a Monza race unlocked from the reaction game ([#31](https://github.com/harshsandhu44/harshsandhu44/issues/31)) ([225208c](https://github.com/harshsandhu44/harshsandhu44/commit/225208c56ff9c72276ca5c4eee9f8d80fe1b5423))
+
 ## [1.3.0](https://github.com/harshsandhu44/harshsandhu44/compare/app-v1.2.1...app-v1.3.0) (2026-10-16)
 
 
