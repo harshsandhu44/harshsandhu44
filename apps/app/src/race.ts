@@ -56,24 +56,24 @@ export const gridSlot = (ms: number) => Math.min(9, Math.max(0, Math.ceil((ms - 
 const gridAt = (slot: number) => -10 - 8 * slot;
 
 // Tyres: life runs from 1 (new) to 0, and grip falls away faster as they go, to 1 - FADE when
-// they're finished. Distance wears them, sliding wide and the grass much faster. A medium lasts
-// about five laps driven clean; a compound scales its grip and how fast it wears. ponytail: tuned
-// in race.check.ts so a sloppy medium isn't called in before lap 4, and soft-to-hard, medium and
-// hard come out within a few seconds over five laps. These are the knobs.
-const WEAR = 1 / 30000;
-const SLIDE = 1 / 25;
+// they're finished. Distance wears them, and only all four wheels on the grass wears them faster;
+// sliding and a wheel or two off cost nothing extra. A medium nearly lasts the race; a compound
+// scales its grip and how fast it wears. ponytail: tuned in race.check.ts so a medium reaches lap
+// 4 before the call, and with tyres this long-lived a no-stop is the quick way round, the stops
+// within about 10 s of it. These are the knobs.
+const WEAR = 1 / 36000;
 const GRASS = 1 / 2000;
 const FADE = 0.45;
 export type Tyre = "soft" | "medium" | "hard";
 export const TYRES: Record<Tyre, { grip: number; wear: number; name: string }> = {
   soft: { grip: 1.04, wear: 1.5, name: "Softs" },
   medium: { grip: 1, wear: 1, name: "Mediums" },
-  hard: { grip: 0.88, wear: 0.6, name: "Hards" },
+  hard: { grip: 0.92, wear: 0.6, name: "Hards" },
 };
 export const grip = (life: number, tyre: Tyre) => TYRES[tyre].grip * (1 - FADE * (1 - life) ** 2);
 // The team fits the softest set that reaches the flag, given the full laps left after this one.
-export const teamPick = (left: number): Tyre =>
-  left <= 2 ? "soft" : left <= 3 ? "medium" : "hard";
+// Mediums cover anything a stop can leave, so hards are only ever a choice on the grid.
+export const teamPick = (left: number): Tyre => (left <= 2 ? "soft" : "medium");
 
 // DRS adds about 15 km/h to the top speed.
 const DRS_TOP = TOP + 4.2;
@@ -369,19 +369,15 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     const input = r.team === 0 ? you : aiInput(r, race);
     if (Math.abs(dp) < 0.02 && dp > 0) drs(race, r, from, p * LENGTH, input.brake);
     else if (input.brake) r.drs = null;
-    // Sliding: steering harder than the grip allows while too fast for the corner, i.e. running
-    // wide. Keyboard steering is all or nothing, so asking for too much alone doesn't count.
     const top = r.drs === "open" ? DRS_TOP : undefined;
     const g = grip(r.life, r.tyre);
-    const capped = step(car, input, dt, onGrass(edge), g, top);
-    const slid = capped && car.v > limitAt(atDist(p * LENGTH), g) + 1;
+    step(car, input, dt, onGrass(edge), g, top);
     pitStop(r, dt);
     collide(car);
     const v = Math.abs(car.v);
     r.life = Math.max(
       0,
-      r.life -
-        dt * TYRES[r.tyre].wear * (v * WEAR + (slid ? SLIDE : 0) + (onGrass(edge) ? GRASS * v : 0)),
+      r.life - dt * TYRES[r.tyre].wear * v * (WEAR + (allFourOff(edge) ? GRASS : 0)),
     );
     r.wrong = Math.cos(car.h - dirAt(p)) < -0.5 && car.v > 4.2 ? r.wrong + dt : 0;
     // Track limits, once per trip off. The pit entry on the right doesn't count, nor being
