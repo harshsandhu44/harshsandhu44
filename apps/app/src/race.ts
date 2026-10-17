@@ -50,8 +50,9 @@ export const TEAMS = [
   { code: "TEN", color: "#18181c" },
 ];
 
-// Your hero reaction time picks the slot: under 0.200 s is pole, each 20 ms slower one back.
-export const gridSlot = (ms: number) => Math.min(9, Math.max(0, Math.floor((ms - 200) / 20) + 1));
+// Your hero reaction time picks the slot: up to 0.250 s is pole, then one back per 30 ms. The hero
+// times from the press to the painted lights-out, so these are real reactions.
+export const gridSlot = (ms: number) => Math.min(9, Math.max(0, Math.ceil((ms - 250) / 30)));
 const gridAt = (slot: number) => -10 - 8 * slot;
 
 // Tyres: life runs from 1 (new) to 0 in about four laps, and grip falls away faster as they go,

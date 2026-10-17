@@ -29,9 +29,18 @@ import {
   type Race,
 } from "./race.ts";
 
-assert.equal(gridSlot(190), 0, "under 0.200 s is pole");
-assert.equal(gridSlot(205), 1);
-assert.equal(gridSlot(400), 9, "slow starts at the back");
+// The bands agreed for the start: [reaction ms, grid position].
+for (const [ms, p] of [
+  [190, 1],
+  [240, 1],
+  [280, 2],
+  [300, 3],
+  [350, 5],
+  [400, 6],
+  [520, 10],
+  [900, 10],
+] as [number, number][])
+  assert.equal(gridSlot(ms) + 1, p, `${ms} ms starts P${p}`);
 
 // A seeded random, so races repeat.
 const seeded = (seed: number) => () => {
