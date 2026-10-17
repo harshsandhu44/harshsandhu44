@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.5.0](https://github.com/harshsandhu44/harshsandhu44/compare/app-v1.4.0...app-v1.5.0) (2026-10-17)
+
+
+### Features
+
+* **app:** add tyre compounds and a grid screen to the race ([#33](https://github.com/harshsandhu44/harshsandhu44/issues/33)) ([871dec0](https://github.com/harshsandhu44/harshsandhu44/commit/871dec0986a8a24db4832d7152e9465a3e67c534))
+* **app:** race a 20-car grid at three levels with a proper pit lane ([#34](https://github.com/harshsandhu44/harshsandhu44/issues/34)) ([2b7b63c](https://github.com/harshsandhu44/harshsandhu44/commit/2b7b63ca0e101c9d1c14f336c03fd625062e5e4c))
+* **app:** show an exploded architecture view on case studies ([#32](https://github.com/harshsandhu44/harshsandhu44/issues/32)) ([3fe53e5](https://github.com/harshsandhu44/harshsandhu44/commit/3fe53e5cdad6c797b3c915d517d287df0ec0609b))
+
 ## [1.4.0](https://github.com/harshsandhu44/harshsandhu44/compare/app-v1.3.0...app-v1.4.0) (2026-10-17)
 
 
