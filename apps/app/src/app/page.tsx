@@ -30,6 +30,7 @@ import {
   skip,
 } from "@/components/ui";
 import { Work, type WorkItem } from "@/components/work";
+import { Mark, marks } from "@/wordmark";
 
 // The GitHub section refreshes hourly.
 export const revalidate = 3600;
@@ -127,11 +128,15 @@ export default function Home() {
           </h1>
           <div className="disp flex flex-col items-stretch gap-[.08em] text-center text-[14vw] leading-[.9] whitespace-nowrap text-paper short:text-[12vw] md:flex-row md:items-center md:gap-[.16em] md:text-[clamp(48px,7.6vw,128px)] md:leading-[.92]">
             <span className="mask self-center" aria-hidden>
-              <span data-hero-word>Harsh</span>
+              <span data-hero-word>
+                <Mark m={marks.harsh} className="block h-[.772em] w-auto" />
+              </span>
             </span>
             <Gantry />
             <span className="mask self-center" aria-hidden>
-              <span data-hero-word>Sandhu</span>
+              <span data-hero-word>
+                <Mark m={marks.sandhu} className="block h-[.772em] w-auto" />
+              </span>
             </span>
           </div>
         </div>

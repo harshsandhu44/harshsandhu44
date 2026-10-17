@@ -1,11 +1,11 @@
 import { ImageResponse } from "next/og";
-import { googleFont } from "@/google-font";
+import { Mark, marks } from "@/wordmark";
 
 export const size = { width: 32, height: 32 };
 export const contentType = "image/png";
 
-// H monogram in the display face, red on a carbon tile. Hex = globals.css accent/ink.
-export default async function Icon() {
+// H monogram in the DX Brutalist outline, red on a carbon tile. Hex = globals.css accent/ink.
+export default function Icon() {
   return new ImageResponse(
     <div
       style={{
@@ -17,22 +17,10 @@ export default async function Icon() {
         background: "#15151e",
         borderRadius: 6,
         color: "#e10600",
-        fontFamily: "Archivo",
-        fontSize: 24,
       }}
     >
-      H
+      <Mark m={marks.h} width={marks.h.w * 0.26} height={marks.h.h * 0.26} />
     </div>,
-    {
-      ...size,
-      fonts: [
-        {
-          name: "Archivo",
-          data: await googleFont("Archivo:ital,wdth,wght@1,125,800", "H"),
-          weight: 800,
-          style: "italic",
-        },
-      ],
-    },
+    size,
   );
 }
