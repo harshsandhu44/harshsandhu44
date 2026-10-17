@@ -4,7 +4,7 @@
 // Kit (CC0, kenney.nl), recoloured to the site's tokens at load.
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { TEAMS } from "@/race";
+import { CARS } from "@/race";
 import {
   BOARDS,
   BOXES,
@@ -21,6 +21,7 @@ import {
   WALLS,
   offset,
   pitOffset,
+  working,
   type Car,
 } from "@/track";
 
@@ -221,27 +222,32 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean) {
     flatMesh(strip(edge(-1, -1.2), R, 0.05, kerb, band, 2), kerbMat),
   );
 
-  // The pit lane: its own tarmac under the track's where they meet, a white line along its inner
-  // edge once it's clear of the track, and a box per team painted in its colour.
+  // The pit lane: its own tarmac under the track's where they meet, with the working lane beside
+  // it along the boxes, a white line along its inner edge once it's clear of the track, and a
+  // box per team, painted in its colour by paint().
   const lane = (k: number) => offset((i) => pitOffset(i) + k);
   const apart = (i: number) => pitOffset(i) - PIT_HALF > HALF[i]!;
   scene.add(
     flatMesh(
-      strip(lane(-PIT_HALF), lane(PIT_HALF), 0.015, (i) => pitOffset(i) + PIT_HALF > HALF[i]!),
+      strip(
+        lane(-PIT_HALF),
+        offset((i) => pitOffset(i) + PIT_HALF + working(i)),
+        0.015,
+        (i) => pitOffset(i) + PIT_HALF > HALF[i]!,
+      ),
       { color: PIT_LANE, roughness: 0.9 },
     ),
     flatMesh(strip(lane(-PIT_HALF), lane(0.35 - PIT_HALF), 0.03, apart), line),
   );
   const boxGeo = new THREE.PlaneGeometry(6, 4).rotateX(-Math.PI / 2);
-  BOXES.forEach((b, k) => {
-    const m = new THREE.Mesh(
-      boxGeo,
-      new THREE.MeshStandardMaterial({ color: TEAMS[k]!.color || C.accent, roughness: 0.8 }),
-    );
+  const boxes = BOXES.map((b) => {
+    const mat = new THREE.MeshStandardMaterial({ color: C.accent, roughness: 0.8 });
+    const m = new THREE.Mesh(boxGeo, mat);
     m.position.set(b.x, 0.025, b.y);
     m.rotation.y = yaw(Math.cos(b.h), Math.sin(b.h));
     m.receiveShadow = true;
     scene.add(m);
+    return mat;
   });
 
   // Chequered start line, two rows of squares across the road.
@@ -363,16 +369,18 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean) {
     scene.add(board);
   }
 
-  // The cars, about 5.5 m long. The model faces +z. Yours keeps the red; the others are clones
-  // with their own copy of the body paint.
-  const bodies = TEAMS.map(({ color }, k) => {
+  // The cars, about 5.5 m long. The model faces +z. Yours is the model; the others are clones,
+  // and each has its own copy of the body paint for paint() to set.
+  const paints: THREE.MeshStandardMaterial[][] = [];
+  const bodies = Array.from({ length: CARS }, (_, k) => {
     const b = k ? car!.root.clone(true) : car!.root;
-    if (color)
-      b.traverse((o) => {
-        if (!(o instanceof THREE.Mesh) || o.material.name !== "red") return;
-        o.material = o.material.clone();
-        o.material.color.set(color);
-      });
+    const paint: THREE.MeshStandardMaterial[] = [];
+    b.traverse((o) => {
+      if (!(o instanceof THREE.Mesh) || o.material.name !== "red") return;
+      o.material = o.material.clone();
+      paint.push(o.material);
+    });
+    paints.push(paint);
     b.scale.setScalar(5.5 / car!.size.z);
     scene.add(b);
     return b;
@@ -450,6 +458,11 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean) {
       // Portrait phones need a taller view to see the next corner.
       camera.fov = w < h ? 60 : 45;
       camera.updateProjectionMatrix();
+    },
+    // Team colours, yours "" for the accent: its two cars and its box.
+    paint(teams: string[]) {
+      boxes.forEach((m, k) => m.color.set(teams[k] || C.accent));
+      paints.forEach((ms, id) => ms.forEach((m) => m.color.set(teams[id >> 1] || C.accent)));
     },
     skipIntro() {
       if (intro < 1) {

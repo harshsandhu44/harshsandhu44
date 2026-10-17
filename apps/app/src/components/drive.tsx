@@ -3,9 +3,12 @@ import { createPortal } from "react-dom";
 import { createEngine, type Engine } from "@/engine";
 import type { Scene } from "@/scene";
 import {
-  LAPS,
-  TEAMS,
+  CARS,
+  DISTANCES,
+  LEVELS,
   TYRES,
+  colorOf,
+  driver,
   gap,
   grip,
   gridSlot,
@@ -14,6 +17,7 @@ import {
   results,
   tick,
   wrongWay,
+  type Level,
   type Race,
   type Tyre,
 } from "@/race";
@@ -23,6 +27,8 @@ import { LENGTH, PATH, TOP, atDist, fmt, gear, limitAt, nextCorner } from "@/tra
 const BEST = "monza-best-v2";
 const SECTORS = "monza-sectors-v2";
 const SOUND = "monza-sound";
+const LEVEL = "monza-level";
+const LAPS = "monza-laps";
 const DASH = "-:--.---";
 const JUMP = 5000;
 const KEYS: Record<string, "up" | "down" | "left" | "right"> = {
@@ -68,15 +74,52 @@ const TYRE_INK: Record<Tyre, string> = {
 const BLURB: Record<Tyre, string> = {
   soft: "About 3 laps",
   medium: "About 5 laps",
-  hard: "All race, slower",
+  hard: "About 9 laps, slower",
 };
 const letter = (t: Tyre) => t[0]!.toUpperCase();
+const STEPS: [Level, string, string][] = [
+  ["amateur", "Amateur", "F3 grid"],
+  ["intermediate", "Intermediate", "F2 grid"],
+  ["pro", "Pro", "F1 grid"],
+];
+const CONTROLS: [string[], string][] = [
+  [["↑", "W"], "Gas"],
+  [["↓", "S"], "Brake, reverse"],
+  [["← →", "A D"], "Steer"],
+  [["1–3"], "Tyres"],
+  [["Esc"], "Leave"],
+];
+const RULES: [string, string][] = [
+  [
+    "Start",
+    "Your reaction in the hero sets your grid slot. Go when the lights go out: moving once the first light is on is a jump start, 5 s added. Amateur races the F3 grid, intermediate F2 and pro F1: on the racing line, with the fewest mistakes and a little more grip than your car.",
+  ],
+  [
+    "Tyres & pits",
+    "Softs grip most, hards last longest. The pit lane is on the right after the Parabolica: turn in and the team drives you to your box and back out. Press 1, 2 or 3 in the lane to change the set. Only your teammate can hold you up there.",
+  ],
+  [
+    "Track limits",
+    "All four wheels off the track deletes the lap. The third time brings the black and white flag, then 5 s and 10 s penalties.",
+  ],
+  [
+    "DRS",
+    "From lap 2, within a second of the car ahead at a detection line. It opens on the straight that follows and shuts on the brakes.",
+  ],
+];
+const kbd = "rounded-sm bg-lamp px-1.5 py-0.5 text-xs font-semibold text-paper";
 const panel = "rounded-lg bg-ink/85 text-paper tabular-nums";
 const label = "text-sm text-soft";
 const sector = "rounded-sm bg-lamp px-1.5 py-0.5 text-sm text-soft md:px-2 md:text-[15px]";
 const secs = (ms: number) => (ms / 1000).toFixed(3);
 
-type Result = ReturnType<typeof results>;
+type Result = {
+  table: ReturnType<typeof results>;
+  jump: boolean;
+  fastest: number | null;
+  level: Level;
+  laps: number;
+};
 
 // The team's word at the flag.
 const debrief = (pos: number) =>
@@ -92,13 +135,25 @@ const debrief = (pos: number) =>
 // doesn't re-render every frame. Portalled to <body> so it doesn't inherit the hero heading's type.
 export default function Drive({ reaction, onClose }: { reaction: number; onClose: () => void }) {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [result, setResult] = useState<{ table: Result; jump: boolean } | null>(null);
+  const [result, setResult] = useState<Result | null>(null);
+  const [rules, setRules] = useState(false);
   const [sound, setSound] = useState(() => read(SOUND, false));
   const engine = useRef<Engine | null>(null);
   const again = useRef<() => void>(() => {});
   // The grid screen's pick, and what it and the pit lane's chips call into the race.
   const [grid, setGrid] = useState(true);
   const [tyre, setTyre] = useState<Tyre>("medium");
+  const [level, setLevel] = useState<Level>(() => {
+    const l: string = read(LEVEL, "intermediate");
+    return l in LEVELS ? (l as Level) : "intermediate";
+  });
+  const [laps, setLaps] = useState(() => {
+    const n: number = read(LAPS, DISTANCES[0]!);
+    return DISTANCES.includes(n) ? n : DISTANCES[0]!;
+  });
+  const levelRef = useRef(level);
+  const lapsRef = useRef(laps);
+  const regrid = useRef<() => void>(() => {});
   const go = useRef<(t: Tyre) => void>(() => {});
   const fit = useRef<(t: Tyre) => void>(() => {});
   const fitWrap = useRef<HTMLDivElement>(null);
@@ -162,7 +217,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       ink: col("ink"),
       pit: col("pit"),
     };
-    const colorOf = (team: number) => TEAMS[team]!.color || C.accent;
+    const paintOf = (id: number) => colorOf(race, id) || C.accent;
     const flat = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const road = new Path2D(outline);
 
@@ -174,6 +229,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     // plays behind it), then the lights come on a second apart and go out after an unannounced
     // pause, as in the hero.
     let race: Race;
+    let scene: Scene | null = null;
     let phase: "grid" | "lights" | "racing" = "grid";
     let phaseAt = 0;
     let pause = 0;
@@ -246,28 +302,31 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       mctx.lineWidth = 1 / s;
       mctx.strokeStyle = C.paper;
       for (const r of [...race.racers].reverse()) {
-        mctx.fillStyle = colorOf(r.team);
+        mctx.fillStyle = paintOf(r.id);
         mctx.beginPath();
-        mctx.arc(r.car.x - box.x, r.car.y - box.y, (r.team ? 3 : 4.5) / s, 0, Math.PI * 2);
+        mctx.arc(r.car.x - box.x, r.car.y - box.y, (r.id ? 3 : 4.5) / s, 0, Math.PI * 2);
         mctx.fill();
-        if (r.team) mctx.stroke();
+        if (r.id) mctx.stroke();
       }
     };
 
-    // The tower and the phone's gaps, twice a second rather than every frame.
+    // The tower and the phone's gaps, twice a second rather than every frame. On a short stage
+    // the tower shows the top ten and you.
     const drawBoard = () => {
       const run = order(race);
       const me = race.racers[0]!;
       const at = run.indexOf(me);
+      const short = cv.clientHeight < 640;
       posEl.current!.textContent = `P${at + 1}`;
       run.forEach((r, k) => {
         const row = towerEls.current[k]!;
+        row.hidden = short && k >= 10 && r !== me;
         const [sw, code, tyre, fl, pen, g] = row.children as unknown as HTMLElement[];
-        sw!.style.background = colorOf(r.team);
-        code!.textContent = TEAMS[r.team]!.code;
+        sw!.style.background = paintOf(r.id);
+        code!.textContent = driver(race, r.id).code;
         tyre!.textContent = letter(r.tyre);
         tyre!.className = `text-xs font-semibold ${TYRE_INK[r.tyre]}`;
-        fl!.hidden = race.fastest?.team !== r.team;
+        fl!.hidden = race.fastest?.id !== r.id;
         pen!.hidden = !r.penalty;
         pen!.textContent = `+${r.penalty / 1000}s`;
         g!.textContent = !k ? "Leader" : r.cp < 0 ? "" : `+${gap(race, r).toFixed(1)}`;
@@ -275,7 +334,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       });
       const near = (o: (typeof run)[number] | undefined, sign: string) =>
         o && o.cp >= 0 && me.cp >= 0
-          ? `${TEAMS[o.team]!.code} ${sign}${Math.abs(gap(race, o) - gap(race, me)).toFixed(1)}`
+          ? `${driver(race, o.id).code} ${sign}${Math.abs(gap(race, o) - gap(race, me)).toFixed(1)}`
           : "";
       nearEl.current!.textContent = [near(run[at - 1], "+"), near(run[at + 1], "−")]
         .filter(Boolean)
@@ -283,7 +342,8 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     };
 
     const start = () => {
-      race = newRace(gridSlot(reaction));
+      race = newRace(gridSlot(reaction), Math.random, "medium", levelRef.current, lapsRef.current);
+      scene?.paint(LEVELS[race.level].colors);
       phase = "grid";
       setGrid(true);
       pause = 200 + Math.random() * 2800;
@@ -300,8 +360,13 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       setResult(null);
       start();
     };
+    // A new level or distance is a new race on the same grid.
+    regrid.current = () => {
+      if (phase === "grid") start();
+    };
     go.current = (t) => {
-      race.racers[0]!.tyre = t;
+      const me = race.racers[0]!;
+      [me.tyre, me.stints] = [t, [t]];
       drawBoard();
       scene?.skipIntro();
       keys.clear();
@@ -315,7 +380,6 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       if (me.pit && !me.served) me.fit = t;
     };
 
-    let scene: Scene | null = null;
     let raf = 0;
     let last = performance.now();
     const ro = new ResizeObserver(() => {
@@ -386,10 +450,11 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
           const table = results(race);
           race.msgs.push({
             kind: "radio",
-            team: 0,
-            text: debrief(table.findIndex((r) => !r.team) + 1),
+            id: 0,
+            text: debrief(table.findIndex((r) => !r.id) + 1),
           });
-          setResult({ table, jump: race.jump });
+          const { jump, level, laps, fastest } = race;
+          setResult({ table, jump, level, laps, fastest: fastest?.id ?? null });
         }
         if (t - board > 500) {
           board = t;
@@ -397,7 +462,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
         }
       }
 
-      lapEl.current!.textContent = `${Math.min(me.laps + 1, LAPS)}/${LAPS}`;
+      lapEl.current!.textContent = `${Math.min(me.laps + 1, race.laps)}/${race.laps}`;
       const time = timeEl.current!;
       time.textContent = fmt(phase === "racing" && !race.done ? race.t - me.lap.start! : 0);
       time.classList.toggle("text-accent", me.lap.invalid);
@@ -448,7 +513,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       // Race Control: one message at a time for 3.5 s. A backlog drops other cars' track-limit
       // notes first, so yours and the flags always get through.
       while (race.msgs.length > 3) {
-        const k = race.msgs.findIndex((m) => m.team && m.kind === "limits");
+        const k = race.msgs.findIndex((m) => m.id && m.kind === "limits");
         if (k < 0) break;
         race.msgs.splice(k, 1);
       }
@@ -587,7 +652,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
               <span className={label}>
                 Lap{" "}
                 <span ref={lapEl} className="text-paper">
-                  1/{LAPS}
+                  1/{laps}
                 </span>
               </span>
               <span ref={timeEl} className="disp text-[20px] leading-none md:text-[24px]">
@@ -635,13 +700,13 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
           </div>
 
           <div className={`${panel} hidden w-40 py-1.5 text-sm md:block`}>
-            {TEAMS.map((_, k) => (
+            {Array.from({ length: CARS }, (_, k) => (
               <div
                 key={k}
                 ref={(el) => {
                   if (el) towerEls.current[k] = el;
                 }}
-                className="flex items-center gap-2 px-3 py-0.5"
+                className="flex items-center gap-2 px-3 leading-5"
               >
                 <span className="h-3 w-1 rounded-full ring-1 ring-paper/25" />
                 <span className="font-semibold" />
@@ -773,9 +838,49 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
             <div className={`${panel} w-full max-w-sm p-4 md:p-5`}>
               <p className="disp text-xl">Grid P{gridSlot(reaction) + 1}</p>
               <p className={`${label} mt-1`}>
-                Reaction {(reaction / 1000).toFixed(3)} s. Pick your tyres.
+                Reaction {(reaction / 1000).toFixed(3)} s. Pick the field, the distance and your
+                tyres.
               </p>
-              <div role="radiogroup" aria-label="Tyres" className="mt-4 grid grid-cols-3 gap-2">
+              <div role="radiogroup" aria-label="Field" className="mt-4 grid grid-cols-3 gap-2">
+                {STEPS.map(([l, name, field]) => (
+                  <button
+                    key={l}
+                    type="button"
+                    role="radio"
+                    aria-checked={level === l}
+                    onClick={() => {
+                      setLevel(l);
+                      write(LEVEL, l);
+                      levelRef.current = l;
+                      regrid.current();
+                    }}
+                    className={`rounded-md p-2.5 text-left ring-1 active:scale-[.98] ${level === l ? "bg-lamp ring-paper" : "ring-paper/25"}`}
+                  >
+                    <span className="block text-sm font-semibold">{name}</span>
+                    <span className="block text-xs text-soft">{field}</span>
+                  </button>
+                ))}
+              </div>
+              <div role="radiogroup" aria-label="Laps" className="mt-2 grid grid-cols-4 gap-2">
+                {DISTANCES.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    role="radio"
+                    aria-checked={laps === n}
+                    onClick={() => {
+                      setLaps(n);
+                      write(LAPS, n);
+                      lapsRef.current = n;
+                      regrid.current();
+                    }}
+                    className={`min-h-11 rounded-md text-sm ring-1 active:scale-[.98] ${laps === n ? "bg-lamp font-semibold ring-paper" : "ring-paper/25"}`}
+                  >
+                    {n} laps
+                  </button>
+                ))}
+              </div>
+              <div role="radiogroup" aria-label="Tyres" className="mt-2 grid grid-cols-3 gap-2">
                 {COMPOUNDS.map((t) => (
                   <button
                     key={t}
@@ -808,80 +913,192 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
           </div>
         )}
 
-        {result && (
-          <div className="absolute inset-0 grid place-items-center bg-ink/60 p-4">
-            <div className={`${panel} w-full max-w-sm p-4 md:p-5`}>
-              <p className="disp text-xl">Classification</p>
-              <ol className="mt-3 text-[15px]">
-                {result.table.map((r, k) => (
-                  <li
-                    key={r.team}
-                    className={`flex items-center gap-3 rounded-sm px-2 py-0.5 ${r.team ? "" : "bg-lamp"}`}
-                  >
-                    <span className="w-5 text-soft">{k + 1}</span>
-                    <span
-                      className="h-3 w-1 rounded-full ring-1 ring-paper/25"
-                      style={{ background: TEAMS[r.team]!.color || "var(--color-accent)" }}
-                    />
-                    <span className="font-semibold">{TEAMS[r.team]!.code}</span>
-                    {r.penalty ? (
-                      <span className="rounded-sm bg-slow px-1 text-xs font-semibold text-ink">
-                        +{r.penalty / 1000}s
-                      </span>
-                    ) : null}
-                    <span className="ml-auto">
-                      {r.down
-                        ? `+${r.down} lap${r.down > 1 ? "s" : ""}`
-                        : k
-                          ? `+${secs(r.time - leader)}`
-                          : fmt(r.time)}
-                    </span>
-                  </li>
+        {rules && (
+          <div
+            className="absolute inset-0 grid place-items-center bg-ink/60 p-4"
+            onClick={(e) => e.target === e.currentTarget && setRules(false)}
+          >
+            <div
+              id="monza-rules"
+              className="max-h-full w-full max-w-lg overflow-y-auto rounded-lg bg-ink p-4 text-paper shadow-[inset_0_0_0_1px_var(--color-lamp)] md:p-5"
+            >
+              <div className="flex items-baseline justify-between">
+                <p className="disp text-xl">Rules</p>
+                <button
+                  type="button"
+                  onClick={() => setRules(false)}
+                  className="min-h-11 pl-4 text-sm font-semibold active:scale-[.96]"
+                >
+                  Close
+                </button>
+              </div>
+              <dl className="mt-1 grid gap-3 text-sm">
+                {RULES.map(([term, text]) => (
+                  <div key={term}>
+                    <dt className="text-xs font-semibold tracking-wide text-accent uppercase">
+                      {term}
+                    </dt>
+                    <dd className="mt-0.5 text-paper/90">{text}</dd>
+                  </div>
                 ))}
-              </ol>
-              <p className="mt-3 text-sm text-soft">
-                Your fastest lap{" "}
-                <span className="text-paper">
-                  {result.table.find((r) => !r.team)?.best
-                    ? fmt(result.table.find((r) => !r.team)!.best)
-                    : DASH}
-                </span>
-                {result.jump ? <span className="ml-3 text-accent">Jump start +5 s</span> : null}
-              </p>
-              <p className="mt-1 text-sm">
-                <span className="mr-2 text-xs font-semibold tracking-wide text-accent uppercase">
-                  Radio
-                </span>
-                {debrief(result.table.findIndex((r) => !r.team) + 1)}
-              </p>
-              <button
-                type="button"
-                autoFocus
-                onClick={() => again.current()}
-                className="mt-4 min-h-11 w-full rounded-md bg-paper font-semibold text-ink active:scale-[.98]"
+              </dl>
+            </div>
+          </div>
+        )}
+
+        {result && (
+          // The flag: the stage fades to black, then the classification comes in row by row.
+          // The heading and button stay put; only the positions scroll.
+          <div className="absolute inset-0 flex flex-col bg-pit p-4 motion-safe:animate-blackout md:p-8">
+            <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col">
+              <p
+                className="text-xs font-semibold tracking-wide text-soft uppercase motion-safe:animate-rowin"
+                style={{ animationDelay: "0.9s" }}
               >
-                Race again
-              </button>
+                Monza · {result.laps} laps · {LEVELS[result.level].series} grid
+              </p>
+              <div
+                className="mt-1 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 motion-safe:animate-rowin"
+                style={{ animationDelay: "1s" }}
+              >
+                <div>
+                  <p className="disp text-[28px] leading-none md:text-[36px]">Classification</p>
+                  <p className="mt-2 text-sm text-soft">
+                    Your fastest lap{" "}
+                    <span className="text-paper">
+                      {result.table.find((r) => !r.id)?.best
+                        ? fmt(result.table.find((r) => !r.id)!.best)
+                        : DASH}
+                    </span>
+                    {result.jump ? <span className="ml-3 text-accent">Jump start +5 s</span> : null}
+                  </p>
+                  <p className="mt-1 text-sm">
+                    <span className="mr-2 text-xs font-semibold tracking-wide text-accent uppercase">
+                      Radio
+                    </span>
+                    {debrief(result.table.findIndex((r) => !r.id) + 1)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  autoFocus
+                  onClick={() => again.current()}
+                  className="min-h-11 w-full rounded-md bg-paper px-6 font-semibold text-ink active:scale-[.98] md:w-auto"
+                >
+                  Race again
+                </button>
+              </div>
+              <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
+                <table className="w-full text-left text-sm tabular-nums md:text-[15px]">
+                  <thead className="sticky top-0 z-10 bg-pit text-xs text-soft">
+                    <tr>
+                      <th className="w-8 py-1 font-normal">Pos</th>
+                      <th className="py-1 font-normal">Driver</th>
+                      <th className="py-1 text-right font-normal">Time</th>
+                      <th className="py-1 pl-3 text-right font-normal">Pits</th>
+                      <th className="py-1 pl-3 font-normal">Tyres</th>
+                      <th className="hidden py-1 pl-3 text-right font-normal md:table-cell">
+                        Best
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.table.map((r, k) => {
+                      const who = LEVELS[result.level].drivers[r.id]!;
+                      return (
+                        <tr
+                          key={r.id}
+                          className={`motion-safe:animate-rowin ${r.id ? "" : "bg-lamp"}`}
+                          style={{ animationDelay: `${1.1 + k * 0.05}s` }}
+                        >
+                          <td className="py-1 pl-2 text-soft">{k + 1}</td>
+                          <td className="py-1">
+                            <span className="flex items-center gap-2">
+                              <span
+                                className="h-3 w-1 shrink-0 rounded-full ring-1 ring-paper/25"
+                                style={{
+                                  background:
+                                    LEVELS[result.level].colors[r.id >> 1] || "var(--color-accent)",
+                                }}
+                              />
+                              <span className="font-semibold">{who.code}</span>
+                              <span className="hidden truncate text-soft md:inline">
+                                {who.name}
+                              </span>
+                              {r.penalty ? (
+                                <span className="rounded-sm bg-slow px-1 text-xs font-semibold text-ink">
+                                  +{r.penalty / 1000}s
+                                </span>
+                              ) : null}
+                            </span>
+                          </td>
+                          <td className="py-1 text-right">
+                            {r.down
+                              ? `+${r.down} lap${r.down > 1 ? "s" : ""}`
+                              : k
+                                ? `+${secs(r.time - leader)}`
+                                : fmt(r.time)}
+                          </td>
+                          <td className="py-1 pl-3 text-right">{r.stops}</td>
+                          <td className="py-1 pl-3">
+                            <span
+                              className="flex gap-1 font-semibold"
+                              aria-label={r.stints.map((t) => TYRES[t].name).join(", then ")}
+                            >
+                              {r.stints.map((t, i) => (
+                                <span key={i} className={TYRE_INK[t]} aria-hidden>
+                                  {letter(t)}
+                                </span>
+                              ))}
+                            </span>
+                          </td>
+                          <td className="hidden py-1 pr-2 pl-3 text-right md:table-cell">
+                            <span className="inline-flex items-center gap-1.5">
+                              {result.fastest === r.id && (
+                                <span title="Fastest lap" className="size-2 rounded-full bg-fl" />
+                              )}
+                              {r.best ? fmt(r.best) : DASH}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      <p className="text-[15px] text-soft">
-        <span className="pointer-coarse:hidden">
-          Arrow keys or WASD to drive. Hold down to brake, then reverse. Esc to leave.
-        </span>
-        <span className="hidden pointer-coarse:inline">
+      <div className="flex items-center gap-x-4 text-sm text-soft">
+        <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 pointer-coarse:hidden">
+          {CONTROLS.map(([keys, what]) => (
+            <li key={what} className="flex items-center gap-1">
+              {keys.map((k) => (
+                <kbd key={k} className={kbd}>
+                  {k}
+                </kbd>
+              ))}
+              <span className="ml-0.5">{what}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="hidden pointer-coarse:block">
           Hold the left or right side to steer, or both to brake and reverse. The throttle is
           automatic.
-        </span>{" "}
-        Pick tyres on the grid: softs grip most, hards last longest. Go when the lights go out. All
-        four wheels off the track deletes the lap; the third time brings the black and white flag,
-        then time penalties. DRS opens on the straights within a second of the car ahead. The pit
-        lane is on the right after the Parabolica; your car stops at its box for the set the team
-        has ready, or press 1, 2 or 3 in the lane to change it.
-        <span className="mt-1 block text-sm">Track data: TUMFTM racetrack-database, LGPL-3.0.</span>
-      </p>
+        </p>
+        <button
+          type="button"
+          aria-expanded={rules}
+          aria-controls="monza-rules"
+          onClick={() => setRules((o) => !o)}
+          className="ml-auto min-h-11 shrink-0 pl-4 font-semibold text-paper active:scale-[.96]"
+        >
+          Rules
+        </button>
+      </div>
+      <p className="-mt-2 text-xs text-soft">Track data: TUMFTM racetrack-database, LGPL-3.0.</p>
     </dialog>,
     document.body,
   );
