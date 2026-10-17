@@ -1,0 +1,527 @@
+// Track and car for the Monza drive the start lights unlock. Units are metres, y points down
+// (canvas space) and the lap runs clockwise from the start line on the main straight.
+import { MONZA_DATA } from "./monza.ts";
+
+type Pt = [number, number];
+
+// Unit normal at each point of a closed line, averaged over the segments either side. It points
+// to the right of travel.
+const normals = (pts: readonly (readonly number[])[]) =>
+  pts.map((_, i) => {
+    const [ax, ay] = pts[(i - 1 + pts.length) % pts.length]!;
+    const [bx, by] = pts[(i + 1) % pts.length]!;
+    const l = Math.hypot(bx! - ax!, by! - ay!);
+    return [-(by! - ay!) / l, (bx! - ax!) / l] as const;
+  });
+
+// The source centreline isn't quite central, so shift each point half the difference between
+// its two widths. Then the track is HALF[i] either side of PATH[i].
+const RAW_NORMALS = normals(MONZA_DATA);
+export const PATH = MONZA_DATA.map(([x, y, right, left], i): Pt => {
+  const [nx, ny] = RAW_NORMALS[i]!;
+  return [x + (nx * (right - left)) / 2, y + (ny * (right - left)) / 2];
+});
+export const HALF = MONZA_DATA.map(([, , right, left]) => (right + left) / 2);
+const N = PATH.length;
+// Distance along the lap to each point; CUM[N] is the full lap.
+export const CUM = PATH.reduce(
+  (acc, [x, y], i) => {
+    const [nx, ny] = PATH[(i + 1) % N]!;
+    acc.push(acc[i]! + Math.hypot(nx - x, ny - y));
+    return acc;
+  },
+  [0],
+);
+export const LENGTH = CUM[N]!;
+// The point a given distance round the lap.
+export const atDist = (m: number) => {
+  const d = ((m % LENGTH) + LENGTH) % LENGTH;
+  return Math.max(0, CUM.findIndex((c) => c > d) - 1);
+};
+
+const NORMALS = normals(PATH);
+// The centreline pushed sideways by d, or by d(i) at each point: the road edges, kerbs, gravel
+// and barrier lines. Positive is to the right of travel.
+export const offset = (d: number | ((i: number) => number)) =>
+  PATH.map(([x, y], i): Pt => {
+    const k = typeof d === "number" ? d : d(i);
+    return [x + NORMALS[i]![0] * k, y + NORMALS[i]![1] * k];
+  });
+
+// Signed curvature (radians per metre) at each point, measured over w points either side.
+// Positive bends right (towards +normal), so the outside of a corner is at offset(-sign * d).
+const curvature = (w: number) =>
+  PATH.map((_, i) => {
+    const dir = (j: number) => {
+      const [ax, ay] = PATH[(j + N) % N]!;
+      const [bx, by] = PATH[(j + 1 + N) % N]!;
+      return Math.atan2(by - ay, bx - ax);
+    };
+    let turn = dir(i + w - 1) - dir(i - w);
+    turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+    return turn / ((2 * w * LENGTH) / N);
+  });
+// Smooth, for placing kerbs, gravel and trees.
+export const CURVE = curvature(5);
+
+export const CAR_HALF_WIDTH = 1.3;
+// How far beyond the tarmac edge the car is (negative while on it).
+export const onGrass = (edge: number) => edge > 0;
+export const allFourOff = (edge: number) => edge > CAR_HALF_WIDTH;
+
+// Distance from the centreline and from the tarmac edge, and how far round the lap (0 to 1) the
+// nearest point is. ponytail: linear scan over ~1,160 segments a frame; search around the last
+// index if it ever shows.
+export function nearest(x: number, y: number) {
+  let best = Infinity;
+  let p = 0;
+  let half = 0;
+  for (let i = 0; i < N; i++) {
+    const [ax, ay] = PATH[i]!;
+    const [bx, by] = PATH[(i + 1) % N]!;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / len2));
+    const d2 = (ax + t * dx - x) ** 2 + (ay + t * dy - y) ** 2;
+    if (d2 < best) {
+      best = d2;
+      p = (CUM[i]! + t * Math.sqrt(len2)) / LENGTH;
+      half = HALF[i]! * (1 - t) + HALF[(i + 1) % N]! * t;
+    }
+  }
+  const dist = Math.sqrt(best);
+  return { dist, p, edge: dist - half };
+}
+
+export type Car = { x: number; y: number; h: number; v: number };
+export type Input = { gas: boolean; brake: boolean; steer: number };
+
+// Roughly F1. Drag cancels the throttle at the top speed, which is lower on grass. Downforce
+// makes braking and cornering grip grow with the square of speed, and grip caps how fast the car
+// can turn: arrive too fast and it runs wide however hard you steer. Holding the brake brings
+// the car to a stop and then reverses it.
+// ponytail: tuned against the ideal lap in track.check.ts. These are the knobs if it drives wrong.
+export const TOP = 95;
+const GRASS_TOP = 30;
+const ACCEL = 14;
+const COAST = 4;
+const TURN = 2.4;
+const REVERSE = 8;
+const REVERSE_TOP = 10;
+const DOWNFORCE = 0.0035;
+const GRIP = 24;
+export const brakeAt = (v: number) => 15 + DOWNFORCE * v * v;
+export const gripAt = (v: number) => GRIP + DOWNFORCE * v * v;
+
+export const startCar = (): Car => {
+  const [[x, y], [nx, ny]] = PATH as [Pt, Pt];
+  return { x, y, h: Math.atan2(ny - y, nx - x), v: 0 };
+};
+
+// g is what's left of the tyres' grip (1 new) and scales cornering and braking. Returns whether
+// the steering asked for more than the grip gave: the car is sliding, which wears the tyres.
+// `top` is the speed drag allows, higher with DRS open.
+export function step(car: Car, input: Input, dt: number, grass: boolean, g = 1, top = TOP) {
+  const v = car.v;
+  const drag = v > 0 ? ACCEL / (grass ? GRASS_TOP : top) ** 2 : REVERSE / REVERSE_TOP ** 2;
+  let a = -drag * v * Math.abs(v);
+  // Each pedal brakes while the car rolls the other way, then drives.
+  if (input.gas) a += v < -0.5 ? brakeAt(v) * g : ACCEL;
+  if (input.brake) a -= v > 0.5 ? brakeAt(v) * g : REVERSE;
+  if (!input.gas && !input.brake) a -= COAST * Math.sign(v);
+  car.v = v + a * dt;
+  // Coasting stops at zero rather than rolling the other way.
+  if (!input.gas && !input.brake && Math.sign(car.v) !== Math.sign(v)) car.v = 0;
+  // Steering needs some speed to bite, and grip caps the turn rate. Going backwards turns the
+  // nose the other way, like a real car.
+  const speed = Math.abs(car.v);
+  const cap = (gripAt(speed) * g) / Math.max(speed, 1);
+  const turn = input.steer * TURN * Math.max(-1, Math.min(1, car.v / 12));
+  car.h += Math.max(-cap, Math.min(cap, turn)) * dt;
+  car.x += Math.cos(car.h) * car.v * dt;
+  car.y += Math.sin(car.h) * car.v * dt;
+  return Math.abs(turn) > cap;
+}
+
+// Shown in the HUD.
+export const gear = (v: number) =>
+  v < -0.5 ? "R" : Math.min(8, Math.max(1, 1 + Math.floor((v / TOP) * 8)));
+
+// The fastest the car can be at each point and still make every corner ahead under full braking:
+// the corner speed where grip matches v²/R, then braking distances worked back from each corner.
+// Curvature over a short window, so the chicanes keep their bite, and the tightest within 15 m
+// either side, so the limit never promises more than the apex allows.
+const SHARP = curvature(2).map(Math.abs);
+// The profile for tyres with grip g (1 new): grip and braking both scale with it.
+const profile = (g: number) => {
+  const corner = SHARP.map((_, i) => {
+    let k = 0;
+    for (let j = -3; j <= 3; j++) k = Math.max(k, SHARP[(i + j + N) % N]!);
+    const r = 1 / Math.max(k, 1e-6);
+    const d = g * DOWNFORCE * r;
+    return d >= 1 ? TOP : Math.min(TOP, Math.sqrt((g * GRIP * r) / (1 - d)));
+  });
+  const limit = corner.slice();
+  for (let pass = 0; pass < 2; pass++)
+    for (let i = N - 1; i >= 0; i--) {
+      const next = limit[(i + 1) % N]!;
+      const ds = CUM[i + 1]! - CUM[i]!;
+      limit[i] = Math.min(corner[i]!, Math.sqrt(next * next + 2 * g * brakeAt(next) * ds));
+    }
+  return limit;
+};
+export const LIMIT = profile(1);
+// Worn tyres: profiles every 0.05 of grip down to 0.55 (fully worn), blended between. Downforce means the
+// fast corners lose more than √grip would say, so it's worth the ~10k sums at load.
+const WORN = Array.from({ length: 10 }, (_, k) => profile(1 - k * 0.05));
+export const limitAt = (i: number, g: number) => {
+  const f = Math.min(9, Math.max(0, (1 - g) / 0.05));
+  const k = Math.min(8, Math.floor(f));
+  return WORN[k]![i]! + (WORN[k + 1]![i]! - WORN[k]![i]!) * (f - k);
+};
+
+// The track's heading at progress p, and how far right of the centreline (x, y) is there.
+export const dirAt = (p: number) => {
+  const i = atDist(p * LENGTH);
+  const [ax, ay] = PATH[i]!;
+  const [bx, by] = PATH[(i + 1) % N]!;
+  return Math.atan2(by - ay, bx - ax);
+};
+export const lateral = (x: number, y: number, p: number) => {
+  const i = atDist(p * LENGTH);
+  return (x - PATH[i]![0]) * NORMALS[i]![0] + (y - PATH[i]![1]) * NORMALS[i]![1];
+};
+// The point m metres round the lap (negative counts back from the line), lat to the right.
+export const pointAt = (m: number, lat: number): Pt => {
+  const i = atDist(m);
+  return [PATH[i]![0] + NORMALS[i]![0] * lat, PATH[i]![1] + NORMALS[i]![1] * lat];
+};
+// Metres from the line, negative before it, so the pit lane's numbers read naturally.
+export const signed = (p: number) => (p > 0.5 ? p - 1 : p) * LENGTH;
+
+// The pit lane, on the right of the main straight like Monza's. It leaves the track after the
+// Parabolica, runs 8 m beyond the tarmac behind a pit wall, and rejoins before the Rettifilo.
+export const PIT_IN = -420;
+export const PIT_OUT = 220;
+const PIT_FROM = -300;
+const PIT_TO = 120;
+export const PIT_HALF = 3.5;
+const ease = (t: number) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+export const pitOffset = (i: number) => {
+  const s = signed(CUM[i]! / LENGTH);
+  const k =
+    s < PIT_FROM
+      ? ease((s - PIT_IN) / (PIT_FROM - PIT_IN))
+      : ease((PIT_OUT - s) / (PIT_OUT - PIT_TO));
+  return k * (HALF[i]! + 8);
+};
+// In the lane: past the tarmac edge and on the lane, between where it leaves and rejoins.
+export const inPit = (x: number, y: number, p: number) => {
+  const s = signed(p);
+  if (s < PIT_IN || s > PIT_OUT) return false;
+  const i = atDist(s);
+  const lat = lateral(x, y, p);
+  return lat > HALF[i]! && Math.abs(lat - pitOffset(i)) < PIT_HALF;
+};
+// One box per team, 12 m apart along the flat of the lane, in metres from the line.
+export const BOXES = Array.from({ length: 10 }, (_, k) => {
+  const i = atDist(-240 + k * 12);
+  // On a path point, so the paint and the stop agree to the centimetre.
+  const s = signed(CUM[i]! / LENGTH);
+  const [x, y] = pointAt(s, pitOffset(i));
+  return { s, x, y, h: dirAt(CUM[i]! / LENGTH) };
+});
+
+// Everything beside the track, here rather than in scene.ts so the drawing and the collisions
+// use the same list. Walls stand RUNOFF beyond the tarmac on both sides. Most trees and the
+// Parabolica stands are behind them; the main straight's stands and a row of trees along the
+// straights are inside, where you can reach them.
+export const RUNOFF = 20;
+const WALL_HALF_THICK = 0.45;
+export const STAND_HALF = 11;
+// The car collides as a circle. ponytail: a 5.5 m car as a circle overlaps a little at the nose
+// and tail; use two circles if it looks wrong.
+const CAR_R = 1.6;
+// Kerbs and the tree-free zones go on corners tighter than this radius.
+export const KERB_R = 250;
+
+// mulberry32, so the park is planted the same way every time.
+function seeded(seed: number) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Corners by distance from the line: where the car turns in, and the last apex, read off the
+// curvature in the data. `boards` puts 150/100/50 m boards before the turn-in.
+export const CORNERS = [
+  { name: "Rettifilo", turnIn: 590, at: 665, boards: true },
+  { name: "Curva Grande", turnIn: 1000, at: 1300, boards: false },
+  { name: "Roggia", turnIn: 1800, at: 1880, boards: true },
+  { name: "Lesmo 1", turnIn: 2170, at: 2290, boards: false },
+  { name: "Lesmo 2", turnIn: 2530, at: 2590, boards: false },
+  { name: "Ascari", turnIn: 3610, at: 3835, boards: true },
+  { name: "Parabolica", turnIn: 4795, at: 4920, boards: true },
+] as const;
+// The corner the car is heading for, until it's past that corner's last apex.
+export const nextCorner = (p: number) =>
+  (CORNERS.find((c) => c.at > p * LENGTH) ?? CORNERS[0]).name;
+// Metres from a to b going forward round the lap.
+export const ahead = (a: number, b: number) => (((b - a) % LENGTH) + LENGTH) % LENGTH;
+// The corner with the nearest apex either way, for naming where something happened.
+export const cornerAt = (p: number) => {
+  const m = p * LENGTH;
+  const near = (c: (typeof CORNERS)[number]) => Math.min(ahead(m, c.at), ahead(c.at, m));
+  return CORNERS.reduce((a, c) => (near(c) < near(a) ? c : a)).name;
+};
+
+// DRS, in Monza's two zones: the main straight and from Lesmo 2 to Ascari. Eligibility is
+// decided at the detection line; the flap may open from `from` to `to` (metres round the lap).
+export const DRS_ZONES = [
+  { detect: CORNERS[6].at, from: LENGTH - 650, to: 440 },
+  { detect: CORNERS[4].at, from: 2700, to: 3460 },
+];
+export const inZone = (m: number, z: (typeof DRS_ZONES)[number]) =>
+  ahead(z.from, m) < ahead(z.from, z.to);
+
+// Distance boards on the outside of each braking zone, facing the oncoming car.
+export const BOARDS = CORNERS.filter((c) => c.boards).flatMap((c) =>
+  [150, 100, 50].map((m) => {
+    const i = atDist(c.turnIn - m);
+    const side = -Math.sign(CURVE[atDist(c.turnIn + 20)]!) || -1;
+    const [x, y] = offset((j) => side * (HALF[j]! + 3))[i]!;
+    const [ax, ay] = PATH[i]!;
+    const [bx, by] = PATH[(i + 1) % N]!;
+    return { x, y, h: Math.atan2(by - ay, bx - ax), m };
+  }),
+);
+
+// Grandstands on the outside, centre d out from the centreline; (fx, fy) faces the track. The
+// main straight's row is 10 m off the tarmac either side of the line, the Parabolica's behind the
+// barrier.
+const PARABOLICA = CORNERS.at(-1)!.at;
+export const STANDS = [
+  ...[-200, -110, -20, 70].map((m) => [atDist(m), 10 + STAND_HALF] as const),
+  ...[-130, -45, 45, 130].map((m) => [atDist(PARABOLICA + m), RUNOFF + 2 + STAND_HALF] as const),
+].map(([i, d]) => {
+  const [x, y] = offset((j) => -(HALF[j]! + d))[i]!;
+  const [px, py] = PATH[i]!;
+  const l = Math.hypot(px - x, py - y);
+  return { x, y, fx: (px - x) / l, fy: (py - y) / l };
+});
+const inStand = (x: number, y: number, margin: number) =>
+  STANDS.some(({ x: sx, y: sy, fx, fy }) => {
+    const dx = x - sx;
+    const dy = y - sy;
+    const lim = STAND_HALF + margin;
+    return Math.abs(dx * fx + dy * fy) < lim && Math.abs(dy * fx - dx * fy) < lim;
+  });
+
+// One wall per path segment, dropped wherever the offset line folds back towards the track on
+// the inside of a corner, and where a grandstand stands in for it.
+export const WALLS = [1, -1].flatMap((side): [number, number, number, number][] => {
+  const pts = offset((i) => side * (HALF[i]! + RUNOFF));
+  return pts.flatMap(([ax, ay], i) => {
+    const [bx, by] = pts[(i + 1) % N]!;
+    const [mx, my] = [(ax + bx) / 2, (ay + by) / 2];
+    return nearest(mx, my).edge < RUNOFF - 1 || inStand(mx, my, 1) ? [] : [[ax, ay, bx, by]];
+  });
+});
+// The pit wall, between the track and the flat of the lane, starting a little after the lane is
+// fully out so a car that turns in late still makes it.
+const PIT_WALL = offset((i) => HALF[i]! + 4);
+for (let i = atDist(PIT_FROM + 20); i !== atDist(PIT_TO); i = (i + 1) % N)
+  WALLS.push([...PIT_WALL[i]!, ...PIT_WALL[(i + 1) % N]!]);
+
+// The park: thickest near the track, where the camera looks. r is the canopy's footprint for a
+// Kenney treeLarge or treeSmall at scale s.
+const xs = PATH.map((p) => p[0]);
+const ys = PATH.map((p) => p[1]);
+export const BOX = {
+  x0: Math.min(...xs),
+  y0: Math.min(...ys),
+  x1: Math.max(...xs),
+  y1: Math.max(...ys),
+};
+export const MID = [(BOX.x0 + BOX.x1) / 2, (BOX.y0 + BOX.y1) / 2] as const;
+export const TREES: { x: number; y: number; big: boolean; s: number; rot: number; r: number }[] =
+  [];
+const rand = seeded(1922);
+const plant = (x: number, y: number, scale: number) => {
+  const big = rand() < 0.6;
+  const s = scale + rand() * 3;
+  TREES.push({ x, y, big, s, rot: rand() * Math.PI * 2, r: (big ? 0.12 : 0.09) * s });
+};
+// Inside the barriers: a loose row along the straights, kept off the kerbs and gravel (no tight
+// corner within 40 m), clear of the grid and the stands, with at least 8 m of grass to the tarmac
+// and 5 m to the barrier so a car scraping the wall doesn't snag on them.
+const tight = (i: number) => {
+  for (let k = -8; k <= 8; k++) if (Math.abs(CURVE[(i + k + N) % N]!) > 1 / KERB_R) return true;
+  return false;
+};
+for (let i = 12; i < N - 6; i += 3)
+  for (const side of [1, -1]) {
+    const lane = side === 1 && Math.abs(signed(CUM[i]! / LENGTH) + 100) < 360;
+    if (rand() < 0.45 || tight(i) || lane) continue;
+    const d = HALF[i]! + 8 + rand() * (RUNOFF - 14);
+    const [x, y] = offset(side * d)[i]!;
+    if (nearest(x, y).dist < d - 1 || inStand(x, y, 4)) continue;
+    plant(x, y, 5);
+  }
+// Behind the barriers. A rough distance against every fourth segment is plenty this far out and
+// keeps load time down. ponytail: ~25k candidates × 290 segments at load (tens of ms).
+const rough = (x: number, y: number) => {
+  let best = Infinity;
+  for (let i = 0; i < N; i += 4) {
+    const [ax, ay] = PATH[i]!;
+    const [bx, by] = PATH[(i + 4) % N]!;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)));
+    best = Math.min(best, Math.hypot(ax + t * dx - x, ay + t * dy - y));
+  }
+  return best;
+};
+for (let n = 0; n < 25000 && TREES.length < 2200; n++) {
+  const x = BOX.x0 - 150 + rand() * (BOX.x1 - BOX.x0 + 300);
+  const y = BOX.y0 - 150 + rand() * (BOX.y1 - BOX.y0 + 300);
+  const dist = rough(x, y);
+  if (dist < 6.5 + RUNOFF + 10 || (dist > 140 && rand() < 0.85) || inStand(x, y, 4)) continue;
+  plant(x, y, 7);
+}
+
+// Pushes the car out of an obstacle along (nx, ny) and takes off the speed it had going into it.
+// A head-on hit bounces it back; a glancing one scrubs a little and turns the car along the
+// obstacle, so it slides down a wall rather than sticking to it.
+function hit(car: Car, nx: number, ny: number, depth: number) {
+  car.x += nx * depth;
+  car.y += ny * depth;
+  const dx = Math.cos(car.h);
+  const dy = Math.sin(car.h);
+  const along = dx * nx + dy * ny;
+  if (along * car.v >= 0) return;
+  if (Math.abs(along) > 0.7) {
+    car.v *= -0.25;
+    return;
+  }
+  car.v *= 1 - Math.abs(along);
+  car.h = Math.atan2(dy - along * ny, dx - along * nx);
+}
+
+// Against the nearest point (px, py) of something r thick.
+function touch(car: Car, px: number, py: number, r: number) {
+  const dx = car.x - px;
+  const dy = car.y - py;
+  const d = Math.hypot(dx, dy);
+  if (d < CAR_R + r && d > 1e-6) hit(car, dx / d, dy / d, CAR_R + r - d);
+}
+
+// ponytail: checks every obstacle every frame (about 2,200, cheap next to drawing); bucket them
+// in a grid if it ever shows in a profile.
+export function collide(car: Car) {
+  for (const [ax, ay, bx, by] of WALLS) {
+    if (Math.abs(car.x - ax) > 12 || Math.abs(car.y - ay) > 12) continue;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const t = Math.max(
+      0,
+      Math.min(1, ((car.x - ax) * dx + (car.y - ay) * dy) / (dx * dx + dy * dy)),
+    );
+    touch(car, ax + t * dx, ay + t * dy, WALL_HALF_THICK);
+  }
+  for (const t of TREES)
+    if (Math.abs(car.x - t.x) < 6 && Math.abs(car.y - t.y) < 6) touch(car, t.x, t.y, t.r);
+  for (const { x, y, fx, fy } of STANDS) {
+    const dx = car.x - x;
+    const dy = car.y - y;
+    const a = dx * fx + dy * fy;
+    const b = dy * fx - dx * fy;
+    const ca = Math.max(-STAND_HALF, Math.min(STAND_HALF, a));
+    const cb = Math.max(-STAND_HALF, Math.min(STAND_HALF, b));
+    if (ca !== a || cb !== b) touch(car, x + fx * ca - fy * cb, y + fy * ca + fx * cb, 0);
+    // Centre inside the stand: out through the nearest face.
+    else if (STAND_HALF - Math.abs(a) < STAND_HALF - Math.abs(b))
+      hit(car, fx * Math.sign(a), fy * Math.sign(a), STAND_HALF - Math.abs(a) + CAR_R);
+    else hit(car, -fy * Math.sign(b), fx * Math.sign(b), STAND_HALF - Math.abs(b) + CAR_R);
+  }
+}
+
+// Car against car. Each is two circles, nose and tail, so they can run close side by side and
+// nose to tail without overlapping. They push apart evenly, and the one driving into the other
+// faster drops to just under its speed, once, so cars leaning on each other don't bleed speed.
+const ends = (c: Car) => {
+  const fx = Math.cos(c.h) * 1.6;
+  const fy = Math.sin(c.h) * 1.6;
+  return [
+    [c.x + fx, c.y + fy],
+    [c.x - fx, c.y - fy],
+  ] as const;
+};
+export function bump(a: Car, b: Car) {
+  if (Math.abs(a.x - b.x) > 6 || Math.abs(a.y - b.y) > 6) return false;
+  let depth = 0;
+  let nx = 0;
+  let ny = 0;
+  for (const [ax, ay] of ends(a))
+    for (const [bx, by] of ends(b)) {
+      const d = Math.hypot(bx - ax, by - ay);
+      if (2.2 - d > depth && d > 1e-6) [depth, nx, ny] = [2.2 - d, (bx - ax) / d, (by - ay) / d];
+    }
+  if (!depth) return false;
+  a.x -= (nx * depth) / 2;
+  a.y -= (ny * depth) / 2;
+  b.x += (nx * depth) / 2;
+  b.y += (ny * depth) / 2;
+  const aInto = Math.cos(a.h) * nx + Math.sin(a.h) * ny;
+  const bInto = -(Math.cos(b.h) * nx + Math.sin(b.h) * ny);
+  if (aInto > 0.5 && aInto >= bInto && a.v > b.v) a.v = b.v * 0.95;
+  else if (bInto > 0.5 && b.v > a.v) b.v = a.v * 0.95;
+  return true;
+}
+
+export type Lap = {
+  start: number | null;
+  p: number;
+  halfway: boolean;
+  invalid: boolean;
+  // Lap time at each sector line crossed so far.
+  marks: number[];
+};
+export const newLap = (): Lap => ({ start: null, p: 0, halfway: false, invalid: false, marks: [] });
+// A sector ends: its time, whether the lap is still clean, and the lap time at the third.
+export type Split = { sector: number; ms: number; valid: boolean; lap: number | null };
+
+// Advances the lap with this frame's position. Sectors split at a third and two thirds of the
+// way round, crossed going forward. A lap counts when the car crosses the line going forward
+// after passing halfway going forward, so reversing over the line doesn't. Four wheels off at
+// any point deletes it, like track limits on TV.
+export function lapTick(lap: Lap, p: number, edge: number, t: number): Split | null {
+  const prev = lap.p;
+  lap.p = p;
+  if (lap.start === null) return null;
+  if (allFourOff(edge)) lap.invalid = true;
+  const ms = t - lap.start;
+  const at = lap.marks.at(-1) ?? 0;
+  const line = (lap.marks.length + 1) / 3;
+  // A frame moves a few metres. A bigger jump means the nearest point hopped to another part of
+  // the lap, so a cut across the infield doesn't cross the sector lines or halfway.
+  const fwd = p > prev && p - prev < 0.02;
+  if (lap.marks.length < 2 && fwd && prev < line && p >= line) {
+    lap.marks.push(ms);
+    return { sector: lap.marks.length - 1, ms: ms - at, valid: !lap.invalid, lap: null };
+  }
+  if (fwd && prev < 0.5 && p >= 0.5) lap.halfway = true;
+  if (prev > 0.75 && p < 0.25 && lap.halfway) {
+    const done = { sector: 2, ms: ms - at, valid: !lap.invalid, lap: ms };
+    Object.assign(lap, { start: t, halfway: false, invalid: false, marks: [] });
+    return done;
+  }
+  return null;
+}
+
+export const fmt = (ms: number) =>
+  `${Math.floor(ms / 60000)}:${((ms % 60000) / 1000).toFixed(3).padStart(6, "0")}`;
