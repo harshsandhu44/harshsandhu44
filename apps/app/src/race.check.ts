@@ -23,7 +23,8 @@ import {
 } from "./track.ts";
 import {
   CARS,
-  LAPS,
+  DISTANCES,
+  STINT,
   LEVELS,
   PIT_V,
   STOP,
@@ -37,6 +38,9 @@ import {
   type Race,
   type Tyre,
 } from "./race.ts";
+
+// The checks below race the shortest distance, the one the paces are tuned on.
+const LAPS = DISTANCES[0]!;
 
 // The fields: twenty drivers each, you first, two to a team.
 for (const [lv, { drivers, colors }] of Object.entries(LEVELS)) {
@@ -95,7 +99,7 @@ const stint = (tyre: Tyre, seed: number) => {
   const race = newRace(9, seeded(seed));
   race.racers = race.racers.filter((r) => r.id === 10);
   const r = race.racers[0]!;
-  [r.tyre, r.pitLap] = [tyre, 0];
+  [r.tyre, r.stops, r.plan] = [tyre, [], [tyre]];
   const lives: number[] = [];
   run(race, 900, () => {
     if (r.laps > lives.length) lives.push(r.life);
@@ -112,7 +116,22 @@ for (const seed of [7, 11]) {
   const h = stint("hard", seed);
   assert.ok(h[LAPS - 1]! > 0, `hards go the distance (${h[LAPS - 1]!.toFixed(2)})`);
 }
-assert.deepEqual([1, 2, 3, 4].map(teamPick), ["soft", "soft", "medium", "medium"], "team picks");
+assert.deepEqual(
+  [1, 2, 3, 4, 6, 9, 14].map(teamPick),
+  ["soft", "soft", "medium", "medium", "hard", "medium", "medium"],
+  "team picks: the softest set that reaches the flag, or mediums when another stop's to come",
+);
+// Every computer car's plan covers the distance, each stint on a set that lasts it.
+for (const laps of DISTANCES)
+  for (const seed of [1, 2, 3])
+    for (const r of newRace(9, seeded(seed), "medium", "pro", laps).racers.slice(1)) {
+      const ends = [...r.stops, laps];
+      assert.equal(r.plan.length, ends.length, `${laps} laps: a set per stint`);
+      ends.forEach((end, k) => {
+        const len = end - (ends[k - 1] ?? 0);
+        assert.ok(len >= 1 && len <= STINT[r.plan[k]!], `${laps} laps: ${len} on ${r.plan[k]}`);
+      });
+    }
 
 // Pit lane.
 const box = BOXES[1]!;
@@ -122,7 +141,7 @@ assert.ok(!inPit(cx, cy, nearest(cx, cy).p), "the track isn't");
 {
   // Driver 2 is on team 1, at box 1.
   const race = solo(2, (r) => {
-    r.pitLap = 1;
+    r.stops = [1];
     r.life = 0.2;
   });
   const r = race.racers[0]!;
@@ -227,7 +246,7 @@ assert.ok(!inPit(cx, cy, nearest(cx, cy).p), "the track isn't");
 }
 // No strike for the pit entry.
 {
-  const race = solo(1, (r) => (r.pitLap = 1));
+  const race = solo(1, (r) => (r.stops = [1]));
   const r = race.racers[0]!;
   run(race, 400, () => r.laps >= 1 && !r.pit && signed(r.p) > 300);
   assert.equal(r.strikes, 0, "the pit lane isn't track limits");
@@ -241,7 +260,7 @@ const lane = (ids: number[]) => {
     const m = BOXES[0]!.s - 40 - 10 * k;
     const [x, y] = pointAt(m, pitOffset(atDist(m)));
     Object.assign(r.car, { x, y, h: dirAt((m + LENGTH) / LENGTH), v: 25 });
-    [r.p, r.dist, r.launch, r.pitLap, r.pitting] = [nearest(x, y).p, m, 0, 1, true];
+    [r.p, r.dist, r.launch, r.stops, r.pitting] = [nearest(x, y).p, m, 0, [1], true];
   });
   const t = new Map(ids.map((id) => [id, 0]));
   run(race, 60, () => {
@@ -396,13 +415,20 @@ console.log(
     .join("\n"),
 );
 const [am, mid, pro] = levels as [(typeof levels)[0], (typeof levels)[0], (typeof levels)[0]];
+// The ladder: the front of each field laps about 1:36, 1:31 and 1:26, and pro's winner takes
+// about 7:30, which a clean race from the player (about 1:26 laps) only just beats.
+const near = (ms: number, want: number, by: number) => Math.abs(ms - want) < by;
+assert.ok(near(am.front, 95_500, 1500), `amateur's front laps about 1:36 (${fmt(am.front)})`);
+assert.ok(near(mid.front, 91_000, 1500), `intermediate's about 1:31 (${fmt(mid.front)})`);
+assert.ok(near(pro.front, 86_500, 1000), `pro's about 1:26 (${fmt(pro.front)})`);
+assert.ok(near(pro.win, 450_000, 10_000), `pro's winner takes about 7:30 (${fmt(pro.win)})`);
 assert.ok(pro.lap < mid.lap && mid.lap < am.lap, "the better the field, the quicker it laps");
 assert.ok(am.strikes > 0, "computer cars make mistakes and pay for them");
 assert.ok(pro.strikes < am.strikes, "and pros make fewer");
 
 // Strategy: soft or medium with a stop, against medium or hard without, alone, on a mid pace.
 const strat = (tyre: Tyre, pitLap: number) => {
-  const r = solo(10, (x) => ([x.tyre, x.pitLap] = [tyre, pitLap]));
+  const r = solo(10, (x) => ([x.tyre, x.stops, x.plan] = [tyre, pitLap ? [pitLap] : [], [tyre]]));
   r.slips = false;
   run(r, 900, () => r.racers[0]!.finish !== null);
   return r.racers[0]!.finish!;
@@ -411,11 +437,27 @@ const plans = [strat("soft", 2), strat("medium", 3), strat("medium", 0), strat("
 console.log(`soft-stop, medium-stop, medium, hard: ${plans.map(fmt).join(", ")}`);
 assert.ok(Math.max(...plans) - Math.min(...plans) < 10_000, "every strategy comes out close");
 
+// The longest race: everyone finishes, having made every stop they planned and never run a set
+// down to nothing.
+{
+  const laps = DISTANCES.at(-1)!;
+  const race = newRace(9, seeded(3), "medium", "pro", laps);
+  race.racers = race.racers.filter((r) => r.id !== 0);
+  let worn = 1;
+  run(race, 60 * laps * 2, () => {
+    for (const r of race.racers) if (r.finish === null) worn = Math.min(worn, r.life);
+    return race.racers.every((r) => r.finish !== null);
+  });
+  assert.ok(
+    race.racers.every((r) => r.finish !== null && r.laps === laps),
+    `${laps} laps: everyone finishes`,
+  );
+  assert.ok(
+    race.racers.every((r) => r.stints.length === r.plan.length),
+    `${laps} laps: every planned stop is made`,
+  );
+  assert.ok(worn > 0.05, `${laps} laps: no set runs out (${worn.toFixed(2)} left at worst)`);
+  console.log(`${laps} laps: won in ${fmt(results(race)[0]!.time)}`);
+}
+
 console.log("race: ok");
-// The ladder: the front of each field laps about 1:36, 1:31 and 1:26, and pro's winner takes
-// about 7:30, which a clean race from the player (about 1:26 laps) only just beats.
-const near = (ms: number, want: number, by: number) => Math.abs(ms - want) < by;
-assert.ok(near(am.front, 95_500, 1500), `amateur's front laps about 1:36 (${fmt(am.front)})`);
-assert.ok(near(mid.front, 91_000, 1500), `intermediate's about 1:31 (${fmt(mid.front)})`);
-assert.ok(near(pro.front, 86_500, 1000), `pro's about 1:26 (${fmt(pro.front)})`);
-assert.ok(near(pro.win, 450_000, 10_000), `pro's winner takes about 7:30 (${fmt(pro.win)})`);

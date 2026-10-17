@@ -37,7 +37,8 @@ import {
   type Split,
 } from "./track.ts";
 
-export const LAPS = 5;
+// Race distances to pick from; the tyres and the paces are tuned on the shortest.
+export const DISTANCES = [5, 10, 15, 20];
 
 // Difficulty is mostly the other drivers: a level sets how far from the centreline (0) to the
 // racing line (1) the computer drives, the share of its grip its quickest and slowest drivers
@@ -50,21 +51,21 @@ export const LAPS = 5;
 // teams run three cars, so their best two. ponytail: colours are near each team's, by eye, and
 // the paces are tuned in race.check.ts. Refresh the rosters when the seasons turn over.
 export type Level = "amateur" | "intermediate" | "pro";
-type Seat = [code: string, name: string];
 // ponytail: tuned in race.check.ts so pro's winner finishes in about 7:30, the time a clean
 // race from the player beats by a few seconds, and the field laps 1:26 to 1:29.
 const EDGE = 1.1;
 // A car's grip on its tyres: a computer car's scaled by its level's edge (1 but for pro).
 export const carGrip = (race: Race, r: Racer) =>
   grip(r.life, r.tyre) * (r.id ? LEVELS[race.level].edge : 1);
+type Seat = [code: string, name: string];
 type Team = [color: string, a: Seat, b: Seat];
 const level = (
   series: string,
   line: number,
   pace: [fast: number, slow: number],
   slip: number,
-  mate: Seat,
   edge: number,
+  mate: Seat,
   teams: Team[],
 ) => {
   const all: Team[] = [["", ["HAR", "You"], mate], ...teams];
@@ -73,8 +74,8 @@ const level = (
     line,
     pace,
     slip,
-    colors: all.map(([c]) => c),
     edge,
+    colors: all.map(([c]) => c),
     drivers: all.flatMap(([, a, b]) => [a, b]).map(([code, name]) => ({ code, name })),
   };
 };
@@ -84,8 +85,8 @@ export const LEVELS: Record<Level, ReturnType<typeof level>> = {
     0,
     [0.77, 0.71],
     0.1,
-    ["RIV", "Ernesto Rivera"],
     1,
+    ["RIV", "Ernesto Rivera"],
     [
       ["#ff6b1a", ["UGO", "Ugo Ugochukwu"], ["NAE", "Théophile Naël"]],
       ["#1d3b8a", ["SLA", "Freddie Slater"], ["STR", "Noah Strømsted"]],
@@ -103,8 +104,8 @@ export const LEVELS: Record<Level, ReturnType<typeof level>> = {
     0.5,
     [0.89, 0.83],
     0.06,
-    ["MON", "Sebastián Montoya"],
     1,
+    ["MON", "Sebastián Montoya"],
     [
       ["#ff6b1a", ["TSO", "Nikola Tsolov"], ["LEO", "Noel León"]],
       ["#c8a24a", ["CAM", "Rafael Câmara"], ["DUR", "Joshua Dürksen"]],
@@ -122,8 +123,8 @@ export const LEVELS: Record<Level, ReturnType<typeof level>> = {
     1,
     [0.98, 0.93],
     0.02,
-    ["ALO", "Fernando Alonso"],
     EDGE,
+    ["ALO", "Fernando Alonso"],
     [
       ["#27f4d2", ["ANT", "Kimi Antonelli"], ["RUS", "George Russell"]],
       ["#a6051a", ["HAM", "Lewis Hamilton"], ["LEC", "Charles Leclerc"]],
@@ -163,9 +164,25 @@ export const TYRES: Record<Tyre, { grip: number; wear: number; name: string }> =
   hard: { grip: 0.92, wear: 0.6, name: "Hards" },
 };
 export const grip = (life: number, tyre: Tyre) => TYRES[tyre].grip * (1 - FADE * (1 - life) ** 2);
-// The team fits the softest set that reaches the flag, given the full laps left after this one.
-// Mediums cover anything a stop can leave, so hards are only ever a choice on the grid.
-export const teamPick = (left: number): Tyre => (left <= 2 ? "soft" : "medium");
+// Laps a set lasts before it's too far gone (about 0.15 of its life left).
+export const STINT: Record<Tyre, number> = { soft: 3, medium: 5, hard: 9 };
+const COMPOUNDS: Tyre[] = ["soft", "medium", "hard"];
+// The team fits the softest set that reaches the flag, given the full laps left after this one,
+// or mediums when nothing will and there's another stop to come.
+export const teamPick = (left: number): Tyre => COMPOUNDS.find((t) => STINT[t] > left) ?? "medium";
+// A computer car's race: the fewest stops its hards allow, sometimes one more, the laps split
+// into near-even stints, each on the softest set that lasts it or the next one harder. Returns
+// the laps it stops at the end of and the set for each stint.
+function plan(laps: number, rand: () => number) {
+  const stops = Math.ceil(laps / STINT.hard) - 1 + (rand() < 0.4 ? 1 : 0);
+  const at: number[] = [];
+  for (let k = 1; k <= stops; k++) at.push(Math.round((laps * k) / (stops + 1) + (rand() - 0.5)));
+  const tyres = [0, ...at, laps].slice(1).map((end, k, ends) => {
+    const fits = COMPOUNDS.filter((t) => STINT[t] >= end - (ends[k - 1] ?? 0));
+    return fits[rand() < 0.5 || fits.length < 2 ? 0 : 1]!;
+  });
+  return { at, tyres };
+}
 
 // DRS adds about 15 km/h to the top speed.
 const DRS_TOP = TOP + 4.2;
@@ -197,11 +214,12 @@ export type Racer = {
   served: boolean;
   pit: boolean;
   // Computer cars (and you, while the team drives you down the pit lane): share of the corner
-  // limit they drive to, the lap they stop at the end of (0 for none), whether on the way in,
-  // when they react to the lights, and how far off their line they are to overtake, held until
-  // laneT (race ms) so they don't weave.
+  // limit they drive to, the laps they stop at the end of and the set for each stint, whether on
+  // the way in, when they react to the lights, and how far off their line they are to overtake,
+  // held until laneT (race ms) so they don't weave.
   pace: number;
-  pitLap: number;
+  stops: number[];
+  plan: Tyre[];
   pitting: boolean;
   launch: number;
   lane: number;
@@ -236,6 +254,7 @@ export type Msg = {
 
 export type Race = {
   level: Level;
+  laps: number;
   racers: Racer[];
   // Milliseconds since the lights went out, and the first car's time at each checkpoint.
   t: number;
@@ -256,26 +275,20 @@ export function newRace(
   rand = Math.random,
   tyre: Tyre = "medium",
   lv: Level = "intermediate",
+  laps = DISTANCES[0]!,
 ): Race {
   // Computer paces spread across the level's range in roster order, your teammate the slowest,
-  // and the quickest line up at the front in the slots you didn't take. Eight of them stop.
+  // and the quickest line up at the front in the slots you didn't take.
   const { pace } = LEVELS[lv];
   const ai = [...Array(CARS).keys()].slice(2).concat(1);
-  const stoppers = new Set(
-    ai
-      .slice()
-      .sort(() => rand() - 0.5)
-      .slice(0, 8),
-  );
   const slots = [...Array(CARS).keys()].filter((s) => s !== slot);
   const racers = [...Array(CARS).keys()].map((id): Racer => {
     const order = ai.indexOf(id);
-    const pitLap = stoppers.has(id) ? 2 + Math.floor(rand() * 2) : 0;
+    const strat = id ? plan(laps, rand) : { at: [], tyres: [tyre] };
     const s = id === 0 ? slot : slots[order]!;
     const m = gridAt(s);
     const [x, y] = pointAt(m, (s % 2 ? 1 : -1) * (HALF[atDist(m)]! / 2.5));
-    // Computer cars: an early stop starts on softs, a late one on mediums, none on hards.
-    const on: Tyre = id === 0 ? tyre : pitLap === 2 ? "soft" : pitLap ? "medium" : "hard";
+    const on = strat.tyres[0]!;
     return {
       id,
       car: { x, y, h: dirAt((m + LENGTH) / LENGTH), v: 0 },
@@ -292,7 +305,8 @@ export function newRace(
       served: false,
       pit: false,
       pace: id === 0 ? pace[0] : pace[0] - ((pace[0] - pace[1]) * order) / (CARS - 2),
-      pitLap,
+      stops: strat.at,
+      plan: strat.tyres,
       pitting: false,
       launch: 180 + rand() * 140,
       lane: 0,
@@ -315,6 +329,7 @@ export function newRace(
   for (const r of racers) r.lap.start = 0;
   return {
     level: lv,
+    laps,
     racers,
     t: 0,
     cps: [],
@@ -394,11 +409,19 @@ export function aiInput(r: Racer, race: Race): Input {
     to = lat(r.lane);
   }
   // Don't turn into a car alongside: hold the line until one of you is clear. Two cars
-  // swapping sides would otherwise lean on each other down to a crawl.
+  // swapping sides would otherwise lean on each other down to a crawl. A car heading for the pit
+  // entry has the line over any car it leads, or one tucked in on its right shuts it out.
   const now = lateral(car.x, car.y, r.p);
   const beside = race.racers.some((o) => {
     const d = lateral(o.car.x, o.car.y, o.p) - now;
-    return o !== r && Math.abs(o.dist - r.dist) < 6 && d * (to - now) > 0 && Math.abs(d) < 3;
+    const gap = o.dist - r.dist;
+    return (
+      o !== r &&
+      Math.abs(gap) < 6 &&
+      !(r.pitting && gap < 0) &&
+      d * (to - now) > 0 &&
+      Math.abs(d) < 3
+    );
   });
   if (beside) to = now;
 
@@ -422,7 +445,7 @@ function pitStop(race: Race, r: Racer, dt: number) {
     r.stop -= dt;
     if (r.stop <= 0) {
       [r.life, r.served, r.boxCall] = [1, true, false];
-      [r.tyre, r.fit] = [r.fit ?? teamPick(LAPS - r.laps - 1), null];
+      [r.tyre, r.fit] = [r.fit ?? teamPick(race.laps - r.laps - 1), null];
       r.stints.push(r.tyre);
     }
     return;
@@ -498,7 +521,12 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     r.pit = inPit(car.x, car.y, p);
     const edge = r.pit ? -1 : e;
     const s = signed(p);
-    if (r.pitLap && r.laps === r.pitLap - 1 && s > PIT_IN - 200 && s < PIT_IN) r.pitting = true;
+    // A computer car heads in at the end of a lap it planned to stop on, with that stint's set.
+    const due = r.stops.indexOf(r.laps + 1);
+    if (r.id && due >= 0 && s > PIT_IN - 200 && s < PIT_IN && !r.pitting) {
+      r.pitting = true;
+      r.fit = r.plan[due + 1] ?? null;
+    }
     if (s > PIT_OUT || s < PIT_IN - 200) r.pitting = false;
 
     // Anyone in the lane drives it to the box and back out: you, when the team takes over, and a
@@ -526,12 +554,12 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     r.off = off;
     if (r.id === 0 && r.life < 0.3 && !r.boxCall && r.finish === null) {
       r.boxCall = true;
-      r.fit ??= teamPick(LAPS - r.laps - 1);
+      r.fit ??= teamPick(race.laps - r.laps - 1);
       say(race, "radio", 0, `Box, box. ${TYRES[r.fit].name} ready.`);
     }
     // Into the lane without the call: the team still has a set out.
     if (r.id === 0 && r.pit && !r.served && r.fit === null) {
-      r.fit = teamPick(LAPS - r.laps - 1);
+      r.fit = teamPick(race.laps - r.laps - 1);
       say(race, "radio", 0, `${TYRES[r.fit].name} ready.`);
     }
 
@@ -543,9 +571,9 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
         race.fastest = { id: r.id, ms: split.lap };
         say(race, "fastest", r.id, `Fastest lap · ${driver(race, r.id).code} · ${fmt(split.lap)}`);
       }
-      if (r.id === 0 && r.laps === LAPS - 1) say(race, "radio", 0, "Last lap. Bring it home.");
+      if (r.id === 0 && r.laps === race.laps - 1) say(race, "radio", 0, "Last lap. Bring it home.");
       const leaderDone = race.racers.some((o) => o.finish !== null);
-      if (r.finish === null && (r.laps >= LAPS || leaderDone)) r.finish = race.t;
+      if (r.finish === null && (r.laps >= race.laps || leaderDone)) r.finish = race.t;
     }
     if (r.id === 0) mine = split;
     const cp = Math.floor(r.dist / CP);
@@ -580,12 +608,12 @@ export const gap = (race: Race, r: Racer) => (r.cp < 0 ? 0 : (r.cpT - race.cps[r
 // rest of the race at their average speed so far, and lapped cars are shown a lap down.
 // ponytail: estimated, not raced out, so the card can show the moment you finish.
 export function results(race: Race) {
-  const total = LAPS * LENGTH;
+  const total = race.laps * LENGTH;
   return race.racers
     .map((r) => {
       const run = r.finish ?? race.t + (total - r.dist) / (Math.max(r.dist, 1) / race.t);
       const time = run + r.penalty;
-      const down = r.finish !== null && r.laps < LAPS ? LAPS - r.laps : 0;
+      const down = r.finish !== null && r.laps < race.laps ? race.laps - r.laps : 0;
       const { id, best, penalty, stints } = r;
       return { id, time, down, best, penalty, stints, stops: stints.length - 1 };
     })

@@ -4,7 +4,7 @@ import { createEngine, type Engine } from "@/engine";
 import type { Scene } from "@/scene";
 import {
   CARS,
-  LAPS,
+  DISTANCES,
   LEVELS,
   TYRES,
   colorOf,
@@ -28,6 +28,7 @@ const BEST = "monza-best-v2";
 const SECTORS = "monza-sectors-v2";
 const SOUND = "monza-sound";
 const LEVEL = "monza-level";
+const LAPS = "monza-laps";
 const DASH = "-:--.---";
 const JUMP = 5000;
 const KEYS: Record<string, "up" | "down" | "left" | "right"> = {
@@ -73,7 +74,7 @@ const TYRE_INK: Record<Tyre, string> = {
 const BLURB: Record<Tyre, string> = {
   soft: "About 3 laps",
   medium: "About 5 laps",
-  hard: "All race, slower",
+  hard: "About 9 laps, slower",
 };
 const letter = (t: Tyre) => t[0]!.toUpperCase();
 const STEPS: [Level, string, string][] = [
@@ -117,6 +118,7 @@ type Result = {
   jump: boolean;
   fastest: number | null;
   level: Level;
+  laps: number;
 };
 
 // The team's word at the flag.
@@ -145,8 +147,13 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     const l: string = read(LEVEL, "intermediate");
     return l in LEVELS ? (l as Level) : "intermediate";
   });
+  const [laps, setLaps] = useState(() => {
+    const n: number = read(LAPS, DISTANCES[0]!);
+    return DISTANCES.includes(n) ? n : DISTANCES[0]!;
+  });
   const levelRef = useRef(level);
-  const relevel = useRef<(l: Level) => void>(() => {});
+  const lapsRef = useRef(laps);
+  const regrid = useRef<() => void>(() => {});
   const go = useRef<(t: Tyre) => void>(() => {});
   const fit = useRef<(t: Tyre) => void>(() => {});
   const fitWrap = useRef<HTMLDivElement>(null);
@@ -335,7 +342,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     };
 
     const start = () => {
-      race = newRace(gridSlot(reaction), Math.random, "medium", levelRef.current);
+      race = newRace(gridSlot(reaction), Math.random, "medium", levelRef.current, lapsRef.current);
       scene?.paint(LEVELS[race.level].colors);
       phase = "grid";
       setGrid(true);
@@ -353,9 +360,8 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       setResult(null);
       start();
     };
-    // A new level is a new field on the same grid.
-    relevel.current = (l) => {
-      levelRef.current = l;
+    // A new level or distance is a new race on the same grid.
+    regrid.current = () => {
       if (phase === "grid") start();
     };
     go.current = (t) => {
@@ -447,8 +453,8 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
             id: 0,
             text: debrief(table.findIndex((r) => !r.id) + 1),
           });
-          const { jump, level, fastest } = race;
-          setResult({ table, jump, level, fastest: fastest?.id ?? null });
+          const { jump, level, laps, fastest } = race;
+          setResult({ table, jump, level, laps, fastest: fastest?.id ?? null });
         }
         if (t - board > 500) {
           board = t;
@@ -456,7 +462,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
         }
       }
 
-      lapEl.current!.textContent = `${Math.min(me.laps + 1, LAPS)}/${LAPS}`;
+      lapEl.current!.textContent = `${Math.min(me.laps + 1, race.laps)}/${race.laps}`;
       const time = timeEl.current!;
       time.textContent = fmt(phase === "racing" && !race.done ? race.t - me.lap.start! : 0);
       time.classList.toggle("text-accent", me.lap.invalid);
@@ -646,7 +652,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
               <span className={label}>
                 Lap{" "}
                 <span ref={lapEl} className="text-paper">
-                  1/{LAPS}
+                  1/{laps}
                 </span>
               </span>
               <span ref={timeEl} className="disp text-[20px] leading-none md:text-[24px]">
@@ -832,7 +838,8 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
             <div className={`${panel} w-full max-w-sm p-4 md:p-5`}>
               <p className="disp text-xl">Grid P{gridSlot(reaction) + 1}</p>
               <p className={`${label} mt-1`}>
-                Reaction {(reaction / 1000).toFixed(3)} s. Pick the field and your tyres.
+                Reaction {(reaction / 1000).toFixed(3)} s. Pick the field, the distance and your
+                tyres.
               </p>
               <div role="radiogroup" aria-label="Field" className="mt-4 grid grid-cols-3 gap-2">
                 {STEPS.map(([l, name, field]) => (
@@ -844,12 +851,32 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
                     onClick={() => {
                       setLevel(l);
                       write(LEVEL, l);
-                      relevel.current(l);
+                      levelRef.current = l;
+                      regrid.current();
                     }}
                     className={`rounded-md p-2.5 text-left ring-1 active:scale-[.98] ${level === l ? "bg-lamp ring-paper" : "ring-paper/25"}`}
                   >
                     <span className="block text-sm font-semibold">{name}</span>
                     <span className="block text-xs text-soft">{field}</span>
+                  </button>
+                ))}
+              </div>
+              <div role="radiogroup" aria-label="Laps" className="mt-2 grid grid-cols-4 gap-2">
+                {DISTANCES.map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    role="radio"
+                    aria-checked={laps === n}
+                    onClick={() => {
+                      setLaps(n);
+                      write(LAPS, n);
+                      lapsRef.current = n;
+                      regrid.current();
+                    }}
+                    className={`min-h-11 rounded-md text-sm ring-1 active:scale-[.98] ${laps === n ? "bg-lamp font-semibold ring-paper" : "ring-paper/25"}`}
+                  >
+                    {n} laps
                   </button>
                 ))}
               </div>
@@ -928,7 +955,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
                 className="text-xs font-semibold tracking-wide text-soft uppercase motion-safe:animate-rowin"
                 style={{ animationDelay: "0.9s" }}
               >
-                Monza · {LAPS} laps · {LEVELS[result.level].series} grid
+                Monza · {result.laps} laps · {LEVELS[result.level].series} grid
               </p>
               <div
                 className="mt-1 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 motion-safe:animate-rowin"
