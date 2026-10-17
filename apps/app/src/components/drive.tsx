@@ -860,63 +860,118 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
         )}
 
         {result && (
-          <div className="absolute inset-0 grid place-items-center bg-ink/60 p-4">
-            <div className={`${panel} w-full max-w-sm p-4 md:p-5`}>
-              <p className="disp text-xl">Classification</p>
-              <ol className="mt-3 text-[15px]">
-                {result.table.map((r, k) => (
-                  <li
-                    key={r.id}
-                    className={`flex items-center gap-3 rounded-sm px-2 py-0.5 ${r.id ? "" : "bg-lamp"}`}
-                  >
-                    <span className="w-5 text-soft">{k + 1}</span>
-                    <span
-                      className="h-3 w-1 rounded-full ring-1 ring-paper/25"
-                      style={{
-                        background: LEVELS[result.level].colors[r.id >> 1] || "var(--color-accent)",
-                      }}
-                    />
-                    <span className="font-semibold">
-                      {LEVELS[result.level].drivers[r.id]!.code}
-                    </span>
-                    {r.penalty ? (
-                      <span className="rounded-sm bg-slow px-1 text-xs font-semibold text-ink">
-                        +{r.penalty / 1000}s
-                      </span>
-                    ) : null}
-                    <span className="ml-auto">
-                      {r.down
-                        ? `+${r.down} lap${r.down > 1 ? "s" : ""}`
-                        : k
-                          ? `+${secs(r.time - leader)}`
-                          : fmt(r.time)}
-                    </span>
-                  </li>
-                ))}
-              </ol>
-              <p className="mt-3 text-sm text-soft">
-                Your fastest lap{" "}
-                <span className="text-paper">
-                  {result.table.find((r) => !r.id)?.best
-                    ? fmt(result.table.find((r) => !r.id)!.best)
-                    : DASH}
-                </span>
-                {result.jump ? <span className="ml-3 text-accent">Jump start +5 s</span> : null}
-              </p>
-              <p className="mt-1 text-sm">
-                <span className="mr-2 text-xs font-semibold tracking-wide text-accent uppercase">
-                  Radio
-                </span>
-                {debrief(result.table.findIndex((r) => !r.id) + 1)}
-              </p>
-              <button
-                type="button"
-                autoFocus
-                onClick={() => again.current()}
-                className="mt-4 min-h-11 w-full rounded-md bg-paper font-semibold text-ink active:scale-[.98]"
+          // The flag: the stage fades to black, then the classification comes in row by row.
+          <div className="absolute inset-0 overflow-y-auto bg-pit p-4 motion-safe:animate-blackout md:p-8">
+            <div className="mx-auto max-w-3xl">
+              <p
+                className="text-xs font-semibold tracking-wide text-soft uppercase motion-safe:animate-rowin"
+                style={{ animationDelay: "0.9s" }}
               >
-                Race again
-              </button>
+                Monza · {LAPS} laps · {LEVELS[result.level].series} grid
+              </p>
+              <div
+                className="mt-1 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 motion-safe:animate-rowin"
+                style={{ animationDelay: "1s" }}
+              >
+                <div>
+                  <p className="disp text-[28px] leading-none md:text-[36px]">Classification</p>
+                  <p className="mt-2 text-sm text-soft">
+                    Your fastest lap{" "}
+                    <span className="text-paper">
+                      {result.table.find((r) => !r.id)?.best
+                        ? fmt(result.table.find((r) => !r.id)!.best)
+                        : DASH}
+                    </span>
+                    {result.jump ? <span className="ml-3 text-accent">Jump start +5 s</span> : null}
+                  </p>
+                  <p className="mt-1 text-sm">
+                    <span className="mr-2 text-xs font-semibold tracking-wide text-accent uppercase">
+                      Radio
+                    </span>
+                    {debrief(result.table.findIndex((r) => !r.id) + 1)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  autoFocus
+                  onClick={() => again.current()}
+                  className="min-h-11 w-full rounded-md bg-paper px-6 font-semibold text-ink active:scale-[.98] md:w-auto"
+                >
+                  Race again
+                </button>
+              </div>
+              <table className="mt-4 w-full text-left text-sm tabular-nums md:text-[15px]">
+                <thead className="text-xs text-soft">
+                  <tr>
+                    <th className="w-8 py-1 font-normal">Pos</th>
+                    <th className="py-1 font-normal">Driver</th>
+                    <th className="py-1 text-right font-normal">Time</th>
+                    <th className="py-1 pl-3 text-right font-normal">Pits</th>
+                    <th className="py-1 pl-3 font-normal">Tyres</th>
+                    <th className="hidden py-1 pl-3 text-right font-normal md:table-cell">Best</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.table.map((r, k) => {
+                    const who = LEVELS[result.level].drivers[r.id]!;
+                    return (
+                      <tr
+                        key={r.id}
+                        className={`motion-safe:animate-rowin ${r.id ? "" : "bg-lamp"}`}
+                        style={{ animationDelay: `${1.1 + k * 0.05}s` }}
+                      >
+                        <td className="py-1 pl-2 text-soft">{k + 1}</td>
+                        <td className="py-1">
+                          <span className="flex items-center gap-2">
+                            <span
+                              className="h-3 w-1 shrink-0 rounded-full ring-1 ring-paper/25"
+                              style={{
+                                background:
+                                  LEVELS[result.level].colors[r.id >> 1] || "var(--color-accent)",
+                              }}
+                            />
+                            <span className="font-semibold">{who.code}</span>
+                            <span className="hidden truncate text-soft md:inline">{who.name}</span>
+                            {r.penalty ? (
+                              <span className="rounded-sm bg-slow px-1 text-xs font-semibold text-ink">
+                                +{r.penalty / 1000}s
+                              </span>
+                            ) : null}
+                          </span>
+                        </td>
+                        <td className="py-1 text-right">
+                          {r.down
+                            ? `+${r.down} lap${r.down > 1 ? "s" : ""}`
+                            : k
+                              ? `+${secs(r.time - leader)}`
+                              : fmt(r.time)}
+                        </td>
+                        <td className="py-1 pl-3 text-right">{r.stops}</td>
+                        <td className="py-1 pl-3">
+                          <span
+                            className="flex gap-1 font-semibold"
+                            aria-label={r.stints.map((t) => TYRES[t].name).join(", then ")}
+                          >
+                            {r.stints.map((t, i) => (
+                              <span key={i} className={TYRE_INK[t]} aria-hidden>
+                                {letter(t)}
+                              </span>
+                            ))}
+                          </span>
+                        </td>
+                        <td className="hidden py-1 pr-2 pl-3 text-right md:table-cell">
+                          <span className="inline-flex items-center gap-1.5">
+                            {result.fastest === r.id && (
+                              <span title="Fastest lap" className="size-2 rounded-full bg-fl" />
+                            )}
+                            {r.best ? fmt(r.best) : DASH}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
