@@ -22,11 +22,13 @@ import {
   PIT_V,
   STOP,
   gridSlot,
+  teamPick,
   newRace,
   results,
   tick,
   wrongWay,
   type Race,
+  type Tyre,
 } from "./race.ts";
 
 // The bands agreed for the start: [reaction ms, grid position].
@@ -71,6 +73,30 @@ const lapOn = (life: number) => {
 };
 const fresh = lapOn(1);
 assert.ok(lapOn(0) > fresh + 1000, `worn tyres are slower (${fmt(fresh)} vs ${fmt(lapOn(0))})`);
+
+// How long each compound lasts, with mistakes on: life at the end of each lap, no stop.
+const stint = (tyre: Tyre, seed: number) => {
+  const race = newRace(9, seeded(seed));
+  race.racers = race.racers.filter((r) => r.team === 5);
+  const r = race.racers[0]!;
+  [r.tyre, r.pitLap] = [tyre, 0];
+  const lives: number[] = [];
+  run(race, 900, () => {
+    if (r.laps > lives.length) lives.push(r.life);
+    return r.finish !== null;
+  });
+  return lives;
+};
+for (const seed of [7, 11]) {
+  // The box call comes under 0.3: not before lap 4 on mediums, not before lap 3 on softs.
+  const m = stint("medium", seed);
+  assert.ok(m[2]! > 0.3, `mediums reach lap 4 before the call (${m[2]!.toFixed(2)})`);
+  const s = stint("soft", seed);
+  assert.ok(s[1]! > 0.3, `softs reach lap 3 before the call (${s[1]!.toFixed(2)})`);
+  const h = stint("hard", seed);
+  assert.ok(h[LAPS - 1]! > 0, `hards go the distance (${h[LAPS - 1]!.toFixed(2)})`);
+}
+assert.deepEqual([1, 2, 3, 4].map(teamPick), ["soft", "soft", "medium", "hard"], "team picks");
 
 // Pit lane.
 const box = BOXES[1]!;
@@ -226,7 +252,8 @@ assert.ok(!inPit(cx, cy, nearest(cx, cy).p), "the track isn't");
   );
 }
 
-// Whole races: nine computer cars, you parked out of the way.
+// Whole races: nine computer cars, you parked out of the way. Queueing in the single-file pit
+// lane behind another car's stop isn't stuck.
 const race = newRace(9, seeded(3));
 race.racers = race.racers.filter((r) => r.team !== 0);
 const stuck = new Map<number, number>();
@@ -234,7 +261,7 @@ let worst = 0;
 run(race, 900, () => {
   for (const r of race.racers) {
     const s =
-      r.car.v < 1 && r.stop <= 0 && r.finish === null && race.t > 2000
+      r.car.v < 1 && r.stop <= 0 && !r.pit && r.finish === null && race.t > 2000
         ? (stuck.get(r.team) ?? 0) + DT
         : 0;
     stuck.set(r.team, s);
@@ -257,7 +284,10 @@ assert.ok(
 );
 assert.ok(worst < 2, `nobody's stuck (${worst.toFixed(1)} s)`);
 const bests = race.racers.map((r) => r.best);
-assert.ok(Math.min(...bests) > 88_000 && Math.max(...bests) < 104_000, "laps in the 1:30s");
+assert.ok(
+  Math.min(...bests) > 88_000 && Math.max(...bests) < 106_000,
+  `laps from 1:28 to 1:46 (${fmt(Math.min(...bests))} to ${fmt(Math.max(...bests))})`,
+);
 const strikes = race.racers.reduce((n, r) => n + r.strikes, 0);
 console.log(`strikes ${strikes}, penalties ${race.racers.filter((r) => r.penalty).length}`);
 assert.ok(strikes > 0, "computer cars make mistakes and pay for them");
@@ -266,16 +296,15 @@ assert.ok(
   "fastest laps are called",
 );
 
-// Strategy: one stop against none, alone, on a mid pace.
-const strat = (pitLap: number) => {
-  const r = solo(5, (x) => (x.pitLap = pitLap));
+// Strategy: soft or medium with a stop, against medium or hard without, alone, on a mid pace.
+const strat = (tyre: Tyre, pitLap: number) => {
+  const r = solo(5, (x) => ([x.tyre, x.pitLap] = [tyre, pitLap]));
   r.slips = false;
   run(r, 900, () => r.racers[0]!.finish !== null);
   return r.racers[0]!.finish!;
 };
-const none = strat(0);
-const one = strat(3);
-console.log(`no stop ${fmt(none)}, one stop ${fmt(one)}`);
-assert.ok(Math.abs(none - one) < 5000, "a stop and no stop come out close");
+const plans = [strat("soft", 2), strat("medium", 3), strat("medium", 0), strat("hard", 0)];
+console.log(`soft-stop, medium-stop, medium, hard: ${plans.map(fmt).join(", ")}`);
+assert.ok(Math.max(...plans) - Math.min(...plans) < 5000, "every strategy comes out close");
 
 console.log("race: ok");

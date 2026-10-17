@@ -372,7 +372,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       // Red when the car can't brake in time for the next corner on these tyres.
       speedEl.current!.classList.toggle(
         "text-accent",
-        car.v > limitAt(atDist(me.p * LENGTH), grip(me.life)) + 2,
+        car.v > limitAt(atDist(me.p * LENGTH), grip(me.life, me.tyre)) + 2,
       );
       const next = nextCorner(me.p);
       if (nextEl.current!.textContent !== next) nextEl.current!.textContent = next;
