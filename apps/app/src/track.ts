@@ -23,6 +23,10 @@ export type TrackDef = {
   stands: [m: number, gap: number][];
   // Plants the park.
   seed: number;
+  // For the computer's strategy, both measured in race.check.ts: how much a lap slows as the tyres
+  // lose grip (lap time goes as grip ^ -grip), and what a stop costs, in fresh-medium laps.
+  grip: number;
+  stop: number;
   // Pro's extra grip here, if the shared one (race.ts EDGE) leaves pro easier or harder than at
   // Monza; race.check.ts says which.
   proEdge?: number;
@@ -492,6 +496,8 @@ export function buildTrack(def: TrackDef) {
     id: def.id,
     name: def.name,
     PRO_EDGE: def.proEdge,
+    GRIP_POWER: def.grip,
+    STOP_LAPS: def.stop,
     LEGENDS_EDGE: def.legendsEdge,
     PATH,
     HALF,

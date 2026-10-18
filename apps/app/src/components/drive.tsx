@@ -200,6 +200,9 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
   const bestEl = useRef<HTMLSpanElement>(null);
   const sectorEls = useRef<HTMLSpanElement[]>([]);
   const nearEl = useRef<HTMLDivElement>(null);
+  const waitEl = useRef<HTMLDivElement>(null);
+  const waitText = useRef<HTMLParagraphElement>(null);
+  const skip = useRef<() => void>(() => {});
   const jumpEl = useRef<HTMLDivElement>(null);
   const towerEls = useRef<HTMLDivElement[]>([]);
   const modeEl = useRef<HTMLDivElement>(null);
@@ -283,6 +286,8 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     let brk = 0;
     let board = 0;
     let msgAt = -Infinity;
+    let skipping = false;
+    const still = { gas: false, brake: false, steer: 0 };
     // The page was clicked on the way here, so the browser lets a remembered "sound on" start.
     if (read(SOUND, false)) engine.current ??= createEngine();
     const keys = new Set<string>();
@@ -412,9 +417,14 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       lightsEl.current!.hidden = false;
       rcEl.current!.hidden = true;
       msgAt = -Infinity;
+      skipping = false;
+      waitEl.current!.hidden = true;
       drawBoard();
     };
     start();
+    skip.current = () => {
+      skipping = true;
+    };
     again.current = () => {
       setResult(null);
       start();
@@ -479,6 +489,8 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       if (phase === "racing") {
         const wasDone = race.done;
         const split = tick(race, { gas, brake, steer }, dt);
+        // After your flag, Skip runs the rest of the field to theirs a few hundred frames at a time.
+        if (skipping) for (let n = 0; n < 300 && !race.done; n++) tick(race, still, 1 / 30);
         if (split) {
           const s = split.sector;
           if (s === 0) for (const i of [1, 2]) paintSector(i, "", "");
@@ -512,11 +524,19 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
           board = t;
           drawBoard();
         }
+        // The classification waits for the whole field to take the flag.
+        const waiting = me.finish !== null && !race.done;
+        waitEl.current!.hidden = !waiting;
+        if (waiting) {
+          const left = race.racers.filter((r) => r.finish === null).length;
+          const text = `Waiting for ${left} to finish`;
+          if (waitText.current!.textContent !== text) waitText.current!.textContent = text;
+        }
       }
 
       lapEl.current!.textContent = `${Math.min(me.laps + 1, race.laps)}/${race.laps}`;
       const time = timeEl.current!;
-      time.textContent = fmt(phase === "racing" && !race.done ? race.t - me.lap.start! : 0);
+      time.textContent = fmt(phase === "racing" && me.finish === null ? race.t - me.lap.start! : 0);
       time.classList.toggle("text-accent", me.lap.invalid);
 
       const ease = Math.min(1, dt * 12);
@@ -820,6 +840,25 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
           role="status"
           className="disp pointer-events-none absolute top-1/3 left-1/2 -translate-x-1/2 rounded-lg bg-ink/85 px-6 py-3 text-[28px] leading-none uppercase motion-safe:animate-livepulse md:text-[40px]"
         />
+
+        <div
+          ref={waitEl}
+          hidden
+          role="status"
+          className={`${panel} absolute top-[30%] left-1/2 flex -translate-x-1/2 items-center gap-4 px-4 py-3`}
+        >
+          <div>
+            <p className="disp text-xl leading-none whitespace-nowrap">Chequered flag</p>
+            <p ref={waitText} className={`${label} mt-1 whitespace-nowrap`} />
+          </div>
+          <button
+            type="button"
+            onClick={() => skip.current()}
+            className="min-h-11 rounded-md bg-paper px-4 font-semibold text-ink active:scale-[.98]"
+          >
+            Skip
+          </button>
+        </div>
 
         <div
           className={`${panel} pointer-events-none absolute top-2 right-2 p-2 transition-opacity duration-300 md:top-3 md:right-3 md:p-3 ${shown}`}
