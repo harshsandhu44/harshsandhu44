@@ -2,7 +2,7 @@
 // each centreline's curvature and placed against OpenStreetMap by hand; metres are round the lap
 // from the line. Pit lanes are simplified to the main straight on their real side. Where pro
 // laps quicker against a clean lap than at Monza, proEdge gives it less grip, so pro is as hard
-// on every track.
+// on every track; legendsEdge does the same for legends against pro.
 import { INTERLAGOS_DATA } from "./interlagos.ts";
 import { MONZA_DATA } from "./monza.ts";
 import { REDBULLRING_DATA } from "./redbullring.ts";
@@ -105,6 +105,7 @@ export const TRACKS: TrackDef[] = [
     stands: [...row(-10, -120, -30, 60, 150), ...corner(-1, 2079)],
     seed: 1948,
     proEdge: 1.05,
+    legendsEdge: 1.095,
   },
   {
     id: "interlagos",
@@ -134,6 +135,7 @@ export const TRACKS: TrackDef[] = [
     stands: [...row(10, -200, -110, -20, 70), ...row(RUNOFF + 2, 245, 330)],
     seed: 1940,
     proEdge: 1.05,
+    legendsEdge: 1.085,
   },
   {
     id: "redbullring",

@@ -23,20 +23,28 @@ export const DISTANCES = [5, 10, 15, 20];
 // Difficulty is mostly the other drivers: a level sets how far from the centreline (0) to the
 // racing line (1) the computer drives, the share of its grip its quickest and slowest drivers
 // dare use (so they brake earlier and corner slower, but run flat out on the straights), and
-// how often it overcooks a corner. Pro cars also get EDGE more grip: on the best line at the
-// limit the computer still laps about 1.5 s off a clean human, so that closes it.
+// how often it overcooks a corner (never, for legends). Pro cars also get EDGE more grip: on the
+// best line at the limit the computer still laps about 1.5 s off a clean human, so that closes it.
 // The field is ten two-car teams. Driver 0 is you, in the car's own livery, and driver 1 your
 // teammate, the best driver whose team didn't make the top nine; then that series' top nine teams
 // in championship order, each driver above their teammate. Standings as of 17 Oct 2026; F3
 // teams run three cars, so their best two. ponytail: colours are near each team's, by eye, and
 // the paces are tuned in race.check.ts. Refresh the rosters when the seasons turn over.
-export type Level = "amateur" | "intermediate" | "pro";
+// Legends is the world champions: every multiple champion, plus Mansell and Hunt, at the team
+// each is best known for. They never make a mistake, and their winner beats a clean race from
+// you by a second or two.
+export type Level = "amateur" | "intermediate" | "pro" | "legends";
 // ponytail: tuned in race.check.ts so pro's winner finishes in about 7:30, the time a clean
 // race from the player beats by a few seconds, and the field laps 1:26 to 1:29.
 const EDGE = 1.1;
-// A computer car's extra grip: its level's edge (1 but for pro), or the track's for pro.
-export const edgeOf = (race: Race) =>
-  race.level === "pro" ? (race.track.PRO_EDGE ?? EDGE) : LEVELS[race.level].edge;
+const LEGEND_EDGE = 1.16;
+// How far under its limit (m/s) a legend has to be to pull out and pass.
+const PASS = 15;
+// A computer car's extra grip: its level's edge (1 below pro), or the track's own for pro and
+// legends.
+export const edgeOf = ({ level: lv, track }: Race) =>
+  (lv === "pro" ? track.PRO_EDGE : lv === "legends" ? track.LEGENDS_EDGE : undefined) ??
+  LEVELS[lv].edge;
 // A car's grip on its tyres: a computer car's scaled by its edge.
 export const carGrip = (race: Race, r: Racer) => grip(r.life, r.tyre) * (r.id ? edgeOf(race) : 1);
 type Seat = [code: string, name: string];
@@ -117,6 +125,26 @@ export const LEVELS: Record<Level, ReturnType<typeof level>> = {
       ["#b6babd", ["BEA", "Oliver Bearman"], ["OCO", "Esteban Ocon"]],
       ["#4a4f55", ["HUL", "Nico Hülkenberg"], ["BOR", "Gabriel Bortoleto"]],
       ["#64c4ff", ["SAI", "Carlos Sainz"], ["ALB", "Alexander Albon"]],
+    ],
+  ),
+  // ponytail: tuned in race.check.ts against pro.
+  legends: level(
+    "Legends",
+    1,
+    [0.98, 0.95],
+    0,
+    LEGEND_EDGE,
+    ["HUN", "James Hunt"],
+    [
+      ["#a6051a", ["SCH", "Michael Schumacher"], ["LAU", "Niki Lauda"]],
+      ["#27f4d2", ["HAM", "Lewis Hamilton"], ["FAN", "Juan Manuel Fangio"]],
+      ["#ff8000", ["SEN", "Ayrton Senna"], ["PRO", "Alain Prost"]],
+      ["#1e41ff", ["VER", "Max Verstappen"], ["VET", "Sebastian Vettel"]],
+      ["#64c4ff", ["PIQ", "Nelson Piquet"], ["MAN", "Nigel Mansell"]],
+      ["#0d5c3a", ["CLA", "Jim Clark"], ["FIT", "Emerson Fittipaldi"]],
+      ["#f2f2ef", ["BRA", "Jack Brabham"], ["HIL", "Graham Hill"]],
+      ["#1d3b8a", ["STE", "Jackie Stewart"], ["ASC", "Alberto Ascari"]],
+      ["#f2c230", ["ALO", "Fernando Alonso"], ["HAK", "Mika Häkkinen"]],
     ],
   ),
 };
@@ -351,7 +379,7 @@ export function aiInput(r: Racer, race: Race): Input {
   const k = CORNERS.findIndex((c) => fwd(c.turnIn - 250, m) < 50);
   if (k >= 0 && r.rolled !== k) {
     r.rolled = k;
-    r.mistake = race.slips && race.rand() < slip + 0.08 * (1 - r.life) ? k : -1;
+    r.mistake = race.slips && slip > 0 && race.rand() < slip + 0.08 * (1 - r.life) ? k : -1;
   }
   if (r.mistake >= 0 && fwd(CORNERS[r.mistake]!.at, m) < 200) r.mistake = -1;
   const at = atDist(m + 5);
@@ -391,9 +419,13 @@ export function aiInput(r: Racer, race: Race): Input {
     );
     if (r.served && s - box < 3 && traffic) want = 0;
   } else {
+    // Off the line the corners are tighter than the line's speeds, so a driver who never makes
+    // a mistake only pulls out with no corner coming, and is back on the line for the next.
+    const clear = slip > 0 || limitAt(at, g * r.pace, line) > car.v + PASS;
+    if (!clear) r.lane = 0;
     const block = ahead(lat(r.lane), 0);
     if (block && block.car.v < car.v + 1) {
-      const free = [3, -3, 0].find((l) => !ahead(lat(l), -8));
+      const free = clear ? [3, -3, 0].find((l) => !ahead(lat(l), -8)) : undefined;
       if (free !== undefined && race.t > r.laneT) [r.lane, r.laneT] = [free, race.t + 2000];
       else want = Math.min(want, block.car.v);
     } else if (r.lane && race.t > r.laneT && !ahead(lat(0), -10)) r.lane = 0;
@@ -415,6 +447,8 @@ export function aiInput(r: Racer, race: Race): Input {
     );
   });
   if (beside) to = now;
+  // Held off the line, a legend backs off to the centreline's speed rather than run wide.
+  if (beside && !slip) want = Math.min(want, limitAt(at, g * r.pace));
 
   const [tx, ty] = pointAt(look, to);
   let diff = Math.atan2(ty - car.y, tx - car.x) - car.h;

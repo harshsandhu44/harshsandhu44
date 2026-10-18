@@ -414,13 +414,18 @@ const field = (lv: Level, track: Track = monza) => {
   const strikes = race.racers.reduce((n, r) => n + r.strikes, 0);
   return { front: Math.min(...bests), lap: median(bests), win: table[0]!.time, strikes };
 };
-const levels = (["amateur", "intermediate", "pro"] as const).map((lv) => field(lv));
+const levels = (["amateur", "intermediate", "pro", "legends"] as const).map((lv) => field(lv));
 console.log(
   levels
     .map((l) => `best ${fmt(l.front)} median ${fmt(l.lap)} win ${fmt(l.win)} ${l.strikes} strikes`)
     .join("\n"),
 );
-const [am, mid, pro] = levels as [(typeof levels)[0], (typeof levels)[0], (typeof levels)[0]];
+const [am, mid, pro, leg] = levels as [
+  (typeof levels)[0],
+  (typeof levels)[0],
+  (typeof levels)[0],
+  (typeof levels)[0],
+];
 // The ladder: the front of each field laps about 1:36, 1:31 and 1:26, and pro's winner takes
 // about 7:30, which a clean race from the player (about 1:26 laps) only just beats.
 const near = (ms: number, want: number, by: number) => Math.abs(ms - want) < by;
@@ -431,6 +436,15 @@ assert.ok(near(pro.win, 450_000, 10_000), `pro's winner takes about 7:30 (${fmt(
 assert.ok(pro.lap < mid.lap && mid.lap < am.lap, "the better the field, the quicker it laps");
 assert.ok(am.strikes > 0, "computer cars make mistakes and pay for them");
 assert.ok(pro.strikes < am.strikes, "and pros make fewer");
+// Legends: no mistakes (at most a knock-on from a car ahead), and a winner about 1% under pro's,
+// so a clean race from you misses by a second or two.
+const legends = (l: typeof leg, p: typeof pro, at: string) => {
+  assert.ok(l.strikes <= 1, `${at}: legends keep it on the track (${l.strikes} strikes)`);
+  assert.ok(l.front < p.front, `${at}: the quickest legend laps quicker than the quickest pro`);
+  const r = l.win / p.win;
+  assert.ok(r > 0.985 && r < 0.995, `${at}: legends win about 1% under pro (${r.toFixed(4)})`);
+};
+legends(leg, pro, "Monza");
 
 // The ladder carries to every track. A clean lap at your grip on the racing line stands in for
 // you: pro's front runner stays as close to it as at Monza, so pro is as hard everywhere. The
@@ -446,19 +460,18 @@ const clean = (track: Track) => {
 const proGap = pro.front / clean(monza);
 for (const def of TRACKS.slice(1)) {
   const t = getTrack(def.id);
-  const [a, m, p] = (["amateur", "intermediate", "pro"] as const).map((lv) => field(lv, t)) as [
-    typeof pro,
-    typeof pro,
-    typeof pro,
-  ];
+  const [a, m, p, l] = (["amateur", "intermediate", "pro", "legends"] as const).map((lv) =>
+    field(lv, t),
+  ) as [typeof pro, typeof pro, typeof pro, typeof pro];
   const gap = p.front / clean(t);
   console.log(
-    `${def.name}: fronts ${[a, m, p].map((l) => fmt(l.front)).join(", ")}, pro at ${gap.toFixed(3)} of a clean lap`,
+    `${def.name}: fronts ${[a, m, p, l].map((x) => fmt(x.front)).join(", ")}, pro at ${gap.toFixed(3)} of a clean lap`,
   );
   assert.ok(p.lap < m.lap && m.lap < a.lap, `${def.name}: the better the field, the quicker`);
   assert.ok(Math.abs(gap - proGap) < 0.01, `${def.name}: pro is as hard as at Monza`);
   assert.ok(a.front / p.front > am.front / pro.front - 0.01, `${def.name}: amateur no harder`);
   assert.ok(m.front / p.front > mid.front / pro.front - 0.01, `${def.name}: intermediate too`);
+  legends(l, p, def.name);
 }
 
 // Strategy: soft or medium with a stop, against medium or hard without, alone, on a mid pace.

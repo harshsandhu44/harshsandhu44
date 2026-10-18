@@ -26,6 +26,8 @@ export type TrackDef = {
   // Pro's extra grip here, if the shared one (race.ts EDGE) leaves pro easier or harder than at
   // Monza; race.check.ts says which.
   proEdge?: number;
+  // And legends', against theirs (race.ts LEGEND_EDGE).
+  legendsEdge?: number;
 };
 
 // Unit normal at each point of a closed line, averaged over the segments either side. It points
@@ -490,6 +492,7 @@ export function buildTrack(def: TrackDef) {
     id: def.id,
     name: def.name,
     PRO_EDGE: def.proEdge,
+    LEGENDS_EDGE: def.legendsEdge,
     PATH,
     HALF,
     CUM,

@@ -95,6 +95,7 @@ const STEPS: [Level, string, string][] = [
   ["amateur", "Amateur", "F3 grid"],
   ["intermediate", "Intermediate", "F2 grid"],
   ["pro", "Pro", "F1 grid"],
+  ["legends", "Legends", "Champions"],
 ];
 const CONTROLS: [string[], string][] = [
   [["↑", "W"], "Gas"],
@@ -106,7 +107,7 @@ const CONTROLS: [string[], string][] = [
 const RULES: [string, string][] = [
   [
     "Start",
-    "Your reaction in the hero sets your grid slot. Go when the lights go out: moving once the first light is on is a jump start, 5 s added. Amateur races the F3 grid, intermediate F2 and pro F1: on the racing line, with the fewest mistakes and a little more grip than your car.",
+    "Your reaction in the hero sets your grid slot. Go when the lights go out: moving once the first light is on is a jump start, 5 s added. Amateur races the F3 grid, intermediate F2 and pro F1: on the racing line, with the fewest mistakes and a little more grip than your car. Legends is the world champions: no mistakes, and a perfect race only just keeps up.",
   ],
   [
     "Tyres & pits",
@@ -909,7 +910,11 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
                   );
                 })}
               </div>
-              <div role="radiogroup" aria-label="Field" className="mt-2 grid grid-cols-3 gap-2">
+              <div
+                role="radiogroup"
+                aria-label="Field"
+                className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4"
+              >
                 {STEPS.map(([l, name, field]) => (
                   <button
                     key={l}
