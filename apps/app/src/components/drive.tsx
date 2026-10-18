@@ -593,10 +593,15 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       drsChip.classList.toggle("text-paper", me.drs === "eligible");
       engine.current?.set(Math.abs(car.v) / TOP, thr);
 
+      // Each team's crew: out for a car in the lane, at the car while it's stopped.
+      const crews = new Array<number>(CARS / 2).fill(0);
+      for (const r of race.racers)
+        crews[r.id >> 1] = Math.max(crews[r.id >> 1]!, r.stop > 0 ? 2 : r.pit ? 1 : 0);
       scene!.frame(
         race.racers.map((r) => r.car),
         steer,
         dt,
+        crews,
       );
       drawMap();
       raf = requestAnimationFrame(frame);
