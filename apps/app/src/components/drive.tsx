@@ -122,6 +122,12 @@ const RULES: [string, string][] = [
     "From lap 2, within a second of the car ahead at a detection line. It opens on the straight that follows and shuts on the brakes.",
   ],
 ];
+const PAD: ["left" | "right", string, string][] = [
+  ["left", "Steer left", "◀"],
+  ["right", "Steer right", "▶"],
+];
+const padKey =
+  "pointer-events-auto grid h-16 min-w-16 touch-none place-items-center rounded-lg bg-ink/70 text-2xl text-paper ring-1 ring-paper/25 select-none active:bg-lamp";
 const kbd = "rounded-sm bg-lamp px-1.5 py-0.5 text-xs font-semibold text-paper";
 const panel = "rounded-lg bg-ink/85 text-paper tabular-nums";
 const label = "text-sm text-soft";
@@ -179,6 +185,8 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
   const fit = useRef<(t: Tyre) => void>(() => {});
   const fitWrap = useRef<HTMLDivElement>(null);
   const fitEls = useRef<HTMLButtonElement[]>([]);
+  // The touch controls' state, read by the frame loop. `touch` is whether they drive the car.
+  const pad = useRef({ touch: false, left: false, right: false, brake: false });
   const tyreName = useRef<HTMLSpanElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const stage = useRef<HTMLDivElement>(null);
@@ -209,6 +217,17 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
   const rcLabel = useRef<HTMLSpanElement>(null);
   const rcFlag = useRef<HTMLSpanElement>(null);
   const rcText = useRef<HTMLSpanElement>(null);
+
+  // Holding a touch control sets its flag; any press also hands the car to the touch controls.
+  const hold = (k: "left" | "right" | "brake") => {
+    const up = () => (pad.current[k] = false);
+    return {
+      onPointerDown: () => Object.assign(pad.current, { [k]: true, touch: true }),
+      onPointerUp: up,
+      onPointerCancel: up,
+      onContextMenu: (e: { preventDefault: () => void }) => e.preventDefault(),
+    };
+  };
 
   const toggleSound = () => {
     const on = !sound;
@@ -264,9 +283,9 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     // The page was clicked on the way here, so the browser lets a remembered "sound on" start.
     if (read(SOUND, false)) engine.current ??= createEngine();
     const keys = new Set<string>();
-    let touch = false;
-    // Which half of the track each finger is holding: -1 left, 1 right.
-    const fingers = new Map<number, number>();
+    // A touch screen starts on the touch controls, so the throttle's on from the lights.
+    const p = pad.current;
+    p.touch = matchMedia("(pointer: coarse)").matches;
 
     const paintSector = (i: number, text: string, cls: "best" | "slow" | "") => {
       const el = sectorEls.current[i]!;
@@ -291,25 +310,12 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
         if (!k || phase === "grid") return;
         e.preventDefault();
         keys.add(k);
-        touch = false;
+        p.touch = false;
       },
       on,
     );
     d.addEventListener("keyup", (e) => keys.delete(key(e) ?? ""), on);
     window.addEventListener("blur", () => keys.clear(), on);
-    // Touch: the throttle is automatic, holding either half of the track steers that way, and
-    // holding both brakes and then reverses.
-    const point = (e: PointerEvent) => {
-      if (e.pointerType === "mouse") return;
-      touch = true;
-      const r = cv.getBoundingClientRect();
-      fingers.set(e.pointerId, e.clientX < r.left + r.width / 2 ? -1 : 1);
-    };
-    // Touch pointers are captured implicitly, so moves keep coming here after the finger drifts off.
-    cv.addEventListener("pointerdown", point, on);
-    cv.addEventListener("pointermove", (e) => e.buttons && point(e), on);
-    for (const type of ["pointerup", "pointercancel"] as const)
-      cv.addEventListener(type, (e) => fingers.delete(e.pointerId), on);
 
     // Minimap: north up, a dot per car in its colour, yours on top and bigger.
     const drawMap = () => {
@@ -334,17 +340,22 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       }
     };
 
-    // The tower and the phone's gaps, twice a second rather than every frame. On a short stage
-    // the tower shows the top ten and you.
+    // The tower and the phone's gaps, twice a second rather than every frame. The tower shows as
+    // many rows as fit above the speed panel: the top n, or once you're out of them the top n - 3
+    // and the cars either side of you.
     const drawBoard = () => {
       const run = order(race);
       const me = race.racers[0]!;
       const at = run.indexOf(me);
-      const short = cv.clientHeight < 640;
+      const first = towerEls.current[0]!;
+      const room = gearEl.current!.parentElement!.getBoundingClientRect().top - 8;
+      const n = Math.max(3, Math.floor((room - first.getBoundingClientRect().top) / 20));
+      const cut = at > n - 2;
       posEl.current!.textContent = `P${at + 1}`;
       run.forEach((r, k) => {
         const row = towerEls.current[k]!;
-        row.hidden = short && k >= 10 && r !== me;
+        row.hidden = cut ? k >= n - 3 && Math.abs(k - at) > 1 : k >= n;
+        row.classList.toggle("border-t", cut && k === at - 1);
         const [sw, code, tyre, fl, pen, g] = row.children as unknown as HTMLElement[];
         sw!.style.background = paintOf(r.id);
         code!.textContent = driver(race, r.id).code;
@@ -422,16 +433,11 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     const frame = (t: number) => {
       const dt = Math.min((t - last) / 1000, 1 / 30);
       last = t;
-      const held = new Set(fingers.values());
-      const back = touch && held.size === 2;
-      const steer = touch
-        ? back
-          ? 0
-          : (held.values().next().value ?? 0)
-        : +keys.has("right") - +keys.has("left");
-      const gas = touch ? !back : keys.has("up");
-      const brake = touch ? back : keys.has("down");
-      const pressing = touch ? fingers.size > 0 : gas || brake || steer !== 0;
+      // Touch: the throttle's on unless braking, and braking at a stop reverses.
+      const steer = p.touch ? +p.right - +p.left : +keys.has("right") - +keys.has("left");
+      const gas = p.touch ? !p.brake : keys.has("up");
+      const brake = p.touch ? p.brake : keys.has("down");
+      const pressing = p.touch ? p.left || p.right || p.brake : gas || brake || steer !== 0;
 
       if (phase === "lights") {
         const lit = Math.min(5, Math.floor((t - phaseAt) / 1000));
@@ -769,7 +775,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
           ref={rcEl}
           hidden
           aria-live="polite"
-          className={`${panel} pointer-events-none absolute right-2 bottom-24 left-2 flex items-center gap-3 px-3 py-2 text-sm md:top-3 md:right-auto md:bottom-auto md:left-1/2 md:max-w-xl md:-translate-x-1/2 md:px-4 md:text-[15px]`}
+          className={`${panel} pointer-events-none absolute right-2 bottom-24 left-2 flex items-center gap-3 px-3 py-2 text-sm max-md:pointer-coarse:bottom-56 md:top-3 md:right-auto md:bottom-auto md:left-1/2 md:max-w-xl md:-translate-x-1/2 md:px-4 md:text-[15px]`}
         >
           <span
             ref={rcFlag}
@@ -800,7 +806,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
         </div>
 
         <div
-          className={`${panel} pointer-events-none absolute bottom-2 left-2 flex items-center gap-3 p-2.5 transition-opacity duration-300 md:bottom-3 md:left-3 md:gap-4 md:p-3.5 ${shown}`}
+          className={`${panel} pointer-events-none absolute bottom-2 left-2 flex items-center gap-3 p-2.5 transition-opacity duration-300 pointer-coarse:bottom-20 md:bottom-3 md:left-3 md:gap-4 md:p-3.5 md:pointer-coarse:bottom-21 ${shown}`}
         >
           <span
             ref={gearEl}
@@ -862,6 +868,27 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
               ))}
             </div>
           </div>
+        </div>
+
+        {/* Touch: steer bottom-left, brake bottom-right. Touch pointers are captured implicitly,
+            so a button hears the lift even after the thumb slides off it. */}
+        <div
+          className={`pointer-events-none absolute inset-x-2 bottom-2 hidden items-end justify-between transition-opacity duration-300 pointer-coarse:flex md:inset-x-3 md:bottom-3 ${shown}`}
+        >
+          <div className="flex gap-2">
+            {PAD.map(([k, name, glyph]) => (
+              <button key={k} type="button" aria-label={name} className={padKey} {...hold(k)}>
+                {glyph}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className={`${padKey} w-28 bg-accent/80 text-sm font-semibold tracking-wide uppercase`}
+            {...hold("brake")}
+          >
+            Brake
+          </button>
         </div>
 
         {grid && status === "ready" && !result && (
@@ -1158,8 +1185,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
           ))}
         </ul>
         <p className="hidden pointer-coarse:block">
-          Hold the left or right side to steer, or both to brake and reverse. The throttle is
-          automatic.
+          The throttle is automatic. ◀ ▶ to steer, hold Brake to slow down and reverse.
         </p>
         <button
           type="button"
