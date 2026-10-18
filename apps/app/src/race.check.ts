@@ -410,6 +410,8 @@ const field = (lv: Level, track: Track = monza) => {
   assert.ok(worst.track < 2, `${at}: nobody's stuck (${worst.track.toFixed(1)} s)`);
   assert.ok(worst.lane < 5, `${at}: nobody waits long in the lane (${worst.lane.toFixed(1)} s)`);
   const bests = race.racers.map((r) => r.best);
+  // A car whose every lap was deleted has no best; it isn't the front.
+  const front = Math.min(...bests.filter(Boolean));
   assert.ok(
     track !== monza || (Math.min(...bests) > 84_000 && Math.max(...bests) < 112_000),
     `${at}: laps from 1:24 to 1:52 (${fmt(Math.min(...bests))} to ${fmt(Math.max(...bests))})`,
@@ -421,11 +423,11 @@ const field = (lv: Level, track: Track = monza) => {
   // The race's best sectors come from clean laps, so the fastest lap is no quicker than them.
   const sum = race.sectors.reduce((a, b) => a + b, 0);
   assert.ok(
-    race.sectors.every((ms) => ms > 0) && sum <= Math.min(...bests),
+    race.sectors.every((ms) => ms > 0) && sum <= front,
     `${at}: the race's best sectors are set and within the fastest lap (${fmt(sum)})`,
   );
   const strikes = race.racers.reduce((n, r) => n + r.strikes, 0);
-  return { front: Math.min(...bests), lap: median(bests), win: table[0]!.time, strikes };
+  return { front, lap: median(bests), win: table[0]!.time, strikes };
 };
 const levels = (["amateur", "intermediate", "pro", "legends"] as const).map((lv) => field(lv));
 console.log(
@@ -592,6 +594,7 @@ for (const def of TRACKS) {
     [10, 11],
     "and it's classified last",
   );
+  assert.ok(results(race)[1]!.down > 0, "laps down");
 }
 
 console.log("race: ok");

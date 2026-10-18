@@ -641,5 +641,8 @@ export function lapTick(lap: Lap, p: number, edge: number, t: number): Split | n
   return null;
 }
 
-export const fmt = (ms: number) =>
-  `${Math.floor(ms / 60000)}:${((ms % 60000) / 1000).toFixed(3).padStart(6, "0")}`;
+// Rounded to the millisecond first, so 7:59.9996 reads 8:00.000, not 7:60.000.
+export const fmt = (t: number) => {
+  const ms = Math.round(t);
+  return `${Math.floor(ms / 60000)}:${((ms % 60000) / 1000).toFixed(3).padStart(6, "0")}`;
+};

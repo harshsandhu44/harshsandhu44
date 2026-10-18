@@ -133,6 +133,13 @@ const panel = "rounded-lg bg-ink/85 text-paper tabular-nums";
 const label = "text-sm text-soft";
 const sector = "rounded-sm bg-lamp px-1.5 py-0.5 text-sm text-soft md:px-2 md:text-[15px]";
 const secs = (ms: number) => (ms / 1000).toFixed(3);
+// A gap in seconds as F1 shows it: seconds under a minute, then minutes too.
+const plus = (s: number, dp = 3) => {
+  const v = Math.round(s * 10 ** dp) / 10 ** dp;
+  const sec = (v % 60).toFixed(dp);
+  return v < 60 ? `+${sec}` : `+${Math.floor(v / 60)}:${sec.padStart(dp + 3, "0")}`;
+};
+const lapsDown = (n: number) => `+${n} lap${n > 1 ? "s" : ""}`;
 
 type Result = {
   table: ReturnType<typeof results>;
@@ -1204,9 +1211,9 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
                           </td>
                           <td className="py-1 text-right">
                             {r.down
-                              ? `+${r.down} lap${r.down > 1 ? "s" : ""}`
+                              ? lapsDown(r.down)
                               : k
-                                ? `+${secs(r.time - leader)}`
+                                ? plus((r.time - leader) / 1000)
                                 : fmt(r.time)}
                           </td>
                           <td className="py-1 pl-3 text-right">{r.stops}</td>

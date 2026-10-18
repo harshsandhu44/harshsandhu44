@@ -243,6 +243,7 @@ for (const def of TRACKS) {
 }
 
 assert.equal(fmt(83456), "1:23.456");
+assert.equal(fmt(479999.97), "8:00.000");
 assert.equal(fmt(5007), "0:05.007");
 
 console.log("track: ok");

@@ -678,15 +678,16 @@ export const order = (race: Race) =>
 // Seconds behind the leader, from when each passed the same checkpoint.
 export const gap = (race: Race, r: Racer) => (r.cp < 0 ? 0 : (r.cpT - race.cps[r.cp]!) / 1000);
 
-// Final classification once the race is done: lapped cars are shown a lap down, and any car that
-// never made it to the flag gets the time it would take for the rest at its average speed so far.
+// Final classification once the race is done: lapped cars are shown laps down, and any car that
+// never made it to the flag too, placed by the time it would take for the rest at its average
+// speed so far.
 export function results(race: Race) {
   const total = race.laps * race.track.LENGTH;
   return race.racers
     .map((r) => {
       const run = r.finish ?? race.t + (total - r.dist) / (Math.max(r.dist, 1) / race.t);
       const time = run + r.penalty;
-      const down = r.finish !== null && r.laps < race.laps ? race.laps - r.laps : 0;
+      const down = race.laps - r.laps;
       const { id, best, penalty, stints } = r;
       return { id, time, down, best, penalty, stints, stops: stints.length - 1 };
     })
