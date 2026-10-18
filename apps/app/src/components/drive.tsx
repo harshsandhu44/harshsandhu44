@@ -19,6 +19,7 @@ import {
   wrongWay,
   type Level,
   type Race,
+  type Racer,
   type Tyre,
 } from "@/race";
 import { TOP, fmt, gear } from "@/track";
@@ -270,8 +271,8 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     const paintOf = (id: number) => colorOf(race, id) || C.accent;
     const flat = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const track = getTrack(trackId);
-    const { LENGTH, atDist, limitAt, nextCorner } = track;
-    const { box, box2, outline } = SHAPES.get(trackId)!;
+    const { LENGTH, atDist, dirAt, limitAt, nextCorner } = track;
+    const { box, outline } = SHAPES.get(trackId)!;
     const road = new Path2D(outline);
 
     let record: number = read(BEST(trackId), 0);
@@ -331,27 +332,38 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     d.addEventListener("keyup", (e) => keys.delete(key(e) ?? ""), on);
     window.addEventListener("blur", () => keys.clear(), on);
 
-    // Minimap: north up, a dot per car in its colour, yours on top and bigger.
+    // Minimap: about 600 m round you, heading up. The road in one pale stroke, a dot per car in
+    // its colour, and yours in the accent with a ring, on top.
     const drawMap = () => {
       const w = mv.clientWidth;
-      const s = w / box2.w;
-      mctx.setTransform(devicePixelRatio * s, 0, 0, devicePixelRatio * s, 0, 0);
-      mctx.clearRect(0, 0, box2.w, box2.h);
-      mctx.lineWidth = 3 / s;
+      const s = w / 600;
+      const me = race.racers[0]!;
+      mctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+      mctx.clearRect(0, 0, w, w);
+      mctx.translate(w / 2, w / 2);
+      mctx.scale(s, s);
+      mctx.rotate(-dirAt(me.p) - Math.PI / 2);
+      mctx.translate(box.x - me.car.x, box.y - me.car.y);
+      mctx.lineWidth = Math.max(14, 3 / s);
       mctx.lineJoin = "round";
       mctx.strokeStyle = C.chrome;
-      mctx.globalAlpha = 0.6;
+      mctx.globalAlpha = 0.5;
       mctx.stroke(road);
       mctx.globalAlpha = 1;
-      mctx.lineWidth = 1 / s;
-      mctx.strokeStyle = C.paper;
-      for (const r of [...race.racers].reverse()) {
-        mctx.fillStyle = paintOf(r.id);
+      const dot = (r: Racer, size: number) => {
         mctx.beginPath();
-        mctx.arc(r.car.x - box.x, r.car.y - box.y, (r.id ? 3 : 4.5) / s, 0, Math.PI * 2);
+        mctx.arc(r.car.x - box.x, r.car.y - box.y, size / s, 0, Math.PI * 2);
         mctx.fill();
-        if (r.id) mctx.stroke();
+      };
+      for (const r of race.racers.slice(1)) {
+        mctx.fillStyle = paintOf(r.id);
+        dot(r, 3.5);
       }
+      mctx.fillStyle = C.accent;
+      mctx.strokeStyle = C.paper;
+      mctx.lineWidth = 2 / s;
+      dot(me, 5);
+      mctx.stroke();
     };
 
     // The tower and the phone's gaps, twice a second rather than every frame. The tower shows as
@@ -874,11 +886,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
         <div
           className={`${panel} pointer-events-none absolute top-2 right-2 p-2 transition-opacity duration-300 md:top-3 md:right-3 md:p-3 ${shown}`}
         >
-          <canvas
-            ref={map}
-            className="block w-12 md:w-20"
-            style={{ aspectRatio: `${box2.w} / ${box2.h}` }}
-          />
+          <canvas ref={map} className="block size-28 md:size-40" />
         </div>
 
         <div
