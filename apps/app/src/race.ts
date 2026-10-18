@@ -277,6 +277,8 @@ export type Race = {
   done: boolean;
   msgs: Msg[];
   fastest: { id: number; ms: number } | null;
+  // The quickest clean time through each sector by anyone, 0 until someone sets one.
+  sectors: number[];
   // When any car last crossed each DRS detection line.
   crossed: number[];
   // Whether computer cars make mistakes (off for the strategy check), and the dice.
@@ -354,6 +356,7 @@ export function newRace(
     done: false,
     msgs: [],
     fastest: null,
+    sectors: [0, 0, 0],
     crossed: DRS_ZONES.map(() => -Infinity),
     slips: true,
     rand,
@@ -594,6 +597,9 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     }
 
     const split = lapTick(r.lap, p, edge, race.t);
+    const sec = split?.sector ?? 0;
+    if (split?.valid && (!race.sectors[sec] || split.ms < race.sectors[sec]!))
+      race.sectors[sec] = split.ms;
     if (split?.lap) {
       r.laps++;
       if (split.valid && (!r.best || split.lap < r.best)) r.best = split.lap;

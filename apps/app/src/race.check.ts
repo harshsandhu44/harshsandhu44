@@ -411,6 +411,12 @@ const field = (lv: Level, track: Track = monza) => {
     race.msgs.some((m) => m.kind === "fastest"),
     "fastest laps are called",
   );
+  // The race's best sectors come from clean laps, so the fastest lap is no quicker than them.
+  const sum = race.sectors.reduce((a, b) => a + b, 0);
+  assert.ok(
+    race.sectors.every((ms) => ms > 0) && sum <= Math.min(...bests),
+    `${at}: the race's best sectors are set and within the fastest lap (${fmt(sum)})`,
+  );
   const strikes = race.racers.reduce((n, r) => n + r.strikes, 0);
   return { front: Math.min(...bests), lap: median(bests), win: table[0]!.time, strikes };
 };

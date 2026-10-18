@@ -24,9 +24,9 @@ import {
 import { TOP, fmt, gear } from "@/track";
 import { TRACKS, getTrack } from "@/tracks";
 
-// Bests per track. v2: Monza's real-length track; the v1 keys hold bests from the old short one.
+// Your record per track. v2: Monza's real-length track; the v1 keys hold bests from the old short
+// one. ponytail: the old `-sectors-v2` keys are left in storage, unread.
 const BEST = (id: string) => `${id}-best-v2`;
-const SECTORS = (id: string) => `${id}-sectors-v2`;
 // The rest kept Monza's names from when it was the only track, so picks carry over.
 const TRACK = "drive-track";
 const SOUND = "monza-sound";
@@ -168,6 +168,8 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     return TRACKS.some((t) => t.id === id) ? id : TRACKS[0]!.id;
   });
   const def = TRACKS.find((t) => t.id === trackId)!;
+  // Read on each render: the grid screen comes back after every race, so a new record shows.
+  const trackRecord: number = read(BEST(trackId), 0);
   const { box2, outline } = SHAPES.get(trackId)!;
   const [tyre, setTyre] = useState<Tyre>("medium");
   const [level, setLevel] = useState<Level>(() => {
@@ -200,6 +202,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
   const nearEl = useRef<HTMLDivElement>(null);
   const jumpEl = useRef<HTMLDivElement>(null);
   const towerEls = useRef<HTMLDivElement[]>([]);
+  const modeEl = useRef<HTMLDivElement>(null);
   const lampEls = useRef<HTMLSpanElement[]>([]);
   const lightsEl = useRef<HTMLDivElement>(null);
   const bannerEl = useRef<HTMLDivElement>(null);
@@ -264,9 +267,9 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     const { box, box2, outline } = SHAPES.get(trackId)!;
     const road = new Path2D(outline);
 
-    let best: number = read(BEST(trackId), 0);
-    const bestSectors: number[] = read(SECTORS(trackId), [0, 0, 0]);
-    bestEl.current!.textContent = best ? fmt(best) : DASH;
+    let record: number = read(BEST(trackId), 0);
+    // Your quickest clean time through each sector this race.
+    let mine = [0, 0, 0];
 
     // The race runs through these phases. The grid screen waits for your tyres (the flyover
     // plays behind it), then the lights come on a second apart and go out after an unannounced
@@ -287,10 +290,12 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     const p = pad.current;
     p.touch = matchMedia("(pointer: coarse)").matches;
 
-    const paintSector = (i: number, text: string, cls: "best" | "slow" | "") => {
+    // F1's colours: purple the quickest anyone's been this race, green your own best, yellow slower.
+    const paintSector = (i: number, text: string, cls: "fl" | "pb" | "slow" | "") => {
       const el = sectorEls.current[i]!;
       el.lastChild!.textContent = text;
-      el.classList.toggle("bg-fl", cls === "best");
+      el.classList.toggle("bg-fl", cls === "fl");
+      el.classList.toggle("bg-go", cls === "pb");
       el.classList.toggle("bg-slow", cls === "slow");
       el.classList.toggle("bg-lamp", cls === "");
       el.classList.toggle("text-soft", cls === "");
@@ -351,6 +356,9 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       const room = gearEl.current!.parentElement!.getBoundingClientRect().top - 8;
       const n = Math.max(3, Math.floor((room - first.getBoundingClientRect().top) / 20));
       const cut = at > n - 2;
+      // Every 5 s the gaps switch between to the leader and to the car ahead.
+      const interval = Math.floor(race.t / 5000) % 2 === 1;
+      modeEl.current!.textContent = interval ? "Interval" : "Leader";
       posEl.current!.textContent = `P${at + 1}`;
       run.forEach((r, k) => {
         const row = towerEls.current[k]!;
@@ -364,7 +372,14 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
         fl!.hidden = race.fastest?.id !== r.id;
         pen!.hidden = !r.penalty;
         pen!.textContent = `+${r.penalty / 1000}s`;
-        g!.textContent = !k ? "Leader" : r.cp < 0 ? "" : `+${gap(race, r).toFixed(1)}`;
+        // Order is by distance and gaps by checkpoint, so a car just out of the pits can time in
+        // ahead of the car it's behind; floor the interval at 0.
+        const behind = () => Math.max(0, gap(race, r) - (interval ? gap(race, run[k - 1]!) : 0));
+        g!.textContent = !k
+          ? modeEl.current!.textContent
+          : r.cp < 0
+            ? ""
+            : `+${behind().toFixed(1)}`;
         row.classList.toggle("bg-lamp", r === me);
       });
       const near = (o: (typeof run)[number] | undefined, sign: string) =>
@@ -390,7 +405,9 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       setGrid(true);
       pause = 200 + Math.random() * 2800;
       for (const i of [0, 1, 2]) paintSector(i, "", "");
+      mine = [0, 0, 0];
       lastEl.current!.textContent = DASH;
+      bestEl.current!.textContent = DASH;
       jumpEl.current!.hidden = true;
       lightsEl.current!.hidden = false;
       rcEl.current!.hidden = true;
@@ -465,22 +482,20 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
         if (split) {
           const s = split.sector;
           if (s === 0) for (const i of [1, 2]) paintSector(i, "", "");
-          const pb = split.valid && (!bestSectors[s] || split.ms < bestSectors[s]);
-          if (pb) {
-            bestSectors[s] = split.ms;
-            write(SECTORS(trackId), bestSectors);
-          }
-          paintSector(s, secs(split.ms), pb ? "best" : "slow");
+          const pb = split.valid && (!mine[s] || split.ms <= mine[s]);
+          if (pb) mine[s] = split.ms;
+          const fl = split.valid && split.ms <= race.sectors[s]!;
+          paintSector(s, secs(split.ms), fl ? "fl" : pb ? "pb" : "slow");
         }
         if (split?.lap) {
           const l = lastEl.current!;
           l.textContent = fmt(split.lap);
           l.classList.toggle("line-through", !split.valid);
           l.classList.toggle("text-accent", !split.valid);
-          if (split.valid && (!best || split.lap < best)) {
-            best = split.lap;
-            bestEl.current!.textContent = fmt(best);
-            write(BEST(trackId), best);
+          if (me.best) bestEl.current!.textContent = fmt(me.best);
+          if (split.valid && (!record || split.lap < record)) {
+            record = split.lap;
+            write(BEST(trackId), record);
           }
         }
         if (race.done && !wasDone) {
@@ -737,13 +752,19 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
           </div>
 
           <div className={`${panel} hidden w-40 py-1.5 text-sm md:block`}>
+            <div
+              ref={modeEl}
+              className="px-3 pb-0.5 text-right text-xs font-semibold tracking-wide text-soft uppercase"
+            >
+              Leader
+            </div>
             {Array.from({ length: CARS }, (_, k) => (
               <div
                 key={k}
                 ref={(el) => {
                   if (el) towerEls.current[k] = el;
                 }}
-                className="flex items-center gap-2 px-3 leading-5"
+                className="flex items-center gap-2 border-paper/25 px-3 leading-5"
               >
                 <span className="h-3 w-1 rounded-full ring-1 ring-paper/25" />
                 <span className="font-semibold" />
@@ -901,6 +922,11 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
                 Reaction {(reaction / 1000).toFixed(3)} s. Pick the track, the field, the distance
                 and your tyres.
               </p>
+              {trackRecord ? (
+                <p className={`${label} mt-1`}>
+                  Your record <span className="text-paper">{fmt(trackRecord)}</span>
+                </p>
+              ) : null}
               <div
                 role="radiogroup"
                 aria-label="Track"
