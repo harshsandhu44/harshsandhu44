@@ -5,7 +5,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { CARS } from "@/race";
-import { KERB_R, PIT_HALF, STAND_HALF, type Car, type Track } from "@/track";
+import { KERB_R, PIT_HALF, STAND_HALF, WORK, type Car, type Track } from "@/track";
 
 export type Colors = Record<"accent" | "carbon" | "paper" | "chrome" | "ink" | "pit", string>;
 
@@ -114,8 +114,9 @@ const place = (x: number, z: number, rot: number, sx: number, sy = sx, sz = sx) 
 // Renders into a canvas of its own inside `host`, so a second scene (React's dev double mount, or
 // reopening the dialog) never inherits a context the first one threw away.
 export async function createScene(host: HTMLElement, C: Colors, flat: boolean, track: Track) {
-  const { BOARDS, BOXES, BOX, CURVE, HALF, MID, PATH, PIT_SIDE, STANDS, TREES, WALLS } = track;
-  const { offset, pitOffset, working } = track;
+  const { BOARDS, BOXES, BOX, CURVE, HALF, MID, PATH, PIT_SIDE, STANDS, TREES, WALLS, ZONES } =
+    track;
+  const { atDist, offset, pitOffset, pointAt, working } = track;
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.domElement.className = "block size-full";
   host.append(renderer.domElement);
@@ -223,7 +224,16 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
     ),
     flatMesh(strip(lane(-PIT_HALF), lane(0.35 - PIT_HALF), 0.03, apart), line),
   );
-  const boxGeo = new THREE.PlaneGeometry(6, 4).rotateX(-Math.PI / 2);
+  // Each box is painted on the lane as an outline in the team's colour, as in F1.
+  const rect = (w: number, h: number) =>
+    new THREE.Shape()
+      .moveTo(-w / 2, -h / 2)
+      .lineTo(w / 2, -h / 2)
+      .lineTo(w / 2, h / 2)
+      .lineTo(-w / 2, h / 2);
+  const outlineShape = rect(6, 4);
+  outlineShape.holes.push(rect(5.6, 3.6));
+  const boxGeo = new THREE.ShapeGeometry(outlineShape).rotateX(-Math.PI / 2);
   const boxes = BOXES.map((b) => {
     const mat = new THREE.MeshStandardMaterial({ color: C.accent, roughness: 0.8 });
     const m = new THREE.Mesh(boxGeo, mat);
@@ -233,6 +243,137 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
     scene.add(m);
     return mat;
   });
+
+  // The garages: one long building behind the boxes, a section per team with a dark door and a
+  // band in its colour, painted by paint(). `at` is a point beside a box: `along` the lap from it
+  // and `out` from its centre towards the garage.
+  // `along` goes down the box's heading: pointAt snaps to the 5 m path points.
+  const at = (b: (typeof BOXES)[number], along: number, out: number) => {
+    const [x, y] = pointAt(b.s, pitOffset(atDist(b.s)) + PIT_SIDE * (WORK + out));
+    return [x + along * Math.cos(b.h), y + along * Math.sin(b.h)] as const;
+  };
+  const GARAGE = { w: 23.6, d: 8, h: 5, front: PIT_HALF + 0.5 };
+  const shell = new THREE.MeshStandardMaterial({ color: C.chrome, roughness: 0.9 });
+  const door = new THREE.MeshStandardMaterial({
+    color: C.pit,
+    roughness: 1,
+    side: THREE.DoubleSide,
+  });
+  const shellGeo = new THREE.BoxGeometry(GARAGE.w, GARAGE.h, GARAGE.d).translate(
+    0,
+    GARAGE.h / 2,
+    0,
+  );
+  const doorGeo = new THREE.PlaneGeometry(14, 4);
+  const bandGeo = new THREE.PlaneGeometry(GARAGE.w, 0.6);
+  const garages = BOXES.map((b) => {
+    const rot = yaw(Math.cos(b.h), Math.sin(b.h));
+    const put = (m: THREE.Mesh, out: number, y: number) => {
+      const [x, z] = at(b, 0, out);
+      m.position.set(x, y, z);
+      m.rotation.y = rot;
+      m.castShadow = m.receiveShadow = true;
+      scene.add(m);
+    };
+    const band = new THREE.MeshStandardMaterial({
+      color: C.accent,
+      roughness: 0.8,
+      side: THREE.DoubleSide,
+    });
+    put(new THREE.Mesh(shellGeo, shell), GARAGE.front + GARAGE.d / 2, 0);
+    put(new THREE.Mesh(doorGeo, door), GARAGE.front - 0.05, 2);
+    put(new THREE.Mesh(bandGeo, band), GARAGE.front - 0.05, 4.5);
+    const [x, y] = at(b, 0, GARAGE.front + GARAGE.d / 2);
+    return { x, y, h: b.h, band };
+  });
+  // The barrier behind the lane runs through the garages; they stand in for it on screen.
+  const inGarage = (x: number, y: number) =>
+    garages.some((g) => {
+      const [dx, dy] = [x - g.x, y - g.y];
+      const along = dx * Math.cos(g.h) + dy * Math.sin(g.h);
+      const across = dy * Math.cos(g.h) - dx * Math.sin(g.h);
+      return Math.abs(along) < GARAGE.w / 2 && Math.abs(across) < GARAGE.d / 2;
+    });
+
+  // Eight crew per team: four on the wheels, the front and rear jacks and one either side, at
+  // (along, out) from the car stopped at the box. They wait in the garage (hidden), line up on
+  // the garage side when one of the team's cars is in the lane, and go to the car for the stop;
+  // the wheel crew kneel. A pose per team runs 0 (garage) to 1 (ready) to 2 (working).
+  const SLOTS: [number, number][] = [
+    [1.8, 1.9],
+    [1.8, -1.9],
+    [-1.8, 1.9],
+    [-1.8, -1.9],
+    [3.7, 0],
+    [-3.7, 0],
+    [0, 2],
+    [0, -2],
+  ];
+  const teams = BOXES.length;
+  const crewBody = new THREE.InstancedMesh(
+    new THREE.CapsuleGeometry(0.28, 0.9).translate(0, 0.73, 0),
+    new THREE.MeshStandardMaterial({ roughness: 0.8 }),
+    teams * SLOTS.length,
+  );
+  const crewHead = new THREE.InstancedMesh(
+    new THREE.SphereGeometry(0.2),
+    new THREE.MeshStandardMaterial({ color: C.paper, roughness: 0.6 }),
+    teams * SLOTS.length,
+  );
+  const hidden = new THREE.Matrix4().makeScale(0, 0, 0);
+  for (const m of [crewBody, crewHead]) {
+    // Their bounds come from these first, hidden, matrices, so they'd be culled; skip culling.
+    m.frustumCulled = false;
+    m.castShadow = true;
+    for (let i = 0; i < m.count; i++) m.setMatrixAt(i, hidden);
+    scene.add(m);
+  }
+  const accent = new THREE.Color(C.accent);
+  for (let i = 0; i < crewBody.count; i++) crewBody.setColorAt(i, accent);
+  // Each crew member's spots in the garage and lined up ready, in track (x, y), and at the car:
+  // set from the car itself while it's stopped, as it stops a little off the box's centre.
+  const spots = BOXES.map((b) =>
+    SLOTS.map(([along], j) => [
+      at(b, along * 0.6, GARAGE.front + 2),
+      at(b, Math.max(-3.5, Math.min(3.5, along * 1.3 + (j - 3.5) * 0.3)), 3),
+    ]),
+  );
+  const work = BOXES.map((b) => SLOTS.map(([along, out]) => at(b, along, out)));
+  // The team's cars are 2k and 2k + 1; the one at the box sets the spots.
+  const atCar = (k: number, cars: Car[]) => {
+    const b = BOXES[k]!;
+    const near = (o: Car) => Math.hypot(o.x - b.x, o.y - b.y);
+    const c = [cars[2 * k], cars[2 * k + 1]].reduce((a, o) => (o && near(o) < near(a!) ? o : a))!;
+    const [fx, fy] = [Math.cos(c.h), Math.sin(c.h)];
+    work[k] = SLOTS.map(([al, out]) => [
+      c.x + al * fx - PIT_SIDE * out * fy,
+      c.y + al * fy + PIT_SIDE * out * fx,
+    ]);
+  };
+  const pose = new Array<number>(teams).fill(0);
+  const m4 = new THREE.Matrix4();
+  const v3 = new THREE.Vector3();
+  const s3 = new THREE.Vector3();
+  const q = new THREE.Quaternion();
+  const placeCrew = (k: number) => {
+    const v = pose[k]!;
+    SLOTS.forEach((_, j) => {
+      const i = k * SLOTS.length + j;
+      if (v < 0.02) {
+        crewBody.setMatrixAt(i, hidden);
+        crewHead.setMatrixAt(i, hidden);
+        return;
+      }
+      const [a, b] = spots[k]![j]!;
+      const c = work[k]![j]!;
+      const [p0, p1, t] = v <= 1 ? [a!, b!, v] : [b!, c, v - 1];
+      const kneel = j < 4 && v > 1 ? 1 - 0.35 * (v - 1) : 1;
+      v3.set(p0[0] + (p1[0] - p0[0]) * t, 0, p0[1] + (p1[1] - p0[1]) * t);
+      crewBody.setMatrixAt(i, m4.compose(v3, q, s3.set(1, kneel, 1)));
+      v3.y = 1.66 * kneel;
+      crewHead.setMatrixAt(i, m4.compose(v3, q, s3.set(1, 1, 1)));
+    });
+  };
 
   // Chequered start line, two rows of squares across the road.
   const cq = document.createElement("canvas");
@@ -284,10 +425,19 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
   scene.add(
     instances(
       wall!.root,
-      WALLS.map(([ax, az, bx, bz]) => {
-        const len = Math.hypot(bx - ax, bz - az);
-        return place((ax + bx) / 2, (az + bz) / 2, yaw(bx - ax, bz - az), len / wall!.size.x, 7, 7);
-      }),
+      WALLS.filter(([ax, az, bx, bz]) => !inGarage((ax + bx) / 2, (az + bz) / 2)).map(
+        ([ax, az, bx, bz]) => {
+          const len = Math.hypot(bx - ax, bz - az);
+          return place(
+            (ax + bx) / 2,
+            (az + bz) / 2,
+            yaw(bx - ax, bz - az),
+            len / wall!.size.x,
+            7,
+            7,
+          );
+        },
+      ),
     ),
     instances(
       stand!.root,
@@ -353,6 +503,51 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
     scene.add(board);
   }
 
+  // Overtake Mode's detection lines: painted across the track, with a board on the side away
+  // from the pits.
+  const otCanvas = document.createElement("canvas");
+  otCanvas.width = 240;
+  otCanvas.height = 160;
+  const oc = otCanvas.getContext("2d")!;
+  oc.fillStyle = C.paper;
+  oc.fillRect(0, 0, 240, 160);
+  oc.fillStyle = C.ink;
+  oc.font = `italic 800 40px ${boardFont}`;
+  oc.textAlign = "center";
+  oc.textBaseline = "middle";
+  oc.fillText("OVERTAKE", 120, 84);
+  const otTex = new THREE.CanvasTexture(otCanvas);
+  otTex.colorSpace = THREE.SRGBColorSpace;
+  const otFace = new THREE.MeshStandardMaterial({ map: otTex, roughness: 0.8 });
+  const paint = new THREE.MeshStandardMaterial({ color: C.paper, roughness: 0.9 });
+  for (const z of ZONES) {
+    const i = atDist(z.detect);
+    const [[ax, ay], [bx, by]] = [PATH[i]!, PATH[(i + 1) % PATH.length]!];
+    const stripe = new THREE.Mesh(
+      new THREE.PlaneGeometry(HALF[i]! * 2, 0.5).rotateX(-Math.PI / 2),
+      paint,
+    );
+    stripe.position.set(ax, 0.04, ay);
+    stripe.rotation.y = yaw(by - ay, -(bx - ax));
+    stripe.receiveShadow = true;
+    const front = new THREE.Mesh(panel, [
+      boardSide,
+      boardSide,
+      boardSide,
+      boardSide,
+      otFace,
+      boardSide,
+    ]);
+    front.position.y = 2.4;
+    const board = new THREE.Group();
+    board.add(front, new THREE.Mesh(post, boardSide));
+    board.traverse((o) => (o.castShadow = true));
+    const [x, y] = pointAt(z.detect, -PIT_SIDE * (HALF[i]! + 3));
+    board.position.set(x, 0, y);
+    board.rotation.y = Math.atan2(-(bx - ax), -(by - ay));
+    scene.add(stripe, board);
+  }
+
   // The cars, about 5.5 m long. The model faces +z. Yours is the model; the others are clones,
   // and each has its own copy of the body paint for paint() to set.
   const paints: THREE.MeshStandardMaterial[][] = [];
@@ -407,8 +602,21 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
   };
 
   return {
-    // Every car, yours first.
-    frame(cars: Car[], steer: number, dt: number) {
+    // Every car, yours first, and each team's crew: 0 in the garage, 1 a car in the lane, 2 a
+    // car stopped at the box.
+    frame(cars: Car[], steer: number, dt: number, crews: number[]) {
+      let moved = false;
+      crews.forEach((want, k) => {
+        if (want === 2) atCar(k, cars);
+        const v = pose[k]!;
+        if (v === want) return;
+        // About a second to walk out or in, and a quick dash to the car.
+        const step = dt * (Math.max(v, want) > 1 ? 2.5 : 1.2);
+        pose[k] = flat ? want : v + Math.max(-step, Math.min(step, want - v));
+        placeCrew(k);
+        moved = true;
+      });
+      if (moved) crewBody.instanceMatrix.needsUpdate = crewHead.instanceMatrix.needsUpdate = true;
       const c = cars[0]!;
       cars.forEach((o, k) => {
         bodies[k]!.position.set(o.x, RIDE, o.y);
@@ -443,9 +651,14 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
       camera.fov = w < h ? 60 : 45;
       camera.updateProjectionMatrix();
     },
-    // Team colours, yours "" for the accent: its two cars and its box.
+    // Team colours, yours "" for the accent: its two cars, its box, garage and crew.
     paint(teams: string[]) {
       boxes.forEach((m, k) => m.color.set(teams[k] || C.accent));
+      garages.forEach((g, k) => g.band.color.set(teams[k] || C.accent));
+      const c = new THREE.Color();
+      for (let i = 0; i < crewBody.count; i++)
+        crewBody.setColorAt(i, c.set(teams[Math.floor(i / SLOTS.length)] || C.accent));
+      crewBody.instanceColor!.needsUpdate = true;
       paints.forEach((ms, id) => ms.forEach((m) => m.color.set(teams[id >> 1] || C.accent)));
     },
     skipIntro() {

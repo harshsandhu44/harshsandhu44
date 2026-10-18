@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { createEngine, type Engine } from "@/engine";
 import type { Scene } from "@/scene";
 import {
+  CAP,
   CARS,
   DISTANCES,
   LEVELS,
@@ -19,22 +20,22 @@ import {
   wrongWay,
   type Level,
   type Race,
+  type Racer,
   type Tyre,
 } from "@/race";
 import { TOP, fmt, gear } from "@/track";
 import { TRACKS, getTrack } from "@/tracks";
 
-// Bests per track. v2: Monza's real-length track; the v1 keys hold bests from the old short one.
+// Your record per track. v2: Monza's real-length track; the v1 keys hold bests from the old short
+// one. ponytail: the old `-sectors-v2` keys are left in storage, unread.
 const BEST = (id: string) => `${id}-best-v2`;
-const SECTORS = (id: string) => `${id}-sectors-v2`;
 // The rest kept Monza's names from when it was the only track, so picks carry over.
 const TRACK = "drive-track";
 const SOUND = "monza-sound";
 const LEVEL = "monza-level";
 const LAPS = "monza-laps";
 const DASH = "-:--.---";
-const JUMP = 5000;
-const KEYS: Record<string, "up" | "down" | "left" | "right"> = {
+const KEYS: Record<string, "up" | "down" | "left" | "right" | "ot"> = {
   ArrowUp: "up",
   w: "up",
   ArrowDown: "down",
@@ -43,6 +44,7 @@ const KEYS: Record<string, "up" | "down" | "left" | "right"> = {
   a: "left",
   ArrowRight: "right",
   d: "right",
+  " ": "ot",
 };
 
 // Each circuit's outline in its own box, from the raw data so drawing one doesn't build the
@@ -95,18 +97,21 @@ const STEPS: [Level, string, string][] = [
   ["amateur", "Amateur", "F3 grid"],
   ["intermediate", "Intermediate", "F2 grid"],
   ["pro", "Pro", "F1 grid"],
+  ["legends", "Legends", "Champions"],
 ];
 const CONTROLS: [string[], string][] = [
   [["↑", "W"], "Gas"],
   [["↓", "S"], "Brake, reverse"],
   [["← →", "A D"], "Steer"],
   [["1–3"], "Tyres"],
+  [["Space"], "Overtake"],
+  [["P"], "Pause"],
   [["Esc"], "Leave"],
 ];
 const RULES: [string, string][] = [
   [
     "Start",
-    "Your reaction in the hero sets your grid slot. Go when the lights go out: moving once the first light is on is a jump start, 5 s added. Amateur races the F3 grid, intermediate F2 and pro F1: on the racing line, with the fewest mistakes and a little more grip than your car.",
+    "Your reaction in the hero sets your grid slot, and you go when the lights go out. Amateur races the F3 grid, intermediate F2 and pro F1: on the racing line, with the fewest mistakes and a little more grip than your car. Legends is the world champions: no mistakes, and a perfect race only just keeps up.",
   ],
   [
     "Tyres & pits",
@@ -117,19 +122,31 @@ const RULES: [string, string][] = [
     "All four wheels off the track deletes the lap. The third time brings the black and white flag, then 5 s and 10 s penalties.",
   ],
   [
-    "DRS",
-    "From lap 2, within a second of the car ahead at a detection line. It opens on the straight that follows and shuts on the brakes.",
+    "2026 power",
+    "Straight Mode flattens the wings on the straights for every car, every lap, until you brake. The 4 MJ battery deploys by itself flat out, at 350 kW in the zones and 250 kW elsewhere, and recharges off the throttle (most on the brakes) and in the pit lane, up to 8.5 MJ a lap. Run it flat and the car super clips: it harvests at full throttle and loses speed (the reading turns red). From lap 2, within a second of the car ahead at a detection line (the painted line with the Overtake board), Overtake Mode is ready: Space for full power and more speed to the end of the next straight, and the next lap harvests faster, up to 9 MJ (the bar turns green).",
   ],
 ];
+const PAD: ["left" | "right", string, string][] = [
+  ["left", "Steer left", "◀"],
+  ["right", "Steer right", "▶"],
+];
+const padKey =
+  "pointer-events-auto grid h-16 min-w-16 touch-none place-items-center rounded-lg bg-ink/70 text-2xl text-paper ring-1 ring-paper/25 select-none active:bg-lamp";
 const kbd = "rounded-sm bg-lamp px-1.5 py-0.5 text-xs font-semibold text-paper";
 const panel = "rounded-lg bg-ink/85 text-paper tabular-nums";
 const label = "text-sm text-soft";
 const sector = "rounded-sm bg-lamp px-1.5 py-0.5 text-sm text-soft md:px-2 md:text-[15px]";
 const secs = (ms: number) => (ms / 1000).toFixed(3);
+// A gap in seconds as F1 shows it: seconds under a minute, then minutes too.
+const plus = (s: number, dp = 3) => {
+  const v = Math.round(s * 10 ** dp) / 10 ** dp;
+  const sec = (v % 60).toFixed(dp);
+  return v < 60 ? `+${sec}` : `+${Math.floor(v / 60)}:${sec.padStart(dp + 3, "0")}`;
+};
+const lapsDown = (n: number) => `+${n} lap${n > 1 ? "s" : ""}`;
 
 type Result = {
   table: ReturnType<typeof results>;
-  jump: boolean;
   fastest: number | null;
   level: Level;
   laps: number;
@@ -161,6 +178,8 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     return TRACKS.some((t) => t.id === id) ? id : TRACKS[0]!.id;
   });
   const def = TRACKS.find((t) => t.id === trackId)!;
+  // Read on each render: the grid screen comes back after every race, so a new record shows.
+  const trackRecord: number = read(BEST(trackId), 0);
   const { box2, outline } = SHAPES.get(trackId)!;
   const [tyre, setTyre] = useState<Tyre>("medium");
   const [level, setLevel] = useState<Level>(() => {
@@ -178,6 +197,8 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
   const fit = useRef<(t: Tyre) => void>(() => {});
   const fitWrap = useRef<HTMLDivElement>(null);
   const fitEls = useRef<HTMLButtonElement[]>([]);
+  // The touch controls' state, read by the frame loop. `touch` is whether they drive the car.
+  const pad = useRef({ touch: false, left: false, right: false, brake: false, ot: false });
   const tyreName = useRef<HTMLSpanElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const stage = useRef<HTMLDivElement>(null);
@@ -189,8 +210,13 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
   const bestEl = useRef<HTMLSpanElement>(null);
   const sectorEls = useRef<HTMLSpanElement[]>([]);
   const nearEl = useRef<HTMLDivElement>(null);
-  const jumpEl = useRef<HTMLDivElement>(null);
+  const waitEl = useRef<HTMLDivElement>(null);
+  const waitText = useRef<HTMLParagraphElement>(null);
+  const skip = useRef<() => void>(() => {});
+  const pauseEl = useRef<HTMLDivElement>(null);
+  const togglePause = useRef<() => void>(() => {});
   const towerEls = useRef<HTMLDivElement[]>([]);
+  const modeEl = useRef<HTMLDivElement>(null);
   const lampEls = useRef<HTMLSpanElement[]>([]);
   const lightsEl = useRef<HTMLDivElement>(null);
   const bannerEl = useRef<HTMLDivElement>(null);
@@ -202,12 +228,27 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
   const tyreEl = useRef<HTMLSpanElement>(null);
   const tyreText = useRef<HTMLSpanElement>(null);
   const limiterEl = useRef<HTMLSpanElement>(null);
-  const drsEl = useRef<HTMLSpanElement>(null);
+  const straightEl = useRef<HTMLSpanElement>(null);
+  const otEl = useRef<HTMLSpanElement>(null);
+  const otPad = useRef<HTMLButtonElement>(null);
+  const batEl = useRef<HTMLSpanElement>(null);
+  const batText = useRef<HTMLSpanElement>(null);
   const limitsEl = useRef<HTMLDivElement>(null);
   const rcEl = useRef<HTMLDivElement>(null);
   const rcLabel = useRef<HTMLSpanElement>(null);
   const rcFlag = useRef<HTMLSpanElement>(null);
   const rcText = useRef<HTMLSpanElement>(null);
+
+  // Holding a touch control sets its flag; any press also hands the car to the touch controls.
+  const hold = (k: "left" | "right" | "brake" | "ot") => {
+    const up = () => (pad.current[k] = false);
+    return {
+      onPointerDown: () => Object.assign(pad.current, { [k]: true, touch: true }),
+      onPointerUp: up,
+      onPointerCancel: up,
+      onContextMenu: (e: { preventDefault: () => void }) => e.preventDefault(),
+    };
+  };
 
   const toggleSound = () => {
     const on = !sound;
@@ -240,13 +281,13 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     const paintOf = (id: number) => colorOf(race, id) || C.accent;
     const flat = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const track = getTrack(trackId);
-    const { LENGTH, atDist, limitAt, nextCorner } = track;
-    const { box, box2, outline } = SHAPES.get(trackId)!;
+    const { LENGTH, ZONES, atDist, dirAt, limitAt, nextCorner } = track;
+    const { box, outline } = SHAPES.get(trackId)!;
     const road = new Path2D(outline);
 
-    let best: number = read(BEST(trackId), 0);
-    const bestSectors: number[] = read(SECTORS(trackId), [0, 0, 0]);
-    bestEl.current!.textContent = best ? fmt(best) : DASH;
+    let record: number = read(BEST(trackId), 0);
+    // Your quickest clean time through each sector this race.
+    let mine = [0, 0, 0];
 
     // The race runs through these phases. The grid screen waits for your tyres (the flyover
     // plays behind it), then the lights come on a second apart and go out after an unannounced
@@ -260,17 +301,22 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     let brk = 0;
     let board = 0;
     let msgAt = -Infinity;
+    let skipping = false;
+    let paused = false;
+    const still = { gas: false, brake: false, steer: 0 };
     // The page was clicked on the way here, so the browser lets a remembered "sound on" start.
     if (read(SOUND, false)) engine.current ??= createEngine();
     const keys = new Set<string>();
-    let touch = false;
-    // Which half of the track each finger is holding: -1 left, 1 right.
-    const fingers = new Map<number, number>();
+    // A touch screen starts on the touch controls, so the throttle's on from the lights.
+    const p = pad.current;
+    p.touch = matchMedia("(pointer: coarse)").matches;
 
-    const paintSector = (i: number, text: string, cls: "best" | "slow" | "") => {
+    // F1's colours: purple the quickest anyone's been this race, green your own best, yellow slower.
+    const paintSector = (i: number, text: string, cls: "fl" | "pb" | "slow" | "") => {
       const el = sectorEls.current[i]!;
       el.lastChild!.textContent = text;
-      el.classList.toggle("bg-fl", cls === "best");
+      el.classList.toggle("bg-fl", cls === "fl");
+      el.classList.toggle("bg-go", cls === "pb");
       el.classList.toggle("bg-slow", cls === "slow");
       el.classList.toggle("bg-lamp", cls === "");
       el.classList.toggle("text-soft", cls === "");
@@ -283,6 +329,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     d.addEventListener(
       "keydown",
       (e) => {
+        if (e.key.toLowerCase() === "p") return togglePause.current();
         const pick = COMPOUNDS[+e.key - 1];
         if (pick && phase === "grid") setTyre(pick);
         else if (pick) fit.current(pick);
@@ -290,69 +337,107 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
         if (!k || phase === "grid") return;
         e.preventDefault();
         keys.add(k);
-        touch = false;
+        p.touch = false;
       },
       on,
     );
     d.addEventListener("keyup", (e) => keys.delete(key(e) ?? ""), on);
     window.addEventListener("blur", () => keys.clear(), on);
-    // Touch: the throttle is automatic, holding either half of the track steers that way, and
-    // holding both brakes and then reverses.
-    const point = (e: PointerEvent) => {
-      if (e.pointerType === "mouse") return;
-      touch = true;
-      const r = cv.getBoundingClientRect();
-      fingers.set(e.pointerId, e.clientX < r.left + r.width / 2 ? -1 : 1);
-    };
-    // Touch pointers are captured implicitly, so moves keep coming here after the finger drifts off.
-    cv.addEventListener("pointerdown", point, on);
-    cv.addEventListener("pointermove", (e) => e.buttons && point(e), on);
-    for (const type of ["pointerup", "pointercancel"] as const)
-      cv.addEventListener(type, (e) => fingers.delete(e.pointerId), on);
 
-    // Minimap: north up, a dot per car in its colour, yours on top and bigger.
+    // Minimap: about 600 m round you, heading up. The road in one pale stroke, a dot per car in
+    // its colour, and yours in the accent with a ring, on top.
     const drawMap = () => {
       const w = mv.clientWidth;
-      const s = w / box2.w;
-      mctx.setTransform(devicePixelRatio * s, 0, 0, devicePixelRatio * s, 0, 0);
-      mctx.clearRect(0, 0, box2.w, box2.h);
-      mctx.lineWidth = 3 / s;
+      const s = w / 600;
+      const me = race.racers[0]!;
+      mctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+      mctx.clearRect(0, 0, w, w);
+      mctx.translate(w / 2, w / 2);
+      mctx.scale(s, s);
+      mctx.rotate(-dirAt(me.p) - Math.PI / 2);
+      mctx.translate(box.x - me.car.x, box.y - me.car.y);
+      mctx.lineWidth = Math.max(14, 3 / s);
       mctx.lineJoin = "round";
       mctx.strokeStyle = C.chrome;
-      mctx.globalAlpha = 0.6;
+      mctx.globalAlpha = 0.5;
       mctx.stroke(road);
       mctx.globalAlpha = 1;
-      mctx.lineWidth = 1 / s;
+      // The overtake detection lines, across the road.
       mctx.strokeStyle = C.paper;
-      for (const r of [...race.racers].reverse()) {
-        mctx.fillStyle = paintOf(r.id);
+      mctx.lineWidth = 2 / s;
+      for (const z of ZONES) {
+        const [x, y] = track.pointAt(z.detect, 0);
+        const h = dirAt(z.detect / LENGTH) + Math.PI / 2;
+        const [dx, dy] = [Math.cos(h) * 14, Math.sin(h) * 14];
         mctx.beginPath();
-        mctx.arc(r.car.x - box.x, r.car.y - box.y, (r.id ? 3 : 4.5) / s, 0, Math.PI * 2);
-        mctx.fill();
-        if (r.id) mctx.stroke();
+        mctx.moveTo(x - box.x - dx, y - box.y - dy);
+        mctx.lineTo(x - box.x + dx, y - box.y + dy);
+        mctx.stroke();
       }
+      const dot = (r: Racer, size: number) => {
+        mctx.beginPath();
+        mctx.arc(r.car.x - box.x, r.car.y - box.y, size / s, 0, Math.PI * 2);
+        mctx.fill();
+      };
+      for (const r of race.racers.slice(1)) {
+        mctx.fillStyle = paintOf(r.id);
+        dot(r, 3.5);
+      }
+      mctx.fillStyle = C.accent;
+      mctx.strokeStyle = C.paper;
+      mctx.lineWidth = 2 / s;
+      dot(me, 5);
+      mctx.stroke();
     };
 
-    // The tower and the phone's gaps, twice a second rather than every frame. On a short stage
-    // the tower shows the top ten and you.
+    // The tower and the phone's gaps, twice a second rather than every frame. The tower shows as
+    // many rows as fit above the speed panel: the top n, or once you're out of them the top n - 3
+    // and the cars either side of you.
     const drawBoard = () => {
       const run = order(race);
       const me = race.racers[0]!;
       const at = run.indexOf(me);
-      const short = cv.clientHeight < 640;
+      const first = towerEls.current[0]!;
+      const room = gearEl.current!.parentElement!.getBoundingClientRect().top - 8;
+      const n = Math.max(3, Math.floor((room - first.getBoundingClientRect().top) / 20));
+      const cut = at > n - 2;
+      // Every 5 s the tower moves on: gaps to the leader, to the car ahead, then each car's tyres
+      // and laps on them.
+      const mode = (["Leader", "Interval", "Tyres"] as const)[Math.floor(race.t / 5000) % 3]!;
+      modeEl.current!.textContent = mode;
       posEl.current!.textContent = `P${at + 1}`;
+      // Laps down: by distance while running (to the leader's, which stops at the flag), and by
+      // laps once in.
+      const lead = Math.min(run[0]!.dist, race.laps * LENGTH);
       run.forEach((r, k) => {
         const row = towerEls.current[k]!;
-        row.hidden = short && k >= 10 && r !== me;
-        const [sw, code, tyre, fl, pen, g] = row.children as unknown as HTMLElement[];
+        row.hidden = cut ? k >= n - 3 && Math.abs(k - at) > 1 : k >= n;
+        row.classList.toggle("border-t", cut && k === at - 1);
+        const [sw, code, fl, pen, right] = row.children as unknown as HTMLElement[];
+        const [tyre, g] = right!.children as unknown as HTMLElement[];
         sw!.style.background = paintOf(r.id);
         code!.textContent = driver(race, r.id).code;
-        tyre!.textContent = letter(r.tyre);
-        tyre!.className = `text-xs font-semibold ${TYRE_INK[r.tyre]}`;
         fl!.hidden = race.fastest?.id !== r.id;
         pen!.hidden = !r.penalty;
         pen!.textContent = `+${r.penalty / 1000}s`;
-        g!.textContent = !k ? "Leader" : r.cp < 0 ? "" : `+${gap(race, r).toFixed(1)}`;
+        tyre!.hidden = mode !== "Tyres";
+        tyre!.textContent = letter(r.tyre);
+        tyre!.className = `font-semibold ${TYRE_INK[r.tyre]}`;
+        const down = r.finish !== null ? race.laps - r.laps : Math.floor((lead - r.dist) / LENGTH);
+        // Order is by distance and gaps by checkpoint, so a car just out of the pits can time in
+        // ahead of the car it's behind; floor the interval at 0.
+        const behind = () =>
+          Math.max(0, gap(race, r) - (mode === "Interval" ? gap(race, run[k - 1]!) : 0));
+        g!.textContent =
+          mode === "Tyres"
+            ? String(r.laps - r.set)
+            : !k
+              ? "Leader"
+              : down > 0
+                ? lapsDown(down).toUpperCase()
+                : r.cp < 0
+                  ? ""
+                  : plus(behind(), 1);
         row.classList.toggle("bg-lamp", r === me);
       });
       const near = (o: (typeof run)[number] | undefined, sign: string) =>
@@ -378,14 +463,30 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       setGrid(true);
       pause = 200 + Math.random() * 2800;
       for (const i of [0, 1, 2]) paintSector(i, "", "");
+      mine = [0, 0, 0];
       lastEl.current!.textContent = DASH;
-      jumpEl.current!.hidden = true;
+      bestEl.current!.textContent = DASH;
       lightsEl.current!.hidden = false;
       rcEl.current!.hidden = true;
       msgAt = -Infinity;
+      skipping = false;
+      waitEl.current!.hidden = true;
+      paused = false;
+      pauseEl.current!.hidden = true;
       drawBoard();
     };
     start();
+    skip.current = () => {
+      skipping = true;
+    };
+    // Not on the grid screen or once the classification's up.
+    togglePause.current = () => {
+      if (phase === "grid" || race.done) return;
+      paused = !paused;
+      pauseEl.current!.hidden = !paused;
+      keys.clear();
+      d.focus();
+    };
     again.current = () => {
       setResult(null);
       start();
@@ -420,30 +521,21 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
 
     const frame = (t: number) => {
       const dt = Math.min((t - last) / 1000, 1 / 30);
+      // Paused, the clocks the lights and Race Control run on stand still too.
+      if (paused) [phaseAt, msgAt] = [phaseAt + t - last, msgAt + t - last];
       last = t;
-      const held = new Set(fingers.values());
-      const back = touch && held.size === 2;
-      const steer = touch
-        ? back
-          ? 0
-          : (held.values().next().value ?? 0)
-        : +keys.has("right") - +keys.has("left");
-      const gas = touch ? !back : keys.has("up");
-      const brake = touch ? back : keys.has("down");
-      const pressing = touch ? fingers.size > 0 : gas || brake || steer !== 0;
+      // Touch: the throttle's on unless braking, and braking at a stop reverses.
+      const steer = p.touch ? +p.right - +p.left : +keys.has("right") - +keys.has("left");
+      const gas = p.touch ? !p.brake : keys.has("up");
+      const brake = p.touch ? p.brake : keys.has("down");
+      const ot = p.touch ? p.ot : keys.has("ot");
 
-      if (phase === "lights") {
+      if (phase === "lights" && !paused) {
         const lit = Math.min(5, Math.floor((t - phaseAt) / 1000));
         lampEls.current.forEach((l, i) => {
           l.classList.toggle("bg-accent", i < lit);
           l.classList.toggle("bg-lamp", i >= lit);
         });
-        // Anything pressed once the first light is on is a jump start: five seconds on.
-        if (lit && pressing && !race.jump) {
-          race.jump = true;
-          race.racers[0]!.penalty += JUMP;
-          jumpEl.current!.hidden = false;
-        }
         if (t - phaseAt > 5000 + pause) {
           phase = "racing";
           for (const l of lampEls.current) l.classList.replace("bg-accent", "bg-lamp");
@@ -452,28 +544,28 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       }
 
       const me = race.racers[0]!;
-      if (phase === "racing") {
+      if (phase === "racing" && !paused) {
         const wasDone = race.done;
-        const split = tick(race, { gas, brake, steer }, dt);
+        const split = tick(race, { gas, brake, steer, ot }, dt);
+        // After your flag, Skip runs the rest of the field to theirs a few hundred frames at a time.
+        if (skipping) for (let n = 0; n < 300 && !race.done; n++) tick(race, still, 1 / 30);
         if (split) {
           const s = split.sector;
           if (s === 0) for (const i of [1, 2]) paintSector(i, "", "");
-          const pb = split.valid && (!bestSectors[s] || split.ms < bestSectors[s]);
-          if (pb) {
-            bestSectors[s] = split.ms;
-            write(SECTORS(trackId), bestSectors);
-          }
-          paintSector(s, secs(split.ms), pb ? "best" : "slow");
+          const pb = split.valid && (!mine[s] || split.ms <= mine[s]);
+          if (pb) mine[s] = split.ms;
+          const fl = split.valid && split.ms <= race.sectors[s]!;
+          paintSector(s, secs(split.ms), fl ? "fl" : pb ? "pb" : "slow");
         }
         if (split?.lap) {
           const l = lastEl.current!;
           l.textContent = fmt(split.lap);
           l.classList.toggle("line-through", !split.valid);
           l.classList.toggle("text-accent", !split.valid);
-          if (split.valid && (!best || split.lap < best)) {
-            best = split.lap;
-            bestEl.current!.textContent = fmt(best);
-            write(BEST(trackId), best);
+          if (me.best) bestEl.current!.textContent = fmt(me.best);
+          if (split.valid && (!record || split.lap < record)) {
+            record = split.lap;
+            write(BEST(trackId), record);
           }
         }
         if (race.done && !wasDone) {
@@ -483,18 +575,26 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
             id: 0,
             text: debrief(table.findIndex((r) => !r.id) + 1),
           });
-          const { jump, level, laps, fastest } = race;
-          setResult({ table, jump, level, laps, fastest: fastest?.id ?? null });
+          const { level, laps, fastest } = race;
+          setResult({ table, level, laps, fastest: fastest?.id ?? null });
         }
         if (t - board > 500) {
           board = t;
           drawBoard();
         }
+        // The classification waits for the whole field to take the flag.
+        const waiting = me.finish !== null && !race.done;
+        waitEl.current!.hidden = !waiting;
+        if (waiting) {
+          const left = race.racers.filter((r) => r.finish === null).length;
+          const text = `Waiting for ${left} to finish`;
+          if (waitText.current!.textContent !== text) waitText.current!.textContent = text;
+        }
       }
 
       lapEl.current!.textContent = `${Math.min(me.laps + 1, race.laps)}/${race.laps}`;
       const time = timeEl.current!;
-      time.textContent = fmt(phase === "racing" && !race.done ? race.t - me.lap.start! : 0);
+      time.textContent = fmt(phase === "racing" && me.finish === null ? race.t - me.lap.start! : 0);
       time.classList.toggle("text-accent", me.lap.invalid);
 
       const ease = Math.min(1, dt * 12);
@@ -502,11 +602,10 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       brk += (+brake - brk) * ease;
       const { car } = me;
       speedEl.current!.textContent = String(Math.round(Math.abs(car.v) * 3.6));
-      // Red when the car can't brake in time for the next corner on these tyres.
-      speedEl.current!.classList.toggle(
-        "text-accent",
-        car.v > limitAt(atDist(me.p * LENGTH), grip(me.life, me.tyre)) + 2,
-      );
+      // Red when the car can't brake in time for the next corner on these tyres. The limit stops
+      // at TOP where there's nothing to brake for.
+      const limit = limitAt(atDist(me.p * LENGTH), grip(me.life, me.tyre));
+      speedEl.current!.classList.toggle("text-accent", limit < TOP && car.v > limit + 2);
       const next = nextCorner(me.p);
       if (nextEl.current!.textContent !== next) nextEl.current!.textContent = next;
       gearEl.current!.textContent = String(gear(car.v));
@@ -563,18 +662,31 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       limits.textContent = `Track limits ${me.strikes}`;
       limits.classList.toggle("text-accent", me.strikes >= 3);
       limits.classList.toggle("text-soft", me.strikes < 3);
-      const drsChip = drsEl.current!;
-      drsChip.hidden = !me.drs;
-      drsChip.classList.toggle("bg-go", me.drs === "open");
-      drsChip.classList.toggle("text-ink", me.drs === "open");
-      drsChip.classList.toggle("bg-lamp", me.drs === "eligible");
-      drsChip.classList.toggle("text-paper", me.drs === "eligible");
-      engine.current?.set(Math.abs(car.v) / TOP, thr);
+      straightEl.current!.hidden = !me.straight;
+      const otChip = otEl.current!;
+      otChip.hidden = !me.ot;
+      otChip.classList.toggle("bg-lamp", me.ot === "ready");
+      otChip.classList.toggle("bg-accent", me.ot === "on");
+      otPad.current!.hidden = me.ot !== "ready" || !p.touch;
+      // Green on a lap with Overtake's harvest bonus; the reading goes red while super clipping.
+      const bat = batEl.current!;
+      bat.style.transform = `scaleX(${me.charge / CAP})`;
+      bat.classList.toggle("bg-go", me.laps === me.bonusLap);
+      bat.classList.toggle("bg-paper", me.laps !== me.bonusLap);
+      batText.current!.textContent = `${me.charge.toFixed(1)} MJ`;
+      batText.current!.classList.toggle("text-accent", me.clipping);
+      batText.current!.classList.toggle("text-paper", !me.clipping);
+      engine.current?.set(paused ? 0 : Math.abs(car.v) / TOP, paused ? 0 : thr);
 
+      // Each team's crew: out for a car in the lane, at the car while it's stopped.
+      const crews = new Array<number>(CARS / 2).fill(0);
+      for (const r of race.racers)
+        crews[r.id >> 1] = Math.max(crews[r.id >> 1]!, r.stop > 0 ? 2 : r.pit ? 1 : 0);
       scene!.frame(
         race.racers.map((r) => r.car),
         steer,
-        dt,
+        paused ? 0 : dt,
+        crews,
       );
       drawMap();
       raf = requestAnimationFrame(frame);
@@ -723,27 +835,35 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
               </span>
             </div>
             <div ref={nearEl} className="mt-1 text-sm text-paper md:hidden" />
-            <div ref={jumpEl} hidden className="mt-1 text-sm text-accent md:text-[15px]">
-              Jump start +5 s
-            </div>
             <div ref={limitsEl} hidden className="mt-1 text-sm text-soft md:text-[15px]" />
           </div>
 
-          <div className={`${panel} hidden w-40 py-1.5 text-sm md:block`}>
+          <div className={`${panel} hidden w-48 py-1.5 text-sm md:block`}>
+            <div
+              ref={modeEl}
+              className="px-3 pb-0.5 text-right text-xs font-semibold tracking-wide text-soft uppercase"
+            >
+              Leader
+            </div>
             {Array.from({ length: CARS }, (_, k) => (
               <div
                 key={k}
                 ref={(el) => {
                   if (el) towerEls.current[k] = el;
                 }}
-                className="flex items-center gap-2 px-3 leading-5"
+                className="flex items-center gap-2 border-paper/25 px-3 leading-5 whitespace-nowrap"
               >
-                <span className="h-3 w-1 rounded-full ring-1 ring-paper/25" />
-                <span className="font-semibold" />
-                <span />
-                <span hidden title="Fastest lap" className="size-2 rounded-full bg-fl" />
-                <span hidden className="rounded-sm bg-slow px-1 text-xs font-semibold text-ink" />
-                <span className="ml-auto text-soft" />
+                <span className="h-3 w-1 shrink-0 rounded-full ring-1 ring-paper/25" />
+                <span className="shrink-0 font-semibold" />
+                <span hidden title="Fastest lap" className="size-2 shrink-0 rounded-full bg-fl" />
+                <span
+                  hidden
+                  className="shrink-0 rounded-sm bg-slow px-1 text-xs font-semibold text-ink"
+                />
+                <span className="ml-auto flex gap-1.5 text-right text-soft">
+                  <span hidden />
+                  <span />
+                </span>
               </div>
             ))}
           </div>
@@ -768,7 +888,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
           ref={rcEl}
           hidden
           aria-live="polite"
-          className={`${panel} pointer-events-none absolute right-2 bottom-24 left-2 flex items-center gap-3 px-3 py-2 text-sm md:top-3 md:right-auto md:bottom-auto md:left-1/2 md:max-w-xl md:-translate-x-1/2 md:px-4 md:text-[15px]`}
+          className={`${panel} pointer-events-none absolute right-2 bottom-24 left-2 flex items-center gap-3 px-3 py-2 text-sm max-md:pointer-coarse:bottom-56 md:top-3 md:right-auto md:bottom-auto md:left-1/2 md:max-w-xl md:-translate-x-1/2 md:px-4 md:text-[15px]`}
         >
           <span
             ref={rcFlag}
@@ -789,17 +909,51 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
         />
 
         <div
-          className={`${panel} pointer-events-none absolute top-2 right-2 p-2 transition-opacity duration-300 md:top-3 md:right-3 md:p-3 ${shown}`}
+          ref={waitEl}
+          hidden
+          role="status"
+          className={`${panel} absolute top-[30%] left-1/2 flex -translate-x-1/2 items-center gap-4 px-4 py-3`}
         >
-          <canvas
-            ref={map}
-            className="block w-12 md:w-20"
-            style={{ aspectRatio: `${box2.w} / ${box2.h}` }}
-          />
+          <div>
+            <p className="disp text-xl leading-none whitespace-nowrap">Chequered flag</p>
+            <p ref={waitText} className={`${label} mt-1 whitespace-nowrap`} />
+          </div>
+          <button
+            type="button"
+            onClick={() => skip.current()}
+            className="min-h-11 rounded-md bg-paper px-4 font-semibold text-ink active:scale-[.98]"
+          >
+            Skip
+          </button>
         </div>
 
         <div
-          className={`${panel} pointer-events-none absolute bottom-2 left-2 flex items-center gap-3 p-2.5 transition-opacity duration-300 md:bottom-3 md:left-3 md:gap-4 md:p-3.5 ${shown}`}
+          ref={pauseEl}
+          hidden
+          role="status"
+          className={`${panel} absolute top-[30%] left-1/2 flex -translate-x-1/2 items-center gap-4 px-4 py-3`}
+        >
+          <div>
+            <p className="disp text-xl leading-none whitespace-nowrap">Paused</p>
+            <p className={`${label} mt-1 whitespace-nowrap pointer-coarse:hidden`}>P to resume</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => togglePause.current()}
+            className="min-h-11 rounded-md bg-paper px-4 font-semibold text-ink active:scale-[.98]"
+          >
+            Resume
+          </button>
+        </div>
+
+        <div
+          className={`${panel} pointer-events-none absolute top-2 right-2 p-2 transition-opacity duration-300 md:top-3 md:right-3 md:p-3 ${shown}`}
+        >
+          <canvas ref={map} className="block size-28 md:size-40" />
+        </div>
+
+        <div
+          className={`${panel} pointer-events-none absolute bottom-2 left-2 flex items-center gap-3 p-2.5 transition-opacity duration-300 pointer-coarse:bottom-20 md:bottom-3 md:left-3 md:gap-4 md:p-3.5 md:pointer-coarse:bottom-21 ${shown}`}
         >
           <span
             ref={gearEl}
@@ -807,7 +961,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
           >
             1
           </span>
-          <div className="w-24 md:w-32">
+          <div className="w-28 md:w-36">
             <div className="flex items-baseline gap-1.5">
               <span ref={speedEl} className="disp text-[22px] leading-none md:text-[26px]">
                 0
@@ -820,22 +974,35 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
               >
                 PIT
               </span>
-              <span ref={drsEl} hidden className="ml-auto rounded-sm px-1 text-xs font-semibold">
-                DRS
+            </div>
+            <div className="mt-1 flex h-5 items-center gap-1 text-xs font-semibold">
+              <span ref={straightEl} hidden className="rounded-sm bg-go px-1 text-ink">
+                Straight
+              </span>
+              <span ref={otEl} hidden className="rounded-sm px-1 text-paper">
+                Overtake
               </span>
             </div>
             <span ref={thrEl} className="mt-2 block h-1.5 origin-left bg-go" style={zero} />
             <span ref={brkEl} className="mt-1 block h-1.5 origin-left bg-accent" style={zero} />
-            <div className="mt-1.5 flex items-center gap-2 text-xs text-soft">
+            <div className="mt-1.5 grid grid-cols-[auto_auto_1fr_auto] items-center gap-x-2 gap-y-1 text-xs text-soft">
               Tyres
               <span ref={tyreName} className="w-3 font-semibold text-slow">
                 M
               </span>
-              <span className="h-1.5 flex-1 bg-lamp">
+              <span className="h-1.5 bg-lamp">
                 <span ref={tyreEl} className="block h-full origin-left bg-go" />
               </span>
               <span ref={tyreText} className="w-8 text-right text-paper">
                 100%
+              </span>
+              Battery
+              <span />
+              <span className="h-1.5 bg-lamp">
+                <span ref={batEl} className="block h-full origin-left bg-paper" />
+              </span>
+              <span ref={batText} className="text-right whitespace-nowrap text-paper">
+                4.0 MJ
               </span>
             </div>
             <div
@@ -863,6 +1030,36 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
           </div>
         </div>
 
+        {/* Touch: steer bottom-left, brake bottom-right. Touch pointers are captured implicitly,
+            so a button hears the lift even after the thumb slides off it. */}
+        <div
+          className={`pointer-events-none absolute inset-x-2 bottom-2 hidden items-end justify-between transition-opacity duration-300 pointer-coarse:flex md:inset-x-3 md:bottom-3 ${shown}`}
+        >
+          <div className="flex gap-2">
+            {PAD.map(([k, name, glyph]) => (
+              <button key={k} type="button" aria-label={name} className={padKey} {...hold(k)}>
+                {glyph}
+              </button>
+            ))}
+          </div>
+          <button
+            ref={otPad}
+            type="button"
+            hidden
+            className={`${padKey} px-4 text-sm font-semibold tracking-wide uppercase`}
+            {...hold("ot")}
+          >
+            Overtake
+          </button>
+          <button
+            type="button"
+            className={`${padKey} w-28 bg-accent/80 text-sm font-semibold tracking-wide uppercase`}
+            {...hold("brake")}
+          >
+            Brake
+          </button>
+        </div>
+
         {grid && status === "ready" && !result && (
           <div className="absolute inset-0 grid place-items-center bg-ink/40 p-4">
             <div
@@ -873,6 +1070,11 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
                 Reaction {(reaction / 1000).toFixed(3)} s. Pick the track, the field, the distance
                 and your tyres.
               </p>
+              {trackRecord ? (
+                <p className={`${label} mt-1`}>
+                  Your record <span className="text-paper">{fmt(trackRecord)}</span>
+                </p>
+              ) : null}
               <div
                 role="radiogroup"
                 aria-label="Track"
@@ -909,7 +1111,11 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
                   );
                 })}
               </div>
-              <div role="radiogroup" aria-label="Field" className="mt-2 grid grid-cols-3 gap-2">
+              <div
+                role="radiogroup"
+                aria-label="Field"
+                className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4"
+              >
                 {STEPS.map(([l, name, field]) => (
                   <button
                     key={l}
@@ -1038,7 +1244,6 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
                         ? fmt(result.table.find((r) => !r.id)!.best)
                         : DASH}
                     </span>
-                    {result.jump ? <span className="ml-3 text-accent">Jump start +5 s</span> : null}
                   </p>
                   <p className="mt-1 text-sm">
                     <span className="mr-2 text-xs font-semibold tracking-wide text-accent uppercase">
@@ -1102,9 +1307,9 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
                           </td>
                           <td className="py-1 text-right">
                             {r.down
-                              ? `+${r.down} lap${r.down > 1 ? "s" : ""}`
+                              ? lapsDown(r.down)
                               : k
-                                ? `+${secs(r.time - leader)}`
+                                ? plus((r.time - leader) / 1000)
                                 : fmt(r.time)}
                           </td>
                           <td className="py-1 pl-3 text-right">{r.stops}</td>
@@ -1153,8 +1358,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
           ))}
         </ul>
         <p className="hidden pointer-coarse:block">
-          Hold the left or right side to steer, or both to brake and reverse. The throttle is
-          automatic.
+          The throttle is automatic. ◀ ▶ to steer, hold Brake to slow down and reverse.
         </p>
         <button
           type="button"

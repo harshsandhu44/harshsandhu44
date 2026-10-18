@@ -14,8 +14,9 @@ export type TrackDef = {
   data: [number, number, number, number][];
   // Where the car turns in, and the last apex. `boards` puts 150/100/50 m boards before turn-in.
   corners: { name: string; turnIn: number; at: number; boards: boolean }[];
-  // DRS: eligibility is decided at `detect`; the flap may open from `from` to `to`.
-  drs: { detect: number; from: number; to: number }[];
+  // The straights where the wings go flat (Straight Mode), from `from` to `to`, and the line at
+  // `detect` that decides Overtake Mode for the zone.
+  zones: { detect: number; from: number; to: number }[];
   // The pit lane, right (1) or left (-1) of the main straight. It leaves the track at `in`, is
   // fully out by `from`, starts back at `to` and rejoins at `out`.
   pit: { side: 1 | -1; in: number; from: number; to: number; out: number };
@@ -23,9 +24,15 @@ export type TrackDef = {
   stands: [m: number, gap: number][];
   // Plants the park.
   seed: number;
+  // For the computer's strategy, both measured in race.check.ts: how much a lap slows as the tyres
+  // lose grip (lap time goes as grip ^ -grip), and what a stop costs, in fresh-medium laps.
+  grip: number;
+  stop: number;
   // Pro's extra grip here, if the shared one (race.ts EDGE) leaves pro easier or harder than at
   // Monza; race.check.ts says which.
   proEdge?: number;
+  // And legends', against theirs (race.ts LEGEND_EDGE).
+  legendsEdge?: number;
 };
 
 // Unit normal at each point of a closed line, averaged over the segments either side. It points
@@ -71,7 +78,8 @@ export const onGrass = (edge: number) => edge > 0;
 export const allFourOff = (edge: number) => edge > CAR_HALF_WIDTH;
 
 export type Car = { x: number; y: number; h: number; v: number };
-export type Input = { gas: boolean; brake: boolean; steer: number };
+// `ot` fires Overtake Mode while it's ready.
+export type Input = { gas: boolean; brake: boolean; steer: number; ot?: boolean };
 
 // Roughly F1. Drag cancels the throttle at the top speed, which is lower on grass. Downforce
 // makes braking and cornering grip grow with the square of speed, and grip caps how fast the car
@@ -92,7 +100,7 @@ export const gripAt = (v: number) => GRIP + DOWNFORCE * v * v;
 
 // g is what's left of the tyres' grip (1 new) and scales cornering and braking. Returns whether
 // the steering asked for more than the grip gave: the car is sliding, which wears the tyres.
-// `top` is the speed drag allows, higher with DRS open.
+// `top` is the speed drag allows, higher with the 2026 power on.
 export function step(car: Car, input: Input, dt: number, grass: boolean, g = 1, top = TOP) {
   const v = car.v;
   const drag = v > 0 ? ACCEL / (grass ? GRASS_TOP : top) ** 2 : REVERSE / REVERSE_TOP ** 2;
@@ -351,9 +359,8 @@ export function buildTrack(def: TrackDef) {
     return CORNERS.reduce((a, c) => (near(c) < near(a) ? c : a)).name;
   };
 
-  const DRS_ZONES = def.drs;
-  const inZone = (m: number, z: (typeof DRS_ZONES)[number]) =>
-    ahead(z.from, m) < ahead(z.from, z.to);
+  const ZONES = def.zones;
+  const inZone = (m: number, z: (typeof ZONES)[number]) => ahead(z.from, m) < ahead(z.from, z.to);
 
   // Distance boards on the outside of each braking zone, facing the oncoming car.
   const BOARDS = CORNERS.filter((c) => c.boards).flatMap((c) =>
@@ -490,6 +497,9 @@ export function buildTrack(def: TrackDef) {
     id: def.id,
     name: def.name,
     PRO_EDGE: def.proEdge,
+    GRIP_POWER: def.grip,
+    STOP_LAPS: def.stop,
+    LEGENDS_EDGE: def.legendsEdge,
     PATH,
     HALF,
     CUM,
@@ -516,7 +526,7 @@ export function buildTrack(def: TrackDef) {
     nextCorner,
     ahead,
     cornerAt,
-    DRS_ZONES,
+    ZONES,
     inZone,
     BOARDS,
     STANDS,
@@ -632,5 +642,8 @@ export function lapTick(lap: Lap, p: number, edge: number, t: number): Split | n
   return null;
 }
 
-export const fmt = (ms: number) =>
-  `${Math.floor(ms / 60000)}:${((ms % 60000) / 1000).toFixed(3).padStart(6, "0")}`;
+// Rounded to the millisecond first, so 7:59.9996 reads 8:00.000, not 7:60.000.
+export const fmt = (t: number) => {
+  const ms = Math.round(t);
+  return `${Math.floor(ms / 60000)}:${((ms % 60000) / 1000).toFixed(3).padStart(6, "0")}`;
+};

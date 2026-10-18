@@ -228,8 +228,8 @@ for (const def of TRACKS) {
     assert.ok(k === 0 || c.turnIn > t.CORNERS[k - 1]!.at, at(`${c.name} comes after the last`));
     assert.ok(radius(c.at - 15, c.at + 15) < 300, at(`${c.name}'s apex is in a bend`));
   });
-  for (const z of t.DRS_ZONES)
-    assert.ok(radius(z.from, z.to) > 150, at(`DRS from ${z.from} m is on a straight`));
+  for (const z of t.ZONES)
+    assert.ok(radius(z.from, z.to) > 150, at(`Straight Mode from ${z.from} m is on a straight`));
   for (const b of t.BOXES) {
     const { p } = t.nearest(b.x, b.y);
     assert.ok(t.inPit(b.x, b.y, p), at(`box at ${Math.round(b.s)} m is in the lane`));
@@ -243,6 +243,7 @@ for (const def of TRACKS) {
 }
 
 assert.equal(fmt(83456), "1:23.456");
+assert.equal(fmt(479999.97), "8:00.000");
 assert.equal(fmt(5007), "0:05.007");
 
 console.log("track: ok");

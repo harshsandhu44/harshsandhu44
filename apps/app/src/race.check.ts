@@ -10,7 +10,9 @@ import {
   LEVELS,
   PIT_V,
   edgeOf,
+  grip,
   STOP,
+  strategies,
   gridSlot,
   teamPick,
   newRace,
@@ -78,8 +80,9 @@ const run = (race: Race, secs: number, until = () => false) => {
 
 // Tyres: a worn set laps slower.
 const lapOn = (life: number) => {
-  const race = solo(1, (r) => (r.life = life));
+  const race = solo(1, (r) => ([r.life, r.tyre] = [life, "medium"]));
   const r = race.racers[0]!;
+  race.slips = false;
   run(race, 400, () => r.laps >= 2);
   return r.best;
 };
@@ -113,7 +116,8 @@ assert.deepEqual(
   ["soft", "soft", "medium", "medium", "hard", "medium", "medium"],
   "team picks: the softest set that reaches the flag, or mediums when another stop's to come",
 );
-// Every computer car's plan covers the distance, each stint on a set that lasts it.
+// Every computer car's plan covers the distance, each stint at least two laps (so no stop on the
+// first or last lap) on a set that lasts it.
 for (const laps of DISTANCES)
   for (const seed of [1, 2, 3])
     for (const r of newRace(monza, 9, seeded(seed), "medium", "pro", laps).racers.slice(1)) {
@@ -121,7 +125,7 @@ for (const laps of DISTANCES)
       assert.equal(r.plan.length, ends.length, `${laps} laps: a set per stint`);
       ends.forEach((end, k) => {
         const len = end - (ends[k - 1] ?? 0);
-        assert.ok(len >= 1 && len <= STINT[r.plan[k]!], `${laps} laps: ${len} on ${r.plan[k]}`);
+        assert.ok(len >= 2 && len <= STINT[r.plan[k]!], `${laps} laps: ${len} on ${r.plan[k]}`);
       });
     }
 
@@ -144,6 +148,7 @@ const pitStop = (track: Track) => {
     track,
   );
   const r = race.racers[0]!;
+  race.slips = false;
   let fastest = 0;
   let stopped = 0;
   let after = 0;
@@ -249,6 +254,7 @@ for (const def of TRACKS) pitStop(getTrack(def.id));
 {
   const race = solo(1, (r) => (r.stops = [1]));
   const r = race.racers[0]!;
+  race.slips = false;
   run(race, 400, () => r.laps >= 1 && !r.pit && signed(r.p) > 300);
   assert.equal(r.strikes, 0, "the pit lane isn't track limits");
 }
@@ -311,6 +317,17 @@ for (const def of TRACKS) {
   assert.equal(r.strikes, 0, `${def.name}: with no track limits`);
 }
 
+// A trip down the pit lane, stop included, puts back about 2 MJ.
+{
+  const race = solo(10, (r) => ([r.stops, r.plan, r.launch] = [[1], ["medium", "medium"], 0]));
+  race.slips = false;
+  const r = race.racers[0]!;
+  run(race, 300, () => r.pit);
+  r.charge = 0;
+  run(race, 120, () => !r.pit && r.stints.length === 2);
+  assert.ok(r.charge > 1.6 && r.charge < 2.4, `the pit lane charges (${r.charge.toFixed(2)} MJ)`);
+}
+
 // The racing line stays on the tarmac, and the same driver laps quicker on it.
 assert.ok(
   RACING.every((o, i) => Math.abs(o) <= HALF[i]! - 1.5),
@@ -327,7 +344,7 @@ assert.ok(
   assert.ok(racing < centre - 200, `the racing line is quicker (${fmt(centre)} vs ${fmt(racing)})`);
 }
 
-// DRS: eligible within a second of the car ahead at detection, from lap 2, and quicker.
+// Overtake Mode: ready within a second of the car ahead at detection, from lap 2.
 {
   const race = solo(1);
   race.racers = [race.racers[0]!, { ...race.racers[0]!, id: 2, car: { ...race.racers[0]!.car } }];
@@ -343,23 +360,51 @@ assert.ok(
   const cross = (laps: number) => {
     put(b, detect - 1, 70);
     put(a, detect - 36, 70);
-    [a.laps, b.laps, a.drs] = [laps, laps, null];
+    [a.laps, b.laps, a.ot, b.ot] = [laps, laps, null, null];
     run(race, 0.85);
   };
   cross(1);
-  assert.equal(a.drs, "eligible", "within a second at detection");
-  assert.equal(b.drs, null, "the car in front isn't");
+  assert.equal(a.ot, "ready", "within a second at detection");
+  assert.equal(a.bonusLap, 2, "with a harvest bonus for the next lap");
+  assert.equal(b.ot, null, "the car in front isn't");
   cross(0);
-  assert.equal(a.drs, null, "not on the first lap");
-  const top = (open: boolean) => {
+  assert.equal(a.ot, null, "not on the first lap");
+  const top = (more: number) => {
     const car = { x: 0, y: 0, h: 0, v: 0 };
     for (let f = 0; f < 60 * 60; f++)
-      step(car, { gas: true, brake: false, steer: 0 }, 1 / 60, false, 1, open ? TOP + 4.2 : TOP);
+      step(car, { gas: true, brake: false, steer: 0 }, 1 / 60, false, 1, TOP + more);
     return car.v * 3.6;
   };
+  const straight = top(2.8) - top(0);
   assert.ok(
-    top(true) - top(false) > 12,
-    `DRS is worth ~15 km/h (${(top(true) - top(false)).toFixed(0)})`,
+    straight > 8 && straight < 12,
+    `Straight Mode is worth ~10 km/h (${straight.toFixed(0)})`,
+  );
+}
+
+// The battery, in MJ: a pro's flying lap at Monza harvests the 8.5 MJ allowance and no more;
+// flat out on a flat battery the car super clips, harvesting; and a lap with Overtake's bonus
+// harvests up to 9 MJ.
+{
+  const race = solo(10, (r) => (r.launch = 0), "pro");
+  race.slips = false;
+  const r = race.racers[0]!;
+  let most = 0;
+  const lap = (n: number) =>
+    run(race, 600, () => {
+      if (r.laps === n) most = Math.max(most, r.harvested);
+      return r.laps > n;
+    });
+  lap(1);
+  assert.ok(most > 8 && most <= 8.5 + 1e-9, `a lap harvests up to 8.5 MJ (${most.toFixed(2)})`);
+  [r.charge, r.harvested] = [0, 0];
+  run(race, 1);
+  assert.ok(r.clipping && r.charge > 0, "flat out on a flat battery, it super clips");
+  [most, r.bonusLap] = [0, r.laps];
+  lap(r.laps);
+  assert.ok(
+    most > 8.5 && most <= 9 + 1e-9,
+    `Overtake's lap harvests up to 9 MJ (${most.toFixed(2)})`,
   );
 }
 
@@ -400,9 +445,12 @@ const field = (lv: Level, track: Track = monza) => {
     race.racers.every((r) => r.finish !== null && r.laps === LAPS),
     `${at}: everyone finishes`,
   );
+  assert.ok(race.done, `${at}: done once the whole field has the flag`);
   assert.ok(worst.track < 2, `${at}: nobody's stuck (${worst.track.toFixed(1)} s)`);
   assert.ok(worst.lane < 5, `${at}: nobody waits long in the lane (${worst.lane.toFixed(1)} s)`);
   const bests = race.racers.map((r) => r.best);
+  // A car whose every lap was deleted has no best; it isn't the front.
+  const front = Math.min(...bests.filter(Boolean));
   assert.ok(
     track !== monza || (Math.min(...bests) > 84_000 && Math.max(...bests) < 112_000),
     `${at}: laps from 1:24 to 1:52 (${fmt(Math.min(...bests))} to ${fmt(Math.max(...bests))})`,
@@ -411,16 +459,27 @@ const field = (lv: Level, track: Track = monza) => {
     race.msgs.some((m) => m.kind === "fastest"),
     "fastest laps are called",
   );
+  // The race's best sectors come from clean laps, so the fastest lap is no quicker than them.
+  const sum = race.sectors.reduce((a, b) => a + b, 0);
+  assert.ok(
+    race.sectors.every((ms) => ms > 0) && sum <= front,
+    `${at}: the race's best sectors are set and within the fastest lap (${fmt(sum)})`,
+  );
   const strikes = race.racers.reduce((n, r) => n + r.strikes, 0);
-  return { front: Math.min(...bests), lap: median(bests), win: table[0]!.time, strikes };
+  return { front, lap: median(bests), win: table[0]!.time, strikes };
 };
-const levels = (["amateur", "intermediate", "pro"] as const).map((lv) => field(lv));
+const levels = (["amateur", "intermediate", "pro", "legends"] as const).map((lv) => field(lv));
 console.log(
   levels
     .map((l) => `best ${fmt(l.front)} median ${fmt(l.lap)} win ${fmt(l.win)} ${l.strikes} strikes`)
     .join("\n"),
 );
-const [am, mid, pro] = levels as [(typeof levels)[0], (typeof levels)[0], (typeof levels)[0]];
+const [am, mid, pro, leg] = levels as [
+  (typeof levels)[0],
+  (typeof levels)[0],
+  (typeof levels)[0],
+  (typeof levels)[0],
+];
 // The ladder: the front of each field laps about 1:36, 1:31 and 1:26, and pro's winner takes
 // about 7:30, which a clean race from the player (about 1:26 laps) only just beats.
 const near = (ms: number, want: number, by: number) => Math.abs(ms - want) < by;
@@ -431,13 +490,22 @@ assert.ok(near(pro.win, 450_000, 10_000), `pro's winner takes about 7:30 (${fmt(
 assert.ok(pro.lap < mid.lap && mid.lap < am.lap, "the better the field, the quicker it laps");
 assert.ok(am.strikes > 0, "computer cars make mistakes and pay for them");
 assert.ok(pro.strikes < am.strikes, "and pros make fewer");
+// Legends: no mistakes (at most a knock-on from a car ahead), and a winner about 1% under pro's,
+// so a clean race from you misses by a second or two.
+const legends = (l: typeof leg, p: typeof pro, at: string) => {
+  assert.ok(l.strikes <= 1, `${at}: legends keep it on the track (${l.strikes} strikes)`);
+  assert.ok(l.front < p.front, `${at}: the quickest legend laps quicker than the quickest pro`);
+  const r = l.win / p.win;
+  assert.ok(r > 0.985 && r < 0.995, `${at}: legends win about 1% under pro (${r.toFixed(4)})`);
+};
+legends(leg, pro, "Monza");
 
 // The ladder carries to every track. A clean lap at your grip on the racing line stands in for
 // you: pro's front runner stays as close to it as at Monza, so pro is as hard everywhere. The
 // lower levels drive nearer the centreline, which costs more on twisty tracks (Silverstone and
 // Interlagos most), so they may be easier than at Monza but never harder.
 const clean = (track: Track) => {
-  const race = solo(2, undefined, "pro", track);
+  const race = solo(2, (r) => ([r.tyre, r.stops] = ["medium", []]), "pro", track);
   race.racers[0]!.pace = 1 / edgeOf(race);
   race.slips = false;
   run(race, 600, () => race.racers[0]!.laps >= 3);
@@ -446,19 +514,18 @@ const clean = (track: Track) => {
 const proGap = pro.front / clean(monza);
 for (const def of TRACKS.slice(1)) {
   const t = getTrack(def.id);
-  const [a, m, p] = (["amateur", "intermediate", "pro"] as const).map((lv) => field(lv, t)) as [
-    typeof pro,
-    typeof pro,
-    typeof pro,
-  ];
+  const [a, m, p, l] = (["amateur", "intermediate", "pro", "legends"] as const).map((lv) =>
+    field(lv, t),
+  ) as [typeof pro, typeof pro, typeof pro, typeof pro];
   const gap = p.front / clean(t);
   console.log(
-    `${def.name}: fronts ${[a, m, p].map((l) => fmt(l.front)).join(", ")}, pro at ${gap.toFixed(3)} of a clean lap`,
+    `${def.name}: fronts ${[a, m, p, l].map((x) => fmt(x.front)).join(", ")}, pro at ${gap.toFixed(3)} of a clean lap`,
   );
   assert.ok(p.lap < m.lap && m.lap < a.lap, `${def.name}: the better the field, the quicker`);
   assert.ok(Math.abs(gap - proGap) < 0.01, `${def.name}: pro is as hard as at Monza`);
   assert.ok(a.front / p.front > am.front / pro.front - 0.01, `${def.name}: amateur no harder`);
   assert.ok(m.front / p.front > mid.front / pro.front - 0.01, `${def.name}: intermediate too`);
+  legends(l, p, def.name);
 }
 
 // Strategy: soft or medium with a stop, against medium or hard without, alone, on a mid pace.
@@ -471,6 +538,61 @@ const strat = (tyre: Tyre, pitLap: number) => {
 const plans = [strat("soft", 2), strat("medium", 3), strat("medium", 0), strat("hard", 0)];
 console.log(`soft-stop, medium-stop, medium, hard: ${plans.map(fmt).join(", ")}`);
 assert.ok(Math.max(...plans) - Math.min(...plans) < 10_000, "every strategy comes out close");
+
+// The computer's strategy model, per track. Its two numbers, measured on driver 10 alone: how a
+// lap slows on a worn set (lap time going as grip ^ -GRIP_POWER) and what a stop costs, in
+// fresh-medium laps. Then its pick for a 10-lap race, raced against the next best, the best with
+// each number of stops and a no-stop: within a second and a half of the quickest.
+const alone = (t: Track, laps: number, stops: number[], tyres: Tyre[]) => {
+  const race = newRace(t, 9, seeded(7), "medium", "pro", laps);
+  race.racers = race.racers.filter((r) => r.id === 10);
+  const r = race.racers[0]!;
+  [r.tyre, r.stints, r.stops, r.plan] = [tyres[0]!, [tyres[0]!], stops, tyres];
+  race.slips = false;
+  return { race, r };
+};
+for (const def of TRACKS) {
+  const t = getTrack(def.id);
+  const lapAt = (life: number) => {
+    const { race, r } = alone(t, 3, [], ["medium"]);
+    for (let f = 0; f < 400 / DT && r.laps < 3; f++) {
+      r.life = life;
+      tick(race, still, DT);
+    }
+    return r.best;
+  };
+  const stopping = (stops: number[]) => {
+    const { race, r } = alone(t, 3, stops, ["medium", "medium"]);
+    for (let f = 0; f < 600 / DT && r.finish === null; f++) {
+      r.life = 1;
+      tick(race, still, DT);
+    }
+    return r.finish!;
+  };
+  const fresh = lapAt(1);
+  const power = Math.log(lapAt(0.6) / fresh) / -Math.log(grip(0.6, "medium"));
+  const stop = (stopping([2]) - stopping([])) / fresh;
+  const all = strategies(10, t);
+  const rivals = [
+    ...all.slice(0, 2),
+    ...[0, 1, 2, 3].map((n) => all.find((o) => o.at.length === n)!),
+  ];
+  const raced = [...new Set(rivals)].map(({ at, tyres }) => {
+    const { race, r } = alone(t, 10, at, tyres);
+    run(race, 2400, () => r.finish !== null);
+    return r.finish!;
+  });
+  console.log(
+    `${def.name}: grip power ${power.toFixed(3)}, a stop ${stop.toFixed(3)} laps, ` +
+      `pick ${fmt(raced[0]!)} against ${raced.slice(1).map(fmt).join(", ")}`,
+  );
+  assert.ok(Math.abs(power - t.GRIP_POWER) < 0.04, `${def.name}: grip power ${power.toFixed(3)}`);
+  assert.ok(Math.abs(stop - t.STOP_LAPS) < 0.02, `${def.name}: a stop ${stop.toFixed(3)} laps`);
+  assert.ok(
+    raced[0]! - Math.min(...raced) < 1500,
+    `${def.name}: the model's pick is near the best`,
+  );
+}
 
 // The longest race: everyone finishes, having made every stop they planned and never run a set
 // down to nothing.
@@ -493,6 +615,25 @@ assert.ok(Math.max(...plans) - Math.min(...plans) < 10_000, "every strategy come
   );
   assert.ok(worn > 0.05, `${laps} laps: no set runs out (${worn.toFixed(2)} left at worst)`);
   console.log(`${laps} laps: won in ${fmt(results(race)[0]!.time)}`);
+}
+
+// A car that never gets to the flag doesn't hold the classification up: the race is done three
+// average laps after the winner, and it's classified on an estimate behind.
+{
+  const race = newRace(monza, 9, seeded(7), "medium", "pro", 2);
+  race.racers = race.racers.filter((r) => r.id === 10 || r.id === 11);
+  race.slips = false;
+  race.racers[1]!.launch = Infinity;
+  run(race, 600, () => race.done);
+  const won = race.racers[0]!.finish!;
+  assert.ok(race.done && race.racers[1]!.finish === null, "done without the car that never left");
+  assert.ok(Math.abs(race.t - won * 2.5) < 1000, "three average laps after the winner");
+  assert.deepEqual(
+    results(race).map((r) => r.id),
+    [10, 11],
+    "and it's classified last",
+  );
+  assert.ok(results(race)[1]!.down > 0, "laps down");
 }
 
 console.log("race: ok");
