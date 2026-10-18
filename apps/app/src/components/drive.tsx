@@ -365,30 +365,43 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       const room = gearEl.current!.parentElement!.getBoundingClientRect().top - 8;
       const n = Math.max(3, Math.floor((room - first.getBoundingClientRect().top) / 20));
       const cut = at > n - 2;
-      // Every 5 s the gaps switch between to the leader and to the car ahead.
-      const interval = Math.floor(race.t / 5000) % 2 === 1;
-      modeEl.current!.textContent = interval ? "Interval" : "Leader";
+      // Every 5 s the tower moves on: gaps to the leader, to the car ahead, then each car's tyres
+      // and laps on them.
+      const mode = (["Leader", "Interval", "Tyres"] as const)[Math.floor(race.t / 5000) % 3]!;
+      modeEl.current!.textContent = mode;
       posEl.current!.textContent = `P${at + 1}`;
+      // Laps down: by distance while running (to the leader's, which stops at the flag), and by
+      // laps once in.
+      const lead = Math.min(run[0]!.dist, race.laps * LENGTH);
       run.forEach((r, k) => {
         const row = towerEls.current[k]!;
         row.hidden = cut ? k >= n - 3 && Math.abs(k - at) > 1 : k >= n;
         row.classList.toggle("border-t", cut && k === at - 1);
-        const [sw, code, tyre, fl, pen, g] = row.children as unknown as HTMLElement[];
+        const [sw, code, fl, pen, right] = row.children as unknown as HTMLElement[];
+        const [tyre, g] = right!.children as unknown as HTMLElement[];
         sw!.style.background = paintOf(r.id);
         code!.textContent = driver(race, r.id).code;
-        tyre!.textContent = letter(r.tyre);
-        tyre!.className = `text-xs font-semibold ${TYRE_INK[r.tyre]}`;
         fl!.hidden = race.fastest?.id !== r.id;
         pen!.hidden = !r.penalty;
         pen!.textContent = `+${r.penalty / 1000}s`;
+        tyre!.hidden = mode !== "Tyres";
+        tyre!.textContent = letter(r.tyre);
+        tyre!.className = `font-semibold ${TYRE_INK[r.tyre]}`;
+        const down = r.finish !== null ? race.laps - r.laps : Math.floor((lead - r.dist) / LENGTH);
         // Order is by distance and gaps by checkpoint, so a car just out of the pits can time in
         // ahead of the car it's behind; floor the interval at 0.
-        const behind = () => Math.max(0, gap(race, r) - (interval ? gap(race, run[k - 1]!) : 0));
-        g!.textContent = !k
-          ? modeEl.current!.textContent
-          : r.cp < 0
-            ? ""
-            : `+${behind().toFixed(1)}`;
+        const behind = () =>
+          Math.max(0, gap(race, r) - (mode === "Interval" ? gap(race, run[k - 1]!) : 0));
+        g!.textContent =
+          mode === "Tyres"
+            ? String(r.laps - r.set)
+            : !k
+              ? "Leader"
+              : down > 0
+                ? lapsDown(down).toUpperCase()
+                : r.cp < 0
+                  ? ""
+                  : plus(behind(), 1);
         row.classList.toggle("bg-lamp", r === me);
       });
       const near = (o: (typeof run)[number] | undefined, sign: string) =>
@@ -769,7 +782,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
             <div ref={limitsEl} hidden className="mt-1 text-sm text-soft md:text-[15px]" />
           </div>
 
-          <div className={`${panel} hidden w-40 py-1.5 text-sm md:block`}>
+          <div className={`${panel} hidden w-48 py-1.5 text-sm md:block`}>
             <div
               ref={modeEl}
               className="px-3 pb-0.5 text-right text-xs font-semibold tracking-wide text-soft uppercase"
@@ -782,14 +795,19 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
                 ref={(el) => {
                   if (el) towerEls.current[k] = el;
                 }}
-                className="flex items-center gap-2 border-paper/25 px-3 leading-5"
+                className="flex items-center gap-2 border-paper/25 px-3 leading-5 whitespace-nowrap"
               >
-                <span className="h-3 w-1 rounded-full ring-1 ring-paper/25" />
-                <span className="font-semibold" />
-                <span />
-                <span hidden title="Fastest lap" className="size-2 rounded-full bg-fl" />
-                <span hidden className="rounded-sm bg-slow px-1 text-xs font-semibold text-ink" />
-                <span className="ml-auto text-soft" />
+                <span className="h-3 w-1 shrink-0 rounded-full ring-1 ring-paper/25" />
+                <span className="shrink-0 font-semibold" />
+                <span hidden title="Fastest lap" className="size-2 shrink-0 rounded-full bg-fl" />
+                <span
+                  hidden
+                  className="shrink-0 rounded-sm bg-slow px-1 text-xs font-semibold text-ink"
+                />
+                <span className="ml-auto flex gap-1.5 text-right text-soft">
+                  <span hidden />
+                  <span />
+                </span>
               </div>
             ))}
           </div>

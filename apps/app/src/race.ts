@@ -243,10 +243,11 @@ export type Racer = {
   best: number;
   life: number;
   // The compound on the car, the one going on at the stop (null until the team picks), and
-  // every set run so far, for the results.
+  // every set run so far, for the results, and the lap the set on the car went on.
   tyre: Tyre;
   fit: Tyre | null;
   stints: Tyre[];
+  set: number;
   // Seconds left at the box, whether this visit's stop is done, and whether in the lane now.
   stop: number;
   served: boolean;
@@ -348,6 +349,7 @@ export function newRace(
       tyre: on,
       fit: null,
       stints: [on],
+      set: 0,
       stop: 0,
       served: false,
       pit: false,
@@ -505,6 +507,7 @@ function pitStop(race: Race, r: Racer, dt: number) {
       [r.life, r.served, r.boxCall] = [1, true, false];
       [r.tyre, r.fit] = [r.fit ?? teamPick(race.laps - r.laps - 1), null];
       r.stints.push(r.tyre);
+      r.set = r.laps;
     }
     return;
   }
