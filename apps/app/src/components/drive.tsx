@@ -33,7 +33,6 @@ const SOUND = "monza-sound";
 const LEVEL = "monza-level";
 const LAPS = "monza-laps";
 const DASH = "-:--.---";
-const JUMP = 5000;
 const KEYS: Record<string, "up" | "down" | "left" | "right"> = {
   ArrowUp: "up",
   w: "up",
@@ -107,7 +106,7 @@ const CONTROLS: [string[], string][] = [
 const RULES: [string, string][] = [
   [
     "Start",
-    "Your reaction in the hero sets your grid slot. Go when the lights go out: moving once the first light is on is a jump start, 5 s added. Amateur races the F3 grid, intermediate F2 and pro F1: on the racing line, with the fewest mistakes and a little more grip than your car. Legends is the world champions: no mistakes, and a perfect race only just keeps up.",
+    "Your reaction in the hero sets your grid slot, and you go when the lights go out. Amateur races the F3 grid, intermediate F2 and pro F1: on the racing line, with the fewest mistakes and a little more grip than your car. Legends is the world champions: no mistakes, and a perfect race only just keeps up.",
   ],
   [
     "Tyres & pits",
@@ -143,7 +142,6 @@ const lapsDown = (n: number) => `+${n} lap${n > 1 ? "s" : ""}`;
 
 type Result = {
   table: ReturnType<typeof results>;
-  jump: boolean;
   fastest: number | null;
   level: Level;
   laps: number;
@@ -210,7 +208,6 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
   const waitEl = useRef<HTMLDivElement>(null);
   const waitText = useRef<HTMLParagraphElement>(null);
   const skip = useRef<() => void>(() => {});
-  const jumpEl = useRef<HTMLDivElement>(null);
   const towerEls = useRef<HTMLDivElement[]>([]);
   const modeEl = useRef<HTMLDivElement>(null);
   const lampEls = useRef<HTMLSpanElement[]>([]);
@@ -420,7 +417,6 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       mine = [0, 0, 0];
       lastEl.current!.textContent = DASH;
       bestEl.current!.textContent = DASH;
-      jumpEl.current!.hidden = true;
       lightsEl.current!.hidden = false;
       rcEl.current!.hidden = true;
       msgAt = -Infinity;
@@ -471,7 +467,6 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       const steer = p.touch ? +p.right - +p.left : +keys.has("right") - +keys.has("left");
       const gas = p.touch ? !p.brake : keys.has("up");
       const brake = p.touch ? p.brake : keys.has("down");
-      const pressing = p.touch ? p.left || p.right || p.brake : gas || brake || steer !== 0;
 
       if (phase === "lights") {
         const lit = Math.min(5, Math.floor((t - phaseAt) / 1000));
@@ -479,12 +474,6 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
           l.classList.toggle("bg-accent", i < lit);
           l.classList.toggle("bg-lamp", i >= lit);
         });
-        // Anything pressed once the first light is on is a jump start: five seconds on.
-        if (lit && pressing && !race.jump) {
-          race.jump = true;
-          race.racers[0]!.penalty += JUMP;
-          jumpEl.current!.hidden = false;
-        }
         if (t - phaseAt > 5000 + pause) {
           phase = "racing";
           for (const l of lampEls.current) l.classList.replace("bg-accent", "bg-lamp");
@@ -524,8 +513,8 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
             id: 0,
             text: debrief(table.findIndex((r) => !r.id) + 1),
           });
-          const { jump, level, laps, fastest } = race;
-          setResult({ table, jump, level, laps, fastest: fastest?.id ?? null });
+          const { level, laps, fastest } = race;
+          setResult({ table, level, laps, fastest: fastest?.id ?? null });
         }
         if (t - board > 500) {
           board = t;
@@ -777,9 +766,6 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
               </span>
             </div>
             <div ref={nearEl} className="mt-1 text-sm text-paper md:hidden" />
-            <div ref={jumpEl} hidden className="mt-1 text-sm text-accent md:text-[15px]">
-              Jump start +5 s
-            </div>
             <div ref={limitsEl} hidden className="mt-1 text-sm text-soft md:text-[15px]" />
           </div>
 
@@ -1147,7 +1133,6 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
                         ? fmt(result.table.find((r) => !r.id)!.best)
                         : DASH}
                     </span>
-                    {result.jump ? <span className="ml-3 text-accent">Jump start +5 s</span> : null}
                   </p>
                   <p className="mt-1 text-sm">
                     <span className="mr-2 text-xs font-semibold tracking-wide text-accent uppercase">

@@ -267,7 +267,7 @@ export type Racer = {
   cp: number;
   cpT: number;
   wrong: number;
-  // Track limits: excursions so far, whether off now, time added (ms, with any jump start), and
+  // Track limits: excursions so far, whether off now, time added (ms), and
   // the last contact with another car, which excuses the next excursion for a second.
   strikes: number;
   off: boolean;
@@ -301,7 +301,6 @@ export type Race = {
   // Milliseconds since the lights went out, and the first car's time at each checkpoint.
   t: number;
   cps: number[];
-  jump: boolean;
   done: boolean;
   msgs: Msg[];
   fastest: { id: number; ms: number } | null;
@@ -383,7 +382,6 @@ export function newRace(
     racers,
     t: 0,
     cps: [],
-    jump: false,
     done: false,
     msgs: [],
     fastest: null,
