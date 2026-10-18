@@ -223,7 +223,16 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
     ),
     flatMesh(strip(lane(-PIT_HALF), lane(0.35 - PIT_HALF), 0.03, apart), line),
   );
-  const boxGeo = new THREE.PlaneGeometry(6, 4).rotateX(-Math.PI / 2);
+  // Each box is painted on the lane as an outline in the team's colour, as in F1.
+  const rect = (w: number, h: number) =>
+    new THREE.Shape()
+      .moveTo(-w / 2, -h / 2)
+      .lineTo(w / 2, -h / 2)
+      .lineTo(w / 2, h / 2)
+      .lineTo(-w / 2, h / 2);
+  const outlineShape = rect(6, 4);
+  outlineShape.holes.push(rect(5.6, 3.6));
+  const boxGeo = new THREE.ShapeGeometry(outlineShape).rotateX(-Math.PI / 2);
   const boxes = BOXES.map((b) => {
     const mat = new THREE.MeshStandardMaterial({ color: C.accent, roughness: 0.8 });
     const m = new THREE.Mesh(boxGeo, mat);
