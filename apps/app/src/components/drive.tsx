@@ -102,6 +102,7 @@ const CONTROLS: [string[], string][] = [
   [["↓", "S"], "Brake, reverse"],
   [["← →", "A D"], "Steer"],
   [["1–3"], "Tyres"],
+  [["P"], "Pause"],
   [["Esc"], "Leave"],
 ];
 const RULES: [string, string][] = [
@@ -209,6 +210,8 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
   const waitEl = useRef<HTMLDivElement>(null);
   const waitText = useRef<HTMLParagraphElement>(null);
   const skip = useRef<() => void>(() => {});
+  const pauseEl = useRef<HTMLDivElement>(null);
+  const togglePause = useRef<() => void>(() => {});
   const towerEls = useRef<HTMLDivElement[]>([]);
   const modeEl = useRef<HTMLDivElement>(null);
   const lampEls = useRef<HTMLSpanElement[]>([]);
@@ -292,6 +295,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     let board = 0;
     let msgAt = -Infinity;
     let skipping = false;
+    let paused = false;
     const still = { gas: false, brake: false, steer: 0 };
     // The page was clicked on the way here, so the browser lets a remembered "sound on" start.
     if (read(SOUND, false)) engine.current ??= createEngine();
@@ -318,6 +322,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     d.addEventListener(
       "keydown",
       (e) => {
+        if (e.key.toLowerCase() === "p") return togglePause.current();
         const pick = COMPOUNDS[+e.key - 1];
         if (pick && phase === "grid") setTyre(pick);
         else if (pick) fit.current(pick);
@@ -447,11 +452,21 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       msgAt = -Infinity;
       skipping = false;
       waitEl.current!.hidden = true;
+      paused = false;
+      pauseEl.current!.hidden = true;
       drawBoard();
     };
     start();
     skip.current = () => {
       skipping = true;
+    };
+    // Not on the grid screen or once the classification's up.
+    togglePause.current = () => {
+      if (phase === "grid" || race.done) return;
+      paused = !paused;
+      pauseEl.current!.hidden = !paused;
+      keys.clear();
+      d.focus();
     };
     again.current = () => {
       setResult(null);
@@ -487,13 +502,15 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
 
     const frame = (t: number) => {
       const dt = Math.min((t - last) / 1000, 1 / 30);
+      // Paused, the clocks the lights and Race Control run on stand still too.
+      if (paused) [phaseAt, msgAt] = [phaseAt + t - last, msgAt + t - last];
       last = t;
       // Touch: the throttle's on unless braking, and braking at a stop reverses.
       const steer = p.touch ? +p.right - +p.left : +keys.has("right") - +keys.has("left");
       const gas = p.touch ? !p.brake : keys.has("up");
       const brake = p.touch ? p.brake : keys.has("down");
 
-      if (phase === "lights") {
+      if (phase === "lights" && !paused) {
         const lit = Math.min(5, Math.floor((t - phaseAt) / 1000));
         lampEls.current.forEach((l, i) => {
           l.classList.toggle("bg-accent", i < lit);
@@ -507,7 +524,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       }
 
       const me = race.racers[0]!;
-      if (phase === "racing") {
+      if (phase === "racing" && !paused) {
         const wasDone = race.done;
         const split = tick(race, { gas, brake, steer }, dt);
         // After your flag, Skip runs the rest of the field to theirs a few hundred frames at a time.
@@ -641,7 +658,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       scene!.frame(
         race.racers.map((r) => r.car),
         steer,
-        dt,
+        paused ? 0 : dt,
         crews,
       );
       drawMap();
@@ -880,6 +897,25 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
             className="min-h-11 rounded-md bg-paper px-4 font-semibold text-ink active:scale-[.98]"
           >
             Skip
+          </button>
+        </div>
+
+        <div
+          ref={pauseEl}
+          hidden
+          role="status"
+          className={`${panel} absolute top-[30%] left-1/2 flex -translate-x-1/2 items-center gap-4 px-4 py-3`}
+        >
+          <div>
+            <p className="disp text-xl leading-none whitespace-nowrap">Paused</p>
+            <p className={`${label} mt-1 whitespace-nowrap pointer-coarse:hidden`}>P to resume</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => togglePause.current()}
+            className="min-h-11 rounded-md bg-paper px-4 font-semibold text-ink active:scale-[.98]"
+          >
+            Resume
           </button>
         </div>
 
