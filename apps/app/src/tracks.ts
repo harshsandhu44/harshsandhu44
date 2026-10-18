@@ -1,8 +1,8 @@
-// The circuits to pick from, in the picker's order. Corners, DRS zones and pit lanes are read off
-// each centreline's curvature and placed against OpenStreetMap by hand; metres are round the lap
-// from the line. Pit lanes are simplified to the main straight on their real side. Where pro
-// laps quicker against a clean lap than at Monza, proEdge gives it less grip, so pro is as hard
-// on every track; legendsEdge does the same for legends against pro.
+// The circuits to pick from, in the picker's order. Corners, Straight Mode zones (the old DRS
+// zones) and pit lanes are read off each centreline's curvature and placed against OpenStreetMap
+// by hand; metres are round the lap from the line. Pit lanes are simplified to the main straight
+// on their real side. Where pro laps quicker against a clean lap than at Monza, proEdge gives it
+// less grip, so pro is as hard on every track; legendsEdge does the same for legends against pro.
 import { INTERLAGOS_DATA } from "./interlagos.ts";
 import { MONZA_DATA } from "./monza.ts";
 import { REDBULLRING_DATA } from "./redbullring.ts";
@@ -32,7 +32,7 @@ export const TRACKS: TrackDef[] = [
       { name: "Parabolica", turnIn: 4795, at: 4920, boards: true },
     ],
     // The main straight, and Lesmo 2 to Ascari.
-    drs: [
+    zones: [
       { detect: 4920, from: -650, to: 440 },
       { detect: 2590, from: 2700, to: 3460 },
     ],
@@ -63,7 +63,7 @@ export const TRACKS: TrackDef[] = [
       { name: "Bus Stop", turnIn: 6696, at: 6721, boards: true },
     ],
     // The main straight, and the Kemmel straight.
-    drs: [
+    zones: [
       { detect: 6721, from: -170, to: 290 },
       { detect: 365, from: 1300, to: 2320 },
     ],
@@ -74,8 +74,8 @@ export const TRACKS: TrackDef[] = [
     seed: 1921,
     grip: 0.385,
     stop: 0.098,
-    proEdge: 1.07,
-    legendsEdge: 1.11,
+    proEdge: 1.09,
+    legendsEdge: 1.12,
   },
   {
     id: "silverstone",
@@ -100,7 +100,7 @@ export const TRACKS: TrackDef[] = [
       { name: "Club", turnIn: 5457, at: 5677, boards: false },
     ],
     // The Wellington and Hangar straights.
-    drs: [
+    zones: [
       { detect: 794, from: 1190, to: 1760 },
       { detect: 3918, from: 4140, to: 4820 },
     ],
@@ -132,7 +132,7 @@ export const TRACKS: TrackDef[] = [
       { name: "Café", turnIn: 3365, at: 3390, boards: false },
     ],
     // The main straight, and the Reta Oposta.
-    drs: [
+    zones: [
       { detect: 3266, from: -500, to: 230 },
       { detect: 464, from: 800, to: 1320 },
     ],
@@ -143,8 +143,8 @@ export const TRACKS: TrackDef[] = [
     seed: 1940,
     grip: 0.43,
     stop: 0.243,
-    proEdge: 1.05,
-    legendsEdge: 1.085,
+    proEdge: 1.067,
+    legendsEdge: 1.095,
   },
   {
     id: "redbullring",
@@ -164,7 +164,7 @@ export const TRACKS: TrackDef[] = [
       { name: "Turn 10", turnIn: 3966, at: 3986, boards: true },
     ],
     // Three: the main straight, up to Turn 3, and down to Turn 4.
-    drs: [
+    zones: [
       { detect: 3786, from: -260, to: 380 },
       { detect: 450, from: 560, to: 1300 },
       { detect: 1394, from: 1700, to: 2120 },
@@ -176,8 +176,8 @@ export const TRACKS: TrackDef[] = [
     seed: 1969,
     grip: 0.31,
     stop: 0.186,
-    proEdge: 1.095,
-    legendsEdge: 1.12,
+    proEdge: 1.1,
+    legendsEdge: 1.13,
   },
 ];
 

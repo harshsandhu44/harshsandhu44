@@ -317,6 +317,17 @@ for (const def of TRACKS) {
   assert.equal(r.strikes, 0, `${def.name}: with no track limits`);
 }
 
+// A trip down the pit lane, stop included, puts back about 2 MJ.
+{
+  const race = solo(10, (r) => ([r.stops, r.plan, r.launch] = [[1], ["medium", "medium"], 0]));
+  race.slips = false;
+  const r = race.racers[0]!;
+  run(race, 300, () => r.pit);
+  r.charge = 0;
+  run(race, 120, () => !r.pit && r.stints.length === 2);
+  assert.ok(r.charge > 1.6 && r.charge < 2.4, `the pit lane charges (${r.charge.toFixed(2)} MJ)`);
+}
+
 // The racing line stays on the tarmac, and the same driver laps quicker on it.
 assert.ok(
   RACING.every((o, i) => Math.abs(o) <= HALF[i]! - 1.5),
@@ -333,7 +344,7 @@ assert.ok(
   assert.ok(racing < centre - 200, `the racing line is quicker (${fmt(centre)} vs ${fmt(racing)})`);
 }
 
-// DRS: eligible within a second of the car ahead at detection, from lap 2, and quicker.
+// Overtake Mode: ready within a second of the car ahead at detection, from lap 2.
 {
   const race = solo(1);
   race.racers = [race.racers[0]!, { ...race.racers[0]!, id: 2, car: { ...race.racers[0]!.car } }];
@@ -349,23 +360,51 @@ assert.ok(
   const cross = (laps: number) => {
     put(b, detect - 1, 70);
     put(a, detect - 36, 70);
-    [a.laps, b.laps, a.drs] = [laps, laps, null];
+    [a.laps, b.laps, a.ot, b.ot] = [laps, laps, null, null];
     run(race, 0.85);
   };
   cross(1);
-  assert.equal(a.drs, "eligible", "within a second at detection");
-  assert.equal(b.drs, null, "the car in front isn't");
+  assert.equal(a.ot, "ready", "within a second at detection");
+  assert.equal(a.bonusLap, 2, "with a harvest bonus for the next lap");
+  assert.equal(b.ot, null, "the car in front isn't");
   cross(0);
-  assert.equal(a.drs, null, "not on the first lap");
-  const top = (open: boolean) => {
+  assert.equal(a.ot, null, "not on the first lap");
+  const top = (more: number) => {
     const car = { x: 0, y: 0, h: 0, v: 0 };
     for (let f = 0; f < 60 * 60; f++)
-      step(car, { gas: true, brake: false, steer: 0 }, 1 / 60, false, 1, open ? TOP + 4.2 : TOP);
+      step(car, { gas: true, brake: false, steer: 0 }, 1 / 60, false, 1, TOP + more);
     return car.v * 3.6;
   };
+  const straight = top(2.8) - top(0);
   assert.ok(
-    top(true) - top(false) > 12,
-    `DRS is worth ~15 km/h (${(top(true) - top(false)).toFixed(0)})`,
+    straight > 8 && straight < 12,
+    `Straight Mode is worth ~10 km/h (${straight.toFixed(0)})`,
+  );
+}
+
+// The battery, in MJ: a pro's flying lap at Monza harvests the 8.5 MJ allowance and no more;
+// flat out on a flat battery the car super clips, harvesting; and a lap with Overtake's bonus
+// harvests up to 9 MJ.
+{
+  const race = solo(10, (r) => (r.launch = 0), "pro");
+  race.slips = false;
+  const r = race.racers[0]!;
+  let most = 0;
+  const lap = (n: number) =>
+    run(race, 600, () => {
+      if (r.laps === n) most = Math.max(most, r.harvested);
+      return r.laps > n;
+    });
+  lap(1);
+  assert.ok(most > 8 && most <= 8.5 + 1e-9, `a lap harvests up to 8.5 MJ (${most.toFixed(2)})`);
+  [r.charge, r.harvested] = [0, 0];
+  run(race, 1);
+  assert.ok(r.clipping && r.charge > 0, "flat out on a flat battery, it super clips");
+  [most, r.bonusLap] = [0, r.laps];
+  lap(r.laps);
+  assert.ok(
+    most > 8.5 && most <= 9 + 1e-9,
+    `Overtake's lap harvests up to 9 MJ (${most.toFixed(2)})`,
   );
 }
 

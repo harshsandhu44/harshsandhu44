@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { createEngine, type Engine } from "@/engine";
 import type { Scene } from "@/scene";
 import {
+  CAP,
   CARS,
   DISTANCES,
   LEVELS,
@@ -34,7 +35,7 @@ const SOUND = "monza-sound";
 const LEVEL = "monza-level";
 const LAPS = "monza-laps";
 const DASH = "-:--.---";
-const KEYS: Record<string, "up" | "down" | "left" | "right"> = {
+const KEYS: Record<string, "up" | "down" | "left" | "right" | "ot"> = {
   ArrowUp: "up",
   w: "up",
   ArrowDown: "down",
@@ -43,6 +44,7 @@ const KEYS: Record<string, "up" | "down" | "left" | "right"> = {
   a: "left",
   ArrowRight: "right",
   d: "right",
+  " ": "ot",
 };
 
 // Each circuit's outline in its own box, from the raw data so drawing one doesn't build the
@@ -102,6 +104,7 @@ const CONTROLS: [string[], string][] = [
   [["↓", "S"], "Brake, reverse"],
   [["← →", "A D"], "Steer"],
   [["1–3"], "Tyres"],
+  [["Space"], "Overtake"],
   [["P"], "Pause"],
   [["Esc"], "Leave"],
 ];
@@ -119,8 +122,8 @@ const RULES: [string, string][] = [
     "All four wheels off the track deletes the lap. The third time brings the black and white flag, then 5 s and 10 s penalties.",
   ],
   [
-    "DRS",
-    "From lap 2, within a second of the car ahead at a detection line. It opens on the straight that follows and shuts on the brakes.",
+    "2026 power",
+    "Straight Mode flattens the wings on the straights for every car, every lap, until you brake. The 4 MJ battery deploys by itself flat out, at 350 kW in the zones and 250 kW elsewhere, and recharges off the throttle (most on the brakes) and in the pit lane, up to 8.5 MJ a lap. Run it flat and the car super clips: it harvests at full throttle and loses speed (the reading turns red). From lap 2, within a second of the car ahead at a detection line (the painted line with the Overtake board), Overtake Mode is ready: Space for full power and more speed to the end of the next straight, and the next lap harvests faster, up to 9 MJ (the bar turns green).",
   ],
 ];
 const PAD: ["left" | "right", string, string][] = [
@@ -195,7 +198,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
   const fitWrap = useRef<HTMLDivElement>(null);
   const fitEls = useRef<HTMLButtonElement[]>([]);
   // The touch controls' state, read by the frame loop. `touch` is whether they drive the car.
-  const pad = useRef({ touch: false, left: false, right: false, brake: false });
+  const pad = useRef({ touch: false, left: false, right: false, brake: false, ot: false });
   const tyreName = useRef<HTMLSpanElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
   const stage = useRef<HTMLDivElement>(null);
@@ -225,7 +228,11 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
   const tyreEl = useRef<HTMLSpanElement>(null);
   const tyreText = useRef<HTMLSpanElement>(null);
   const limiterEl = useRef<HTMLSpanElement>(null);
-  const drsEl = useRef<HTMLSpanElement>(null);
+  const straightEl = useRef<HTMLSpanElement>(null);
+  const otEl = useRef<HTMLSpanElement>(null);
+  const otPad = useRef<HTMLButtonElement>(null);
+  const batEl = useRef<HTMLSpanElement>(null);
+  const batText = useRef<HTMLSpanElement>(null);
   const limitsEl = useRef<HTMLDivElement>(null);
   const rcEl = useRef<HTMLDivElement>(null);
   const rcLabel = useRef<HTMLSpanElement>(null);
@@ -233,7 +240,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
   const rcText = useRef<HTMLSpanElement>(null);
 
   // Holding a touch control sets its flag; any press also hands the car to the touch controls.
-  const hold = (k: "left" | "right" | "brake") => {
+  const hold = (k: "left" | "right" | "brake" | "ot") => {
     const up = () => (pad.current[k] = false);
     return {
       onPointerDown: () => Object.assign(pad.current, { [k]: true, touch: true }),
@@ -274,7 +281,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
     const paintOf = (id: number) => colorOf(race, id) || C.accent;
     const flat = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const track = getTrack(trackId);
-    const { LENGTH, atDist, dirAt, limitAt, nextCorner } = track;
+    const { LENGTH, ZONES, atDist, dirAt, limitAt, nextCorner } = track;
     const { box, outline } = SHAPES.get(trackId)!;
     const road = new Path2D(outline);
 
@@ -355,6 +362,18 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       mctx.globalAlpha = 0.5;
       mctx.stroke(road);
       mctx.globalAlpha = 1;
+      // The overtake detection lines, across the road.
+      mctx.strokeStyle = C.paper;
+      mctx.lineWidth = 2 / s;
+      for (const z of ZONES) {
+        const [x, y] = track.pointAt(z.detect, 0);
+        const h = dirAt(z.detect / LENGTH) + Math.PI / 2;
+        const [dx, dy] = [Math.cos(h) * 14, Math.sin(h) * 14];
+        mctx.beginPath();
+        mctx.moveTo(x - box.x - dx, y - box.y - dy);
+        mctx.lineTo(x - box.x + dx, y - box.y + dy);
+        mctx.stroke();
+      }
       const dot = (r: Racer, size: number) => {
         mctx.beginPath();
         mctx.arc(r.car.x - box.x, r.car.y - box.y, size / s, 0, Math.PI * 2);
@@ -509,6 +528,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       const steer = p.touch ? +p.right - +p.left : +keys.has("right") - +keys.has("left");
       const gas = p.touch ? !p.brake : keys.has("up");
       const brake = p.touch ? p.brake : keys.has("down");
+      const ot = p.touch ? p.ot : keys.has("ot");
 
       if (phase === "lights" && !paused) {
         const lit = Math.min(5, Math.floor((t - phaseAt) / 1000));
@@ -526,7 +546,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       const me = race.racers[0]!;
       if (phase === "racing" && !paused) {
         const wasDone = race.done;
-        const split = tick(race, { gas, brake, steer }, dt);
+        const split = tick(race, { gas, brake, steer, ot }, dt);
         // After your flag, Skip runs the rest of the field to theirs a few hundred frames at a time.
         if (skipping) for (let n = 0; n < 300 && !race.done; n++) tick(race, still, 1 / 30);
         if (split) {
@@ -582,11 +602,10 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       brk += (+brake - brk) * ease;
       const { car } = me;
       speedEl.current!.textContent = String(Math.round(Math.abs(car.v) * 3.6));
-      // Red when the car can't brake in time for the next corner on these tyres.
-      speedEl.current!.classList.toggle(
-        "text-accent",
-        car.v > limitAt(atDist(me.p * LENGTH), grip(me.life, me.tyre)) + 2,
-      );
+      // Red when the car can't brake in time for the next corner on these tyres. The limit stops
+      // at TOP where there's nothing to brake for.
+      const limit = limitAt(atDist(me.p * LENGTH), grip(me.life, me.tyre));
+      speedEl.current!.classList.toggle("text-accent", limit < TOP && car.v > limit + 2);
       const next = nextCorner(me.p);
       if (nextEl.current!.textContent !== next) nextEl.current!.textContent = next;
       gearEl.current!.textContent = String(gear(car.v));
@@ -643,13 +662,21 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
       limits.textContent = `Track limits ${me.strikes}`;
       limits.classList.toggle("text-accent", me.strikes >= 3);
       limits.classList.toggle("text-soft", me.strikes < 3);
-      const drsChip = drsEl.current!;
-      drsChip.hidden = !me.drs;
-      drsChip.classList.toggle("bg-go", me.drs === "open");
-      drsChip.classList.toggle("text-ink", me.drs === "open");
-      drsChip.classList.toggle("bg-lamp", me.drs === "eligible");
-      drsChip.classList.toggle("text-paper", me.drs === "eligible");
-      engine.current?.set(Math.abs(car.v) / TOP, thr);
+      straightEl.current!.hidden = !me.straight;
+      const otChip = otEl.current!;
+      otChip.hidden = !me.ot;
+      otChip.classList.toggle("bg-lamp", me.ot === "ready");
+      otChip.classList.toggle("bg-accent", me.ot === "on");
+      otPad.current!.hidden = me.ot !== "ready" || !p.touch;
+      // Green on a lap with Overtake's harvest bonus; the reading goes red while super clipping.
+      const bat = batEl.current!;
+      bat.style.transform = `scaleX(${me.charge / CAP})`;
+      bat.classList.toggle("bg-go", me.laps === me.bonusLap);
+      bat.classList.toggle("bg-paper", me.laps !== me.bonusLap);
+      batText.current!.textContent = `${me.charge.toFixed(1)} MJ`;
+      batText.current!.classList.toggle("text-accent", me.clipping);
+      batText.current!.classList.toggle("text-paper", !me.clipping);
+      engine.current?.set(paused ? 0 : Math.abs(car.v) / TOP, paused ? 0 : thr);
 
       // Each team's crew: out for a car in the lane, at the car while it's stopped.
       const crews = new Array<number>(CARS / 2).fill(0);
@@ -934,7 +961,7 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
           >
             1
           </span>
-          <div className="w-24 md:w-32">
+          <div className="w-28 md:w-36">
             <div className="flex items-baseline gap-1.5">
               <span ref={speedEl} className="disp text-[22px] leading-none md:text-[26px]">
                 0
@@ -947,22 +974,35 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
               >
                 PIT
               </span>
-              <span ref={drsEl} hidden className="ml-auto rounded-sm px-1 text-xs font-semibold">
-                DRS
+            </div>
+            <div className="mt-1 flex h-5 items-center gap-1 text-xs font-semibold">
+              <span ref={straightEl} hidden className="rounded-sm bg-go px-1 text-ink">
+                Straight
+              </span>
+              <span ref={otEl} hidden className="rounded-sm px-1 text-paper">
+                Overtake
               </span>
             </div>
             <span ref={thrEl} className="mt-2 block h-1.5 origin-left bg-go" style={zero} />
             <span ref={brkEl} className="mt-1 block h-1.5 origin-left bg-accent" style={zero} />
-            <div className="mt-1.5 flex items-center gap-2 text-xs text-soft">
+            <div className="mt-1.5 grid grid-cols-[auto_auto_1fr_auto] items-center gap-x-2 gap-y-1 text-xs text-soft">
               Tyres
               <span ref={tyreName} className="w-3 font-semibold text-slow">
                 M
               </span>
-              <span className="h-1.5 flex-1 bg-lamp">
+              <span className="h-1.5 bg-lamp">
                 <span ref={tyreEl} className="block h-full origin-left bg-go" />
               </span>
               <span ref={tyreText} className="w-8 text-right text-paper">
                 100%
+              </span>
+              Battery
+              <span />
+              <span className="h-1.5 bg-lamp">
+                <span ref={batEl} className="block h-full origin-left bg-paper" />
+              </span>
+              <span ref={batText} className="text-right whitespace-nowrap text-paper">
+                4.0 MJ
               </span>
             </div>
             <div
@@ -1002,6 +1042,15 @@ export default function Drive({ reaction, onClose }: { reaction: number; onClose
               </button>
             ))}
           </div>
+          <button
+            ref={otPad}
+            type="button"
+            hidden
+            className={`${padKey} px-4 text-sm font-semibold tracking-wide uppercase`}
+            {...hold("ot")}
+          >
+            Overtake
+          </button>
           <button
             type="button"
             className={`${padKey} w-28 bg-accent/80 text-sm font-semibold tracking-wide uppercase`}

@@ -114,7 +114,8 @@ const place = (x: number, z: number, rot: number, sx: number, sy = sx, sz = sx) 
 // Renders into a canvas of its own inside `host`, so a second scene (React's dev double mount, or
 // reopening the dialog) never inherits a context the first one threw away.
 export async function createScene(host: HTMLElement, C: Colors, flat: boolean, track: Track) {
-  const { BOARDS, BOXES, BOX, CURVE, HALF, MID, PATH, PIT_SIDE, STANDS, TREES, WALLS } = track;
+  const { BOARDS, BOXES, BOX, CURVE, HALF, MID, PATH, PIT_SIDE, STANDS, TREES, WALLS, ZONES } =
+    track;
   const { atDist, offset, pitOffset, pointAt, working } = track;
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.domElement.className = "block size-full";
@@ -500,6 +501,51 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
     board.position.set(b.x, 0, b.y);
     board.rotation.y = Math.atan2(-Math.cos(b.h), -Math.sin(b.h));
     scene.add(board);
+  }
+
+  // Overtake Mode's detection lines: painted across the track, with a board on the side away
+  // from the pits.
+  const otCanvas = document.createElement("canvas");
+  otCanvas.width = 240;
+  otCanvas.height = 160;
+  const oc = otCanvas.getContext("2d")!;
+  oc.fillStyle = C.paper;
+  oc.fillRect(0, 0, 240, 160);
+  oc.fillStyle = C.ink;
+  oc.font = `italic 800 40px ${boardFont}`;
+  oc.textAlign = "center";
+  oc.textBaseline = "middle";
+  oc.fillText("OVERTAKE", 120, 84);
+  const otTex = new THREE.CanvasTexture(otCanvas);
+  otTex.colorSpace = THREE.SRGBColorSpace;
+  const otFace = new THREE.MeshStandardMaterial({ map: otTex, roughness: 0.8 });
+  const paint = new THREE.MeshStandardMaterial({ color: C.paper, roughness: 0.9 });
+  for (const z of ZONES) {
+    const i = atDist(z.detect);
+    const [[ax, ay], [bx, by]] = [PATH[i]!, PATH[(i + 1) % PATH.length]!];
+    const stripe = new THREE.Mesh(
+      new THREE.PlaneGeometry(HALF[i]! * 2, 0.5).rotateX(-Math.PI / 2),
+      paint,
+    );
+    stripe.position.set(ax, 0.04, ay);
+    stripe.rotation.y = yaw(by - ay, -(bx - ax));
+    stripe.receiveShadow = true;
+    const front = new THREE.Mesh(panel, [
+      boardSide,
+      boardSide,
+      boardSide,
+      boardSide,
+      otFace,
+      boardSide,
+    ]);
+    front.position.y = 2.4;
+    const board = new THREE.Group();
+    board.add(front, new THREE.Mesh(post, boardSide));
+    board.traverse((o) => (o.castShadow = true));
+    const [x, y] = pointAt(z.detect, -PIT_SIDE * (HALF[i]! + 3));
+    board.position.set(x, 0, y);
+    board.rotation.y = Math.atan2(-(bx - ax), -(by - ay));
+    scene.add(stripe, board);
   }
 
   // The cars, about 5.5 m long. The model faces +z. Yours is the model; the others are clones,

@@ -4,6 +4,7 @@ import {
   TOP,
   WORK,
   allFourOff,
+  brakeAt,
   bump,
   fmt,
   lapTick,
@@ -222,8 +223,26 @@ const CALL: Record<Level, number> = {
   legends: 0.006,
 };
 
-// DRS adds about 15 km/h to the top speed.
-const DRS_TOP = TOP + 4.2;
+// 2026 power, all as a higher drag-limited top speed: Straight Mode (flat wings in the zones,
+// every car, every lap) about 10 km/h, deploying the battery at 350 kW 11 more, and Overtake Mode
+// 9 on top. Super clipping, harvesting flat out, costs about 11.
+const STRAIGHT_TOP = 2.8;
+const DEPLOY_TOP = 3.1;
+const OT_TOP = 2.5;
+const CLIP_TOP = -3;
+// The battery in MJ, as the 2026 rules have it: 4 usable. It deploys by itself flat out above
+// 40 m/s, at 350 kW (0.35 MJ a second, about 11 s from full) in the zones and in Overtake Mode and
+// 250 kW elsewhere, for less speed. It harvests HARVEST MJ a second on the brakes, half that
+// coasting, and CLIP flat out on an empty battery (super clipping) until it's back to 1 MJ; up to
+// 8.5 MJ a lap, or 9 MJ, a quarter faster, the lap after a car was within a second at a detection
+// line. The pit lane puts back about 2 MJ a trip on top.
+export const CAP = 4;
+const KW350 = 0.35;
+const KW250 = 0.25;
+const HARVEST = 0.49;
+const CLIP = 0.2;
+const LAP_HARVEST = 8.5;
+const OT_HARVEST = 0.5;
 
 // The pit limiter and the stop at the box. ponytail: 120 km/h, not F1's 80, so a stop costs
 // little enough to be worth making in five laps.
@@ -274,9 +293,16 @@ export type Racer = {
   off: boolean;
   penalty: number;
   touchT: number;
-  // DRS for the zone it was last eligible in: null, eligible, or open.
-  drs: null | "eligible" | "open";
-  drsZone: number;
+  // 2026 power: whether the wings are flat (Straight Mode); the battery (MJ), what it's harvested
+  // this lap, and whether it's super clipping; Overtake Mode for the zone it was last eligible in
+  // (null, ready, or on) and the lap its harvest bonus is for.
+  straight: boolean;
+  charge: number;
+  harvested: number;
+  clipping: boolean;
+  ot: null | "ready" | "on";
+  otZone: number;
+  bonusLap: number;
   // Computer cars: the corner they'll overcook (-1 none) and the last corner they rolled for.
   mistake: number;
   rolled: number;
@@ -307,7 +333,7 @@ export type Race = {
   fastest: { id: number; ms: number } | null;
   // The quickest clean time through each sector by anyone, 0 until someone sets one.
   sectors: number[];
-  // When any car last crossed each DRS detection line.
+  // When any car last crossed each Overtake Mode detection line.
   crossed: number[];
   // Whether computer cars make mistakes (off for the strategy check), and the dice.
   slips: boolean;
@@ -325,7 +351,7 @@ export function newRace(
   // Computer paces spread across the level's range in roster order, your teammate the slowest,
   // and the quickest line up at the front in the slots you didn't take.
   const { pace } = LEVELS[lv];
-  const { HALF, LENGTH, atDist, dirAt, pointAt, DRS_ZONES } = track;
+  const { HALF, LENGTH, atDist, dirAt, pointAt, ZONES } = track;
   const ai = [...Array(CARS).keys()].slice(2).concat(1);
   const options = strategies(laps, track);
   const close = options.filter((o) => o.cost <= options[0]!.cost + CALL[lv]);
@@ -368,8 +394,13 @@ export function newRace(
       off: false,
       penalty: 0,
       touchT: -Infinity,
-      drs: null,
-      drsZone: 0,
+      straight: false,
+      charge: CAP,
+      harvested: 0,
+      clipping: false,
+      ot: null,
+      otZone: 0,
+      bonusLap: -1,
       mistake: -1,
       rolled: -1,
       boxCall: false,
@@ -388,7 +419,7 @@ export function newRace(
     msgs: [],
     fastest: null,
     sectors: [0, 0, 0],
-    crossed: DRS_ZONES.map(() => -Infinity),
+    crossed: ZONES.map(() => -Infinity),
     slips: true,
     rand,
   };
@@ -417,8 +448,20 @@ export function aiInput(r: Racer, race: Race): Input {
   }
   if (r.mistake >= 0 && fwd(CORNERS[r.mistake]!.at, m) < 200) r.mistake = -1;
   const at = atDist(m + 5);
-  let want = limitAt(at, g * (r.mistake >= 0 ? 1.08 : r.pace), line);
-  if (r.finish !== null) want *= 0.8;
+  // The profiles stop at TOP, so a car the 2026 power has taken past it looks down the road for
+  // the first point under TOP and brakes for that in time; with none in sight, flat out.
+  const gp = g * (r.mistake >= 0 ? 1.08 : r.pace);
+  let want = limitAt(at, gp, line);
+  if (r.finish !== null) want = 0.8 * Math.min(want, TOP);
+  else if (want >= TOP) {
+    want = Infinity;
+    for (let d = 10; d <= 400; d += 10) {
+      const l = limitAt(atDist(m + 5 + d), gp, line);
+      if (l >= TOP) continue;
+      want = Math.sqrt(l * l + 2 * gp * brakeAt(l) * d);
+      break;
+    }
+  }
 
   const ahead = (lane: number, from: number) =>
     race.racers.find((o) => {
@@ -492,6 +535,7 @@ export function aiInput(r: Racer, race: Race): Input {
     gas: !over,
     brake: over && car.v > want + 1,
     steer: Math.max(-1, Math.min(1, diff * 4)),
+    ot: true,
   };
 }
 
@@ -549,19 +593,61 @@ function strike(race: Race, r: Racer) {
   say(race, "penalty", r.id, `${add / 1000} s time penalty · ${who} · Track limits`);
 }
 
-// DRS: eligible within a second of whoever last crossed the detection line, from lap 2. It
-// opens in the zone and shuts for good on the brakes or at the end of the zone.
-function drs(race: Race, r: Racer, from: number, to: number, brake: boolean) {
-  const { DRS_ZONES, ahead: fwd, inZone } = race.track;
-  DRS_ZONES.forEach((z, k) => {
-    if (fwd(from, z.detect) > fwd(from, to) || fwd(from, to) > 50) return;
-    if (r.laps >= 1 && race.t - race.crossed[k]! < 1000) [r.drs, r.drsZone] = ["eligible", k];
-    race.crossed[k] = race.t;
-  });
-  if (!r.drs) return;
-  if (brake) r.drs = null;
-  else if (inZone(to, DRS_ZONES[r.drsZone]!)) r.drs = "open";
-  else if (r.drs === "open") r.drs = null;
+// 2026 power for a frame from `from` to `to` m round the lap (`moved`: a small step forward).
+// Overtake Mode is ready within a second of whoever last crossed a detection line, from lap 2,
+// with a harvest bonus for the next lap; fired (computer cars at once), it's on to the end of the
+// zone that follows, and lapses there either way. Straight Mode opens on entering a zone and shuts on the brakes (or in the pit
+// lane) until the next.
+// Returns the top speed.
+function power(race: Race, r: Racer, from: number, to: number, moved: boolean, input: Input) {
+  const { ZONES, ahead: fwd, inZone } = race.track;
+  if (moved)
+    ZONES.forEach((z, k) => {
+      if (fwd(from, z.detect) > fwd(from, to) || fwd(from, to) > 50) return;
+      if (r.laps >= 1 && race.t - race.crossed[k]! < 1000) {
+        [r.ot, r.otZone, r.bonusLap] = ["ready", k, r.laps + 1];
+        if (r.id === 0) say(race, "radio", 0, "Within a second. Overtake ready.");
+      }
+      race.crossed[k] = race.t;
+    });
+  if (r.ot === "ready" && input.ot) r.ot = "on";
+  const z = ZONES[r.otZone]!;
+  if (r.ot && inZone(from, z) && !inZone(to, z)) r.ot = null;
+  const flat = (m: number) => ZONES.some((z) => inZone(m, z));
+  if (flat(to) && !flat(from)) r.straight = true;
+  if (!flat(to) || input.brake || r.pit) r.straight = false;
+  return TOP + (r.straight ? STRAIGHT_TOP : 0) + (r.ot === "on" ? OT_TOP : 0);
+}
+
+// The battery for a frame (see CAP). Returns the top speed it adds, or takes away clipping.
+function battery(race: Race, r: Racer, input: Input, dt: number) {
+  const { LENGTH, PIT_IN, PIT_OUT, ZONES, inZone } = race.track;
+  const v = r.car.v;
+  const bonus = r.laps === r.bonusLap;
+  const room = LAP_HARVEST + (bonus ? OT_HARVEST : 0) - r.harvested;
+  const harvest = (mj: number) => {
+    const got = Math.max(0, Math.min(mj * (bonus ? 1.25 : 1), room, CAP - r.charge));
+    r.charge += got;
+    r.harvested += got;
+  };
+  // Clipping until back to 1 MJ, unless the lap's allowance runs out first.
+  const flat = input.gas && v > 40;
+  if (!flat || r.charge >= 1 || room <= 0) r.clipping = false;
+  else if (r.charge <= 0) r.clipping = true;
+  if (r.clipping) {
+    harvest(CLIP * dt);
+    return CLIP_TOP;
+  }
+  if (flat) {
+    const full = r.ot === "on" || ZONES.some((z) => inZone(r.p * LENGTH, z));
+    const kw = full ? KW350 : KW250;
+    r.charge = Math.max(0, r.charge - kw * dt);
+    return (DEPLOY_TOP * kw) / KW350;
+  }
+  // The pit lane's 2 MJ is on top of the lap's allowance.
+  if (r.pit) r.charge = Math.min(CAP, r.charge + (2 * dt) / ((PIT_OUT - PIT_IN) / PIT_V + STOP));
+  else if (v > 10 && (input.brake || !input.gas)) harvest((input.brake ? 1 : 0.5) * HARVEST * dt);
+  return 0;
 }
 
 // One frame for every car. `you` is the player's input, or null to hold them (before the lights).
@@ -600,9 +686,8 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     else if (!r.pitting && (r.id || r.finish !== null)) r.through = true;
     if (r.pit) r.pitting = true;
     const input = r.id === 0 && !r.pitting && r.finish === null ? you : aiInput(r, race);
-    if (Math.abs(dp) < 0.02 && dp > 0) drs(race, r, from, p * LENGTH, input.brake);
-    else if (input.brake) r.drs = null;
-    const top = r.drs === "open" ? DRS_TOP : undefined;
+    const moved = Math.abs(dp) < 0.02 && dp > 0;
+    const top = power(race, r, from, p * LENGTH, moved, input) + battery(race, r, input, dt);
     const g = carGrip(race, r);
     step(car, input, dt, onGrass(edge), g, top);
     pitStop(race, r, dt);
@@ -638,6 +723,7 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
       race.sectors[sec] = split.ms;
     if (split?.lap) {
       r.laps++;
+      r.harvested = 0;
       if (split.valid && (!r.best || split.lap < r.best)) r.best = split.lap;
       if (split.valid && (!race.fastest || split.lap < race.fastest.ms)) {
         race.fastest = { id: r.id, ms: split.lap };
