@@ -7,6 +7,7 @@ import {
   CAP,
   CARS,
   DISTANCES,
+  GRID,
   LEVELS,
   TYRES,
   colorOf,
@@ -442,7 +443,7 @@ export default function Drive() {
     };
 
     const start = () => {
-      race = newRace(track, GRID_SLOT, Math.random, "medium", levelRef.current, lapsRef.current);
+      race = newRace(track, GRID, Math.random, "medium", levelRef.current, lapsRef.current);
       scene?.paint(LEVELS[race.level].colors);
       phase = "grid";
       setGrid(true);
