@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+/* Phone ≤640, tablet 641–1023, desktop ≥1024: the design's own cuts, written phone-first. */
+@theme {
+  --breakpoint-*: initial;
+  --breakpoint-md: 641px;
+  --breakpoint-lg: 1024px;
+
+  --color-*: initial;
+  --color-white: #ffffff;
+  --color-bg: #f4f4f2;
+  --color-surface: #e9e9ec;
+  --color-muted: #5c5c66;
+  --color-paper: #f7f7f7;
+  --color-soft: #a9a9b3;
+  --color-ink: #15151e;
+  --color-accent: #e10600;
+  --color-carbon: #23232d;
+  --color-lamp: #2c2c36;
+  --color-pit: #050507;
+  --color-chrome: #d6d6db;
+  --color-pill: #f0f0f2;
+  --color-go: #1f9d55;
+  --color-fl: #b86bff;
+  --color-slow: #ffd12e;
+  --color-print: #1747d6;
+
+  --font-sans: var(--font-hanken), system-ui, sans-serif;
+  --font-display: var(--font-archivo), system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --ease-soft: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  --animate-rowin: rowin 0.6s var(--ease-soft) both;
+  --animate-livepulse: livepulse 1.2s ease-in-out infinite;
+  --animate-blackout: blackout 1.2s var(--ease-soft) both;
+
+  @keyframes rowin {
+    from {
+      opacity: 0;
+      transform: translateY(-14px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes blackout {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes livepulse {
+    50% {
+      opacity: 0.25;
+    }
+  }
+}
+
+/* The display face: Archivo 800, italic, at its widest. */
+@utility disp {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-stretch: 125%;
+  font-style: italic;
+  letter-spacing: -0.025em;
+  line-height: 0.92;
+  font-kerning: normal;
+}
+
+/* Light text on carbon: buttons, ghost buttons and focus rings read these. */
+@utility on-dark {
+  --fg: var(--color-paper);
+  --fgi: var(--color-ink);
+}
+
+@layer base {
+  :root {
+    --fg: var(--color-ink);
+    --fgi: var(--color-paper);
+  }
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+  :is(a, button):focus-visible {
+    outline: 3px solid var(--focus, var(--fg));
+    outline-offset: 4px;
+  }
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation: none !important;
+      transition: none !important;
+    }
+  }
+}
