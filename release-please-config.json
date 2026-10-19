@@ -4,6 +4,11 @@
     "apps/app": {
       "release-type": "node",
       "component": "app"
+    },
+    "apps/drive": {
+      "release-type": "node",
+      "component": "drive",
+      "release-as": "1.0.0"
     }
   }
 }
