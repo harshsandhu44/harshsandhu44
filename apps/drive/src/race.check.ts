@@ -400,6 +400,22 @@ assert.ok(
     straight > 8 && straight < 12,
     `Straight Mode is worth ~10 km/h (${straight.toFixed(0)})`,
   );
+
+  // Slipstream: 20 m behind on the same line, half the tow and a little dirty air; the car in
+  // front gets neither, nor does one 3 m to the side.
+  put(b, 4000, 70);
+  put(a, 3980, 70);
+  run(race, DT);
+  assert.ok(
+    Math.abs(a.tow * 3.6 - 6) < 0.5,
+    `half the tow 20 m back (${(a.tow * 3.6).toFixed(1)} km/h)`,
+  );
+  assert.ok(a.dirty > 0 && a.dirty < 0.02, `and some dirty air (${a.dirty.toFixed(3)})`);
+  assert.equal(b.tow + b.dirty, 0, "the car in front has neither");
+  const [x, y] = pointAt(3980, 3);
+  Object.assign(a.car, { x, y });
+  run(race, DT);
+  assert.equal(a.tow + a.dirty, 0, "out of the wake, neither");
 }
 
 // The battery, in MJ: a pro's flying lap at Monza harvests the 8.5 MJ allowance and no more;

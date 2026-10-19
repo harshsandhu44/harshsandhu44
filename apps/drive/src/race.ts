@@ -53,7 +53,9 @@ export const edgeOf = ({ level: lv, track }: Race) =>
   (lv === "pro" ? track.PRO_EDGE : lv === "legends" ? track.LEGENDS_EDGE : undefined) ??
   LEVELS[lv].edge;
 // A car's grip on its tyres: a computer car's scaled by its edge.
-export const carGrip = (race: Race, r: Racer) => grip(r.life, r.tyre) * (r.id ? edgeOf(race) : 1);
+// Close behind another car its dirty air takes some of that.
+export const carGrip = (race: Race, r: Racer) =>
+  grip(r.life, r.tyre) * (r.id ? edgeOf(race) : 1) * (1 - r.dirty);
 // Awareness defaults to pace, for the levels that rate only by championship place.
 type Seat = [code: string, name: string, pace: number, aware?: number];
 type Team = [color: string, a: Seat, b: Seat];
@@ -328,6 +330,9 @@ export type Racer = {
   slip: number;
   mistake: number;
   rolled: number;
+  // In another car's wake: the top speed its tow adds and the share of grip its dirty air takes.
+  tow: number;
+  dirty: number;
   // You: whether the team has already called you in on these tyres.
   boxCall: boolean;
   // In the lane with no stop planned on this visit: a computer car that strayed in, or any car
@@ -430,6 +435,8 @@ export function newRace(
       slip: slip * (1.5 - spread("aware", id)),
       mistake: -1,
       rolled: -1,
+      tow: 0,
+      dirty: 0,
       boxCall: false,
       through: false,
     };
@@ -724,6 +731,35 @@ function battery(race: Race, r: Racer, input: Input, dt: number) {
   return 0;
 }
 
+// Slipstream: the nearest car up to TOW_M ahead, within WAKE of the same line, tows up to TOW_TOP
+// more top speed, and inside DIRTY_M its dirty air takes up to DIRTY of the grip, both fading
+// with the gap. Nothing in the pit lane. ponytail: a gap along the lap and a lateral band, not
+// real wake geometry.
+const TOW_M = 40;
+const TOW_TOP = 12 / 3.6;
+const DIRTY_M = 25;
+const DIRTY = 0.05;
+const WAKE = 2;
+function wake(race: Race, r: Racer) {
+  const { LENGTH, ahead, lateral } = race.track;
+  const at = lateral(r.car.x, r.car.y, r.p);
+  let gap = Infinity;
+  if (!r.pit)
+    for (const o of race.racers) {
+      const d = ahead(r.p * LENGTH, o.p * LENGTH);
+      if (
+        o !== r &&
+        !o.pit &&
+        d > 0 &&
+        d < gap &&
+        Math.abs(lateral(o.car.x, o.car.y, o.p) - at) < WAKE
+      )
+        gap = d;
+    }
+  r.tow = TOW_TOP * Math.max(0, 1 - gap / TOW_M);
+  r.dirty = DIRTY * Math.max(0, 1 - gap / DIRTY_M);
+}
+
 // One frame for every car. `you` is the player's input, or null to hold them (before the lights).
 // Returns the player's split, if this frame made one.
 export function tick(race: Race, you: Input, dt: number): Split | null {
@@ -761,7 +797,9 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     if (r.pit) r.pitting = true;
     const input = r.id === 0 && !r.pitting && r.finish === null ? you : aiInput(r, race);
     const moved = Math.abs(dp) < 0.02 && dp > 0;
-    const top = power(race, r, from, p * LENGTH, moved, input) + battery(race, r, input, dt);
+    wake(race, r);
+    const top =
+      power(race, r, from, p * LENGTH, moved, input) + battery(race, r, input, dt) + r.tow;
     const g = carGrip(race, r);
     step(car, input, dt, onGrass(edge), g, top);
     pitStop(race, r, dt);
