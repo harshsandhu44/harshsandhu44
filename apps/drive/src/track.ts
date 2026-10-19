@@ -127,11 +127,12 @@ export function step(car: Car, input: Input, dt: number, grass: boolean, g = 1, 
 export const gear = (v: number) =>
   v < -0.5 ? "R" : Math.min(8, Math.max(1, 1 + Math.floor((v / TOP) * 8)));
 
-// Profiles every 0.05 of grip from 1.15 (softs, and a pro's extra grip) down to 0.55 (fully
+// Profiles every 0.05 of grip from MOST (softs, and a legend's extra grip) down to 0.55 (fully
 // worn), blended between. Downforce means the fast corners lose more than √grip would say, so
-// it's worth the ~13k sums at load.
-const STEPS = 13;
-const grips = (k: number) => 1.15 - k * 0.05;
+// it's worth the ~20k sums at load.
+const MOST = 1.5;
+const STEPS = 20;
+const grips = (k: number) => MOST - k * 0.05;
 // The racing line keeps this far from the tarmac edge.
 const LINE_MARGIN = 1.6;
 
@@ -329,7 +330,7 @@ export function buildTrack(def: TrackDef) {
   // The speed limit at point i on tyres with grip g, driving `line` of the way from the
   // centreline (0) to the racing line (1).
   const limitAt = (i: number, g: number, line = 0) => {
-    const f = Math.min(STEPS - 1, Math.max(0, (1.15 - g) / 0.05));
+    const f = Math.min(STEPS - 1, Math.max(0, (MOST - g) / 0.05));
     const k = Math.min(STEPS - 2, Math.floor(f));
     const at = (w: number[][]) => w[k]![i]! + (w[k + 1]![i]! - w[k]![i]!) * (f - k);
     return line ? at(WORN) + (at(LINE_WORN) - at(WORN)) * line : at(WORN);

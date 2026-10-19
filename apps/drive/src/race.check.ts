@@ -489,8 +489,8 @@ const field = (lv: Level, track: Track = monza) => {
   // A car whose every lap was deleted has no best; it isn't the front.
   const front = Math.min(...bests.filter(Boolean));
   assert.ok(
-    track !== monza || (Math.min(...bests) > 84_000 && Math.max(...bests) < 112_000),
-    `${at}: laps from 1:24 to 1:52 (${fmt(Math.min(...bests))} to ${fmt(Math.max(...bests))})`,
+    track !== monza || (Math.min(...bests) > 78_000 && Math.max(...bests) < 112_000),
+    `${at}: laps from 1:18 to 1:52 (${fmt(Math.min(...bests))} to ${fmt(Math.max(...bests))})`,
   );
   assert.ok(
     race.msgs.some((m) => m.kind === "fastest"),
@@ -517,13 +517,13 @@ const [am, mid, pro, leg] = levels as [
   (typeof levels)[0],
   (typeof levels)[0],
 ];
-// The ladder: the front of each field laps about 1:36, 1:31 and 1:26, and pro's winner takes
-// about 7:30, which a clean race from the player (about 1:26 laps) only just beats.
+// The ladder: the front of each field laps about 1:36, 1:31 and 1:22, and pro's winner takes
+// about 7:00, about what a clean race from the player (pole pace on mediums) takes.
 const near = (ms: number, want: number, by: number) => Math.abs(ms - want) < by;
 assert.ok(near(am.front, 95_500, 1500), `amateur's front laps about 1:36 (${fmt(am.front)})`);
 assert.ok(near(mid.front, 91_000, 1500), `intermediate's about 1:31 (${fmt(mid.front)})`);
-assert.ok(near(pro.front, 86_500, 1000), `pro's about 1:26 (${fmt(pro.front)})`);
-assert.ok(near(pro.win, 450_000, 10_000), `pro's winner takes about 7:30 (${fmt(pro.win)})`);
+assert.ok(near(pro.front, 82_000, 1000), `pro's about 1:22 (${fmt(pro.front)})`);
+assert.ok(near(pro.win, 420_000, 10_000), `pro's winner takes about 7:00 (${fmt(pro.win)})`);
 assert.ok(pro.lap < mid.lap && mid.lap < am.lap, "the better the field, the quicker it laps");
 assert.ok(am.strikes > 0, "computer cars make mistakes and pay for them");
 assert.ok(pro.strikes < am.strikes, "and pros make fewer");
@@ -689,7 +689,8 @@ for (const def of TRACKS) {
 
 // Qualifying, run as the drive runs it: every race ticked together. On every track each
 // computer car sets a time, and you, sat still with no lap, start last. At Monza you're driven by
-// the computer instead, set a time too, and the live delta stays sensible all the way round.
+// the computer instead, set a time too, and the live delta stays sensible all the way round (the
+// computer at your grip, without pro's edge, is about 6 s off pole).
 for (const { id, name } of TRACKS) {
   const q = newQuali(getTrack(id), "pro", seeded(5));
   const me = q[0]!.racers[0]!;
@@ -705,8 +706,11 @@ for (const { id, name } of TRACKS) {
     `${name}: every computer car sets a quali time`,
   );
   if (drive) {
-    assert.ok(me.best > 0 && worst > 0 && worst < 5, `${name}: a lap and a delta (${worst})`);
-    console.log(`${name} quali: pole ${fmt(order[0]!.best)}`);
+    assert.ok(me.best > 0 && worst > 0 && worst < 10, `${name}: a lap and a delta (${worst})`);
+    // Pole is a clean lap from the player: 1:20.5.
+    const pole = order[0]!.best;
+    assert.ok(Math.abs(pole - 80_500) < 500, `${name}: pro pole about 1:20.5 (${fmt(pole)})`);
+    console.log(`${name} quali: pole ${fmt(pole)}`);
   } else assert.equal(order.at(-1)!.id, 0, `${name}: no time starts last`);
 }
 

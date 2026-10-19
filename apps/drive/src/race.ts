@@ -25,7 +25,7 @@ export const DISTANCES = [5, 10, 15, 20];
 // racing line (1) the computer drives, the share of its grip its quickest and slowest drivers
 // dare use (so they brake earlier and corner slower, but run flat out on the straights), and
 // how often it overcooks a corner (never, for legends). Pro cars also get EDGE more grip: on the
-// best line at the limit the computer still laps about 1.5 s off a clean human, so that closes it.
+// best line at the limit the computer laps well off a clean human, so that closes it.
 // The field is eleven two-car teams. Driver 0 is you, in the car's own livery, and driver 1 your
 // teammate, the best driver whose team didn't make the top ten; then that series' top ten teams
 // in championship order, each driver above their teammate. Standings as of 19 Oct 2026; F3
@@ -41,10 +41,10 @@ export const DISTANCES = [5, 10, 15, 20];
 // with the era. They never make a mistake, and their winner beats a clean race from you by a
 // second or two.
 export type Level = "amateur" | "intermediate" | "pro" | "legends";
-// ponytail: tuned in race.check.ts so pro's winner finishes in about 7:30, the time a clean
-// race from the player beats by a few seconds, and the field laps 1:26 to 1:29.
-const EDGE = 1.1;
-const LEGEND_EDGE = 1.16;
+// ponytail: tuned in race.check.ts so pro's pole at Monza is about 1:20.5, a clean qualifying
+// lap from the player.
+const EDGE = 1.33;
+const LEGEND_EDGE = 1.4;
 // How far under its limit (m/s) a legend has to be to pull out and pass.
 const PASS = 15;
 // A computer car's extra grip: its level's edge (1 below pro), or the track's own for pro and
