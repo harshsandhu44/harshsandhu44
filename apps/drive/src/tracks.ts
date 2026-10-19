@@ -69,7 +69,7 @@ export const TRACKS: TrackDef[] = [
     ],
     // ponytail: the real lane leaves in the Bus Stop and rejoins after La Source; here it's
     // between them, so it never crosses a chicane.
-    pit: { side: 1, in: -185, from: -110, to: 130, out: 230 },
+    pit: { side: 1, in: -200, from: -125, to: 140, out: 240 },
     stands: [...row(-10, -140, -50, 40, 130), ...corner(-1, 365)],
     seed: 1921,
     grip: 0.385,
@@ -106,7 +106,7 @@ export const TRACKS: TrackDef[] = [
     ],
     // ponytail: the real lane leaves at Vale and rejoins after Farm; here it's on the Hamilton
     // straight between Club and Abbey.
-    pit: { side: 1, in: -178, from: -100, to: 135, out: 215 },
+    pit: { side: 1, in: -205, from: -125, to: 140, out: 215 },
     stands: [...row(-10, -120, -30, 60, 150), ...corner(-1, 2079)],
     seed: 1948,
     grip: 0.43,

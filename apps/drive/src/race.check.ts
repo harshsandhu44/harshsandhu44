@@ -54,7 +54,7 @@ for (const [ms, p] of [
   [400, 6],
   [520, 10],
   [800, 20],
-  [900, 20],
+  [900, 22],
 ] as [number, number][])
   assert.equal(gridSlot(ms) + 1, p, `${ms} ms starts P${p}`);
 
@@ -63,6 +63,21 @@ const seeded = (seed: number) => () => {
   seed = (seed * 16807) % 2147483647;
   return seed / 2147483647;
 };
+
+// Ratings: in F1 Verstappen (8) has the best pace and Colapinto (13) the worst, and
+// Lindblad (11) the least awareness and Russell (3) the most.
+{
+  const rs = newRace(getTrack("monza"), GRID, seeded(1), "medium", "pro").racers;
+  const paces = rs.slice(1).map((r) => r.pace);
+  assert.equal(rs[8]!.pace, Math.max(...paces), "the best pace rating drives quickest");
+  assert.equal(rs[13]!.pace, Math.min(...paces), "and the worst slowest");
+  assert.ok(rs[11]!.slip > rs[3]!.slip, "the less aware make more mistakes");
+  const legends = newRace(getTrack("monza"), GRID, seeded(1), "medium", "legends").racers;
+  assert.ok(
+    legends.every((r) => r.slip === 0),
+    "legends make none",
+  );
+}
 const still = { gas: false, brake: false, steer: 0 };
 const DT = 1 / 30;
 
@@ -414,8 +429,9 @@ assert.ok(
 }
 
 // Whole races at each level: nineteen computer cars, you parked out of the way. Nobody sits
-// stopped on track, and in the lane nobody waits long: at most a release held for traffic, or
-// a queue behind a teammate's stop.
+// stopped on track, and in the lane nobody waits long: at most a release held for traffic (with
+// half of twenty-two cars stopping on the same lap, a few seconds of it), or a queue behind a
+// teammate's stop.
 const median = (xs: number[]) => xs.slice().sort((a, b) => a - b)[xs.length >> 1]!;
 const field = (lv: Level, track: Track = monza) => {
   const race = newRace(track, GRID, seeded(3), "medium", lv);
@@ -452,7 +468,7 @@ const field = (lv: Level, track: Track = monza) => {
   );
   assert.ok(race.done, `${at}: done once the whole field has the flag`);
   assert.ok(worst.track < 2, `${at}: nobody's stuck (${worst.track.toFixed(1)} s)`);
-  assert.ok(worst.lane < 5, `${at}: nobody waits long in the lane (${worst.lane.toFixed(1)} s)`);
+  assert.ok(worst.lane < 7, `${at}: nobody waits long in the lane (${worst.lane.toFixed(1)} s)`);
   const bests = race.racers.map((r) => r.best);
   // A car whose every lap was deleted has no best; it isn't the front.
   const front = Math.min(...bests.filter(Boolean));

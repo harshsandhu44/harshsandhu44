@@ -381,9 +381,9 @@ export function buildTrack(def: TrackDef) {
     const lat = out - PIT_SIDE * pitOffset(i);
     return out > HALF[i]! && lat > -PIT_HALF && lat < PIT_HALF + PIT_SIDE * working(i);
   };
-  // One box per team, 24 m apart in the working lane from just after the lane is fully out:
-  // room for a car pulling out of one not to meet a car turning into the next.
-  const BOXES = Array.from({ length: 10 }, (_, k) => {
+  // One box per team (race.ts CARS / 2), 24 m apart in the working lane from just after the lane
+  // is fully out: room for a car pulling out of one not to meet a car turning into the next.
+  const BOXES = Array.from({ length: 11 }, (_, k) => {
     const i = atDist(PIT_FROM + 10 + k * 24);
     // On a path point, so the paint and the stop agree to the centimetre.
     const s = signed(CUM[i]! / LENGTH);
@@ -446,8 +446,13 @@ export function buildTrack(def: TrackDef) {
     });
   });
   // The pit wall, between the track and the flat of the lane, starting a little after the lane
-  // is fully out so a car that turns in late still makes it.
-  const PIT_WALL = offset((i) => PIT_SIDE * (HALF[i]! + 4));
+  // is fully out so a car that turns in late still makes it. It starts at the tarmac's edge and
+  // angles out to 4 m beyond it over 20 m, so a car that's late across glances off it into the
+  // lane rather than nosing into its end.
+  const PIT_WALL = offset((i) => {
+    const s = signed(CUM[i]! / LENGTH);
+    return PIT_SIDE * (HALF[i]! + 4 * Math.min(1, Math.max(0, (s - PIT_FROM - 20) / 20)));
+  });
   for (let i = atDist(PIT_FROM + 20); i !== atDist(PIT_TO); i = (i + 1) % N)
     WALLS.push([...PIT_WALL[i]!, ...PIT_WALL[(i + 1) % N]!]);
 
