@@ -15,7 +15,12 @@ import {
   strategies,
   gridSlot,
   teamPick,
+  GRID,
+  aiInput,
+  newQuali,
   newRace,
+  qualiDelta,
+  qualiOrder,
   results,
   tick,
   wrongWay,
@@ -68,7 +73,7 @@ const solo = (
   lv?: Level,
   track: Track = monza,
 ) => {
-  const race = newRace(track, 9, seeded(7), "medium", lv);
+  const race = newRace(track, GRID, seeded(7), "medium", lv);
   race.racers = race.racers.filter((r) => r.id === id);
   edit(race.racers[0]!);
   return race;
@@ -91,7 +96,7 @@ assert.ok(lapOn(0) > fresh + 1000, `worn tyres are slower (${fmt(fresh)} vs ${fm
 
 // How long each compound lasts, with mistakes on: life at the end of each lap, no stop.
 const stint = (tyre: Tyre, seed: number) => {
-  const race = newRace(monza, 9, seeded(seed));
+  const race = newRace(monza, GRID, seeded(seed));
   race.racers = race.racers.filter((r) => r.id === 10);
   const r = race.racers[0]!;
   [r.tyre, r.stops, r.plan] = [tyre, [], [tyre]];
@@ -120,7 +125,7 @@ assert.deepEqual(
 // first or last lap) on a set that lasts it.
 for (const laps of DISTANCES)
   for (const seed of [1, 2, 3])
-    for (const r of newRace(monza, 9, seeded(seed), "medium", "pro", laps).racers.slice(1)) {
+    for (const r of newRace(monza, GRID, seeded(seed), "medium", "pro", laps).racers.slice(1)) {
       const ends = [...r.stops, laps];
       assert.equal(r.plan.length, ends.length, `${laps} laps: a set per stint`);
       ends.forEach((end, k) => {
@@ -261,7 +266,7 @@ for (const def of TRACKS) pitStop(getTrack(def.id));
 // Seconds each of these drivers spends in the lane, starting in it 10 m apart, on a race with
 // only them.
 const lane = (ids: number[]) => {
-  const race = newRace(monza, 9, seeded(7));
+  const race = newRace(monza, GRID, seeded(7));
   race.racers = race.racers.filter((r) => ids.includes(r.id));
   race.racers.forEach((r, k) => {
     const m = BOXES[0]!.s - 40 - 10 * k;
@@ -296,7 +301,7 @@ const lane = (ids: number[]) => {
 for (const def of TRACKS) {
   // You, into the lane: the team drives you to box 0, stops and takes you back out.
   const t = getTrack(def.id);
-  const race = newRace(t, 9, seeded(7));
+  const race = newRace(t, GRID, seeded(7));
   race.racers = [race.racers[0]!];
   const r = race.racers[0]!;
   const BOX0 = t.BOXES[0]!;
@@ -413,7 +418,7 @@ assert.ok(
 // a queue behind a teammate's stop.
 const median = (xs: number[]) => xs.slice().sort((a, b) => a - b)[xs.length >> 1]!;
 const field = (lv: Level, track: Track = monza) => {
-  const race = newRace(track, 9, seeded(3), "medium", lv);
+  const race = newRace(track, GRID, seeded(3), "medium", lv);
   race.racers = race.racers.filter((r) => r.id !== 0);
   const stuck = new Map<number, number>();
   const worst = { track: 0, lane: 0 };
@@ -544,7 +549,7 @@ assert.ok(Math.max(...plans) - Math.min(...plans) < 10_000, "every strategy come
 // fresh-medium laps. Then its pick for a 10-lap race, raced against the next best, the best with
 // each number of stops and a no-stop: within a second and a half of the quickest.
 const alone = (t: Track, laps: number, stops: number[], tyres: Tyre[]) => {
-  const race = newRace(t, 9, seeded(7), "medium", "pro", laps);
+  const race = newRace(t, GRID, seeded(7), "medium", "pro", laps);
   race.racers = race.racers.filter((r) => r.id === 10);
   const r = race.racers[0]!;
   [r.tyre, r.stints, r.stops, r.plan] = [tyres[0]!, [tyres[0]!], stops, tyres];
@@ -598,7 +603,7 @@ for (const def of TRACKS) {
 // down to nothing.
 {
   const laps = DISTANCES.at(-1)!;
-  const race = newRace(monza, 9, seeded(3), "medium", "pro", laps);
+  const race = newRace(monza, GRID, seeded(3), "medium", "pro", laps);
   race.racers = race.racers.filter((r) => r.id !== 0);
   let worn = 1;
   run(race, 60 * laps * 2, () => {
@@ -620,7 +625,7 @@ for (const def of TRACKS) {
 // A car that never gets to the flag doesn't hold the classification up: the race is done three
 // average laps after the winner, and it's classified on an estimate behind.
 {
-  const race = newRace(monza, 9, seeded(7), "medium", "pro", 2);
+  const race = newRace(monza, GRID, seeded(7), "medium", "pro", 2);
   race.racers = race.racers.filter((r) => r.id === 10 || r.id === 11);
   race.slips = false;
   race.racers[1]!.launch = Infinity;
@@ -634,6 +639,43 @@ for (const def of TRACKS) {
     "and it's classified last",
   );
   assert.ok(results(race)[1]!.down > 0, "laps down");
+}
+
+// Qualifying sets the whole grid: the cars line up front to back in the order given.
+{
+  const grid = GRID.slice().reverse();
+  const race = newRace(monza, grid, seeded(7));
+  assert.deepEqual(
+    race.racers
+      .slice()
+      .sort((a, b) => b.dist - a.dist)
+      .map((r) => r.id),
+    grid,
+    "the grid lines up in the order given",
+  );
+}
+
+// Qualifying, run as the drive runs it: every race ticked together. On every track each
+// computer car sets a time, and you, sat still with no lap, start last. At Monza you're driven by
+// the computer instead, set a time too, and the live delta stays sensible all the way round.
+for (const { id, name } of TRACKS) {
+  const q = newQuali(getTrack(id), "pro", seeded(5));
+  const me = q[0]!.racers[0]!;
+  const drive = id === "monza";
+  let worst = 0;
+  for (let f = 0; f < 300 / DT && !q.slice(drive ? 0 : 1).every((r) => r.done); f++) {
+    for (const race of q) if (!race.done) tick(race, drive ? aiInput(me, q[0]!) : still, DT);
+    worst = Math.max(worst, Math.abs(qualiDelta(q) ?? 0));
+  }
+  const order = qualiOrder(q);
+  assert.ok(
+    order.every((o) => o.best > 0 || o.id === 0),
+    `${name}: every computer car sets a quali time`,
+  );
+  if (drive) {
+    assert.ok(me.best > 0 && worst > 0 && worst < 5, `${name}: a lap and a delta (${worst})`);
+    console.log(`${name} quali: pole ${fmt(order[0]!.best)}`);
+  } else assert.equal(order.at(-1)!.id, 0, `${name}: no time starts last`);
 }
 
 console.log("race: ok");

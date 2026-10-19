@@ -602,8 +602,8 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
   };
 
   return {
-    // Every car, yours first, and each team's crew: 0 in the garage, 1 a car in the lane, 2 a
-    // car stopped at the box.
+    // Every car on track, yours first (only yours in qualifying, the rest hidden), and each
+    // team's crew: 0 in the garage, 1 a car in the lane, 2 a car stopped at the box.
     frame(cars: Car[], steer: number, dt: number, crews: number[]) {
       let moved = false;
       crews.forEach((want, k) => {
@@ -618,6 +618,7 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
       });
       if (moved) crewBody.instanceMatrix.needsUpdate = crewHead.instanceMatrix.needsUpdate = true;
       const c = cars[0]!;
+      bodies.forEach((b, k) => (b.visible = k < cars.length));
       cars.forEach((o, k) => {
         bodies[k]!.position.set(o.x, RIDE, o.y);
         bodies[k]!.rotation.y = Math.PI / 2 - o.h;

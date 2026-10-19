@@ -154,6 +154,11 @@ export const driver = (race: Race, id: number) => LEVELS[race.level].drivers[id]
 // A car's colour: its team's, or "" for yours.
 export const colorOf = (race: Race, id: number) => LEVELS[race.level].colors[id >> 1]!;
 
+// The grid without qualifying, as driver ids front to back: the computer in pace order, your
+// teammate the slowest, and you P10.
+const AI = [...Array(CARS).keys()].slice(2).concat(1);
+export const GRID = [...AI.slice(0, 9), 0, ...AI.slice(9)];
+
 // Your hero reaction time picks the slot: up to 0.250 s is pole, then one back per 30 ms. The hero
 // times from the press to the painted lights-out, so these are real reactions.
 export const gridSlot = (ms: number) => Math.min(CARS - 1, Math.max(0, Math.ceil((ms - 250) / 30)));
@@ -342,24 +347,22 @@ export type Race = {
 
 export function newRace(
   track: Track,
-  slot: number,
+  grid: number[],
   rand = Math.random,
   tyre: Tyre = "medium",
   lv: Level = "intermediate",
   laps = DISTANCES[0]!,
 ): Race {
-  // Computer paces spread across the level's range in roster order, your teammate the slowest,
-  // and the quickest line up at the front in the slots you didn't take.
+  // Computer paces spread across the level's range in roster order, your teammate the slowest.
+  // Everyone lines up in `grid`'s order.
   const { pace } = LEVELS[lv];
   const { HALF, LENGTH, atDist, dirAt, pointAt, ZONES } = track;
-  const ai = [...Array(CARS).keys()].slice(2).concat(1);
   const options = strategies(laps, track);
   const close = options.filter((o) => o.cost <= options[0]!.cost + CALL[lv]);
-  const slots = [...Array(CARS).keys()].filter((s) => s !== slot);
   const racers = [...Array(CARS).keys()].map((id): Racer => {
-    const order = ai.indexOf(id);
+    const order = AI.indexOf(id);
     const strat = id ? close[Math.floor(rand() * close.length)]! : { at: [], tyres: [tyre] };
-    const s = id === 0 ? slot : slots[order]!;
+    const s = grid.indexOf(id);
     const m = gridAt(s);
     const [x, y] = pointAt(m, (s % 2 ? 1 : -1) * (HALF[atDist(m)]! / 2.5));
     const on = strat.tyres[0]!;
@@ -539,6 +542,51 @@ export function aiInput(r: Racer, race: Race): Input {
   };
 }
 
+// Qualifying: one flying lap each on fresh softs, from a rolling start RUN_UP m before the line
+// at the centreline's speed there. Every car is alone in a race of its own, yours first, all ticked
+// together so they start the lap at about the same moment. No stops, and mistakes still happen.
+const RUN_UP = 500;
+export function newQuali(track: Track, lv: Level, rand = Math.random): Race[] {
+  const { LENGTH, atDist, dirAt, limitAt, pointAt } = track;
+  const m = -RUN_UP;
+  const p = (m + LENGTH) / LENGTH;
+  return [...Array(CARS).keys()].map((id) => {
+    const race = newRace(track, GRID, rand, "soft", lv, 1);
+    const r = race.racers[id]!;
+    const [x, y] = pointAt(m, 0);
+    const v = Math.min(TOP, limitAt(atDist(m), grip(1, "soft")));
+    Object.assign(r, {
+      car: { x, y, h: dirAt(p), v },
+      lap: { ...newLap(), p, halfway: true },
+      dist: m,
+      p,
+      tyre: "soft",
+      stints: ["soft"],
+      stops: [],
+      plan: ["soft"],
+      launch: 0,
+    });
+    race.racers = [r];
+    return race;
+  });
+}
+// The classification: each car's lap (0 for none), quickest first and no time last.
+export const qualiOrder = (q: Race[]) =>
+  q
+    .map(({ racers: [r] }) => ({ id: r!.id, best: r!.best }))
+    .sort((a, b) => (a.best || Infinity) - (b.best || Infinity) || a.id - b.id);
+// Your gap in seconds to the quickest car through the last checkpoint anyone else has reached,
+// each timed from its own line crossing (checkpoint 0); negative when you're quicker. Null until
+// there's one to compare.
+export function qualiDelta([mine, ...rest]: Race[]) {
+  const lap = (race: Race, k: number) => race.cps[k]! - race.cps[0]!;
+  for (let k = mine!.cps.length - 1; k > 0; k--) {
+    const theirs = rest.filter((race) => race.cps[k] !== undefined).map((race) => lap(race, k));
+    if (theirs.length) return (lap(mine!, k) - Math.min(...theirs)) / 1000;
+  }
+  return null;
+}
+
 // The limiter in the lane and the stop at the box, for any car. Teammates share a box, so one
 // that gets there second waits 8 m short of it until the first has gone (a double stack).
 function pitStop(race: Race, r: Racer, dt: number) {
@@ -702,7 +750,7 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     // Track limits, once per trip off. The pit entry's side doesn't count, nor being pushed
     // off: contact in the last second excuses it.
     const entry = s > PIT_IN && s < PIT_OUT && PIT_SIDE * lateral(car.x, car.y, p) > 0;
-    const off = allFourOff(edge) && !entry && r.finish === null;
+    const off = allFourOff(edge) && !entry && r.finish === null && r.lap.start !== null;
     if (off && !r.off && race.t - r.touchT > 1000) strike(race, r);
     r.off = off;
     if (r.id === 0 && r.life < 0.3 && !r.boxCall && r.finish === null) {
