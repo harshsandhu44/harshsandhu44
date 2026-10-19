@@ -617,11 +617,15 @@ export type Split = { sector: number; ms: number; valid: boolean; lap: number | 
 // Advances the lap with this frame's position. Sectors split at a third and two thirds of the
 // way round, crossed going forward. A lap counts when the car crosses the line going forward
 // after passing halfway going forward, so reversing over the line doesn't. Four wheels off at
-// any point deletes it, like track limits on TV.
+// any point deletes it, like track limits on TV. A lap with no start that's already past halfway
+// is a rolling start: its clock starts at the line.
 export function lapTick(lap: Lap, p: number, edge: number, t: number): Split | null {
   const prev = lap.p;
   lap.p = p;
-  if (lap.start === null) return null;
+  if (lap.start === null) {
+    if (lap.halfway && prev > 0.75 && p < 0.25) [lap.start, lap.halfway] = [t, false];
+    return null;
+  }
   if (allFourOff(edge)) lap.invalid = true;
   const ms = t - lap.start;
   const at = lap.marks.at(-1) ?? 0;
