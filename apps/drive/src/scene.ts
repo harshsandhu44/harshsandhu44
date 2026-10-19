@@ -120,7 +120,9 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.domElement.className = "block size-full";
   host.append(renderer.domElement);
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  // 1.5, not 2: a retina laptop's full 5 MP with antialiasing and shadows misses every few
+  // frames on the GPU. ponytail: fixed cap, step it down at runtime if 1.5 still drops frames.
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
   renderer.toneMapping = THREE.NeutralToneMapping;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;

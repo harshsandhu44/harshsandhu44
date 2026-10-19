@@ -25,20 +25,26 @@ export const DISTANCES = [5, 10, 15, 20];
 // racing line (1) the computer drives, the share of its grip its quickest and slowest drivers
 // dare use (so they brake earlier and corner slower, but run flat out on the straights), and
 // how often it overcooks a corner (never, for legends). Pro cars also get EDGE more grip: on the
-// best line at the limit the computer still laps about 1.5 s off a clean human, so that closes it.
-// The field is ten two-car teams. Driver 0 is you, in the car's own livery, and driver 1 your
-// teammate, the best driver whose team didn't make the top nine; then that series' top nine teams
-// in championship order, each driver above their teammate. Standings as of 17 Oct 2026; F3
-// teams run three cars, so their best two. ponytail: colours are near each team's, by eye, and
-// the paces are tuned in race.check.ts. Refresh the rosters when the seasons turn over.
-// Legends is the world champions: every multiple champion, plus Mansell and Hunt, at the team
-// each is best known for. They never make a mistake, and their winner beats a clean race from
-// you by a second or two.
+// best line at the limit the computer laps well off a clean human, so that closes it.
+// The field is eleven two-car teams. Driver 0 is you, in the car's own livery, and driver 1 your
+// teammate, the best driver whose team didn't make the top ten; then that series' top ten teams
+// in championship order, each driver above their teammate. Standings as of 19 Oct 2026; F3
+// teams run three cars, so their best two. ponytail: colours are near each team's, by eye.
+// Refresh the rosters when the seasons turn over.
+// Each driver has a pace and an awareness rating, 0-99. Within a level the best pace drives at
+// the level's fast share of the limit and the worst at its slow one, and awareness sets how
+// often each overcooks a corner around the level's rate. F1's are EA's F1 25 ratings (2026
+// Season Pack); EA rates no F2 or F3 drivers, so theirs are 100 less their championship place.
+// Legends is the world champions: every multiple champion, plus Mansell, Hunt, Rosberg and
+// Räikkönen, at the team each is best known for. Their pace is their best season in
+// f1-analysis.com's model as a share of the best anyone had managed by then, as its scores grow
+// with the era. They never make a mistake, and their winner beats a clean race from you by a
+// second or two.
 export type Level = "amateur" | "intermediate" | "pro" | "legends";
-// ponytail: tuned in race.check.ts so pro's winner finishes in about 7:30, the time a clean
-// race from the player beats by a few seconds, and the field laps 1:26 to 1:29.
-const EDGE = 1.1;
-const LEGEND_EDGE = 1.16;
+// ponytail: tuned in race.check.ts so pro's pole at Monza is about 1:20.5, a clean qualifying
+// lap from the player.
+const EDGE = 1.33;
+const LEGEND_EDGE = 1.4;
 // How far under its limit (m/s) a legend has to be to pull out and pass.
 const PASS = 15;
 // A computer car's extra grip: its level's edge (1 below pro), or the track's own for pro and
@@ -47,8 +53,11 @@ export const edgeOf = ({ level: lv, track }: Race) =>
   (lv === "pro" ? track.PRO_EDGE : lv === "legends" ? track.LEGENDS_EDGE : undefined) ??
   LEVELS[lv].edge;
 // A car's grip on its tyres: a computer car's scaled by its edge.
-export const carGrip = (race: Race, r: Racer) => grip(r.life, r.tyre) * (r.id ? edgeOf(race) : 1);
-type Seat = [code: string, name: string];
+// Close behind another car its dirty air takes some of that.
+export const carGrip = (race: Race, r: Racer) =>
+  grip(r.life, r.tyre) * (r.id ? edgeOf(race) : 1) * (1 - r.dirty);
+// Awareness defaults to pace, for the levels that rate only by championship place.
+type Seat = [code: string, name: string, pace: number, aware?: number];
 type Team = [color: string, a: Seat, b: Seat];
 const level = (
   series: string,
@@ -59,7 +68,7 @@ const level = (
   mate: Seat,
   teams: Team[],
 ) => {
-  const all: Team[] = [["", ["HAR", "You"], mate], ...teams];
+  const all: Team[] = [["", ["HAR", "You", 0], mate], ...teams];
   return {
     series,
     line,
@@ -67,27 +76,32 @@ const level = (
     slip,
     edge,
     colors: all.map(([c]) => c),
-    drivers: all.flatMap(([, a, b]) => [a, b]).map(([code, name]) => ({ code, name })),
+    drivers: all
+      .flatMap(([, a, b]) => [a, b])
+      .map(([code, name, pace, aware = pace]) => ({ code, name, pace, aware })),
   };
 };
 export const LEVELS: Record<Level, ReturnType<typeof level>> = {
+  // ponytail: McLaughlin, Sharp, Xie and Barrichello finished below 20th; their order there is
+  // by eye.
   amateur: level(
     "F3",
     0,
     [0.77, 0.71],
     0.1,
     1,
-    ["RIV", "Ernesto Rivera"],
+    ["RIV", "Ernesto Rivera", 93],
     [
-      ["#ff6b1a", ["UGO", "Ugo Ugochukwu"], ["NAE", "Théophile Naël"]],
-      ["#1d3b8a", ["SLA", "Freddie Slater"], ["STR", "Noah Strømsted"]],
-      ["#f2c230", ["TAP", "Tuukka Taponen"], ["COL", "Mattia Colnaghi"]],
-      ["#f2f2ef", ["KAT", "Taito Kato"], ["GLA", "Maciej Gładysz"]],
-      ["#f070b2", ["YAM", "Hiyu Yamakoshi"], ["DEL", "Bruno del Pino"]],
-      ["#0d5c3a", ["CLE", "Pedro Clerot"], ["BAD", "Brando Badoer"]],
-      ["#b0122b", ["WHA", "James Wharton"], ["SHA", "Louis Sharp"]],
-      ["#b9bec4", ["NAK", "Jin Nakamura"], ["MCL", "Fionn McLaughlin"]],
-      ["#2f6df0", ["LAC", "Nicola Lacorte"], ["XIE", "Gerrard Xie"]],
+      ["#ff6b1a", ["UGO", "Ugo Ugochukwu", 99], ["NAE", "Théophile Naël", 95]],
+      ["#1d3b8a", ["SLA", "Freddie Slater", 98], ["STR", "Noah Strømsted", 90]],
+      ["#f2c230", ["TAP", "Tuukka Taponen", 97], ["COL", "Mattia Colnaghi", 87]],
+      ["#f2f2ef", ["KAT", "Taito Kato", 96], ["GLA", "Maciej Gładysz", 88]],
+      ["#f070b2", ["YAM", "Hiyu Yamakoshi", 91], ["DEL", "Bruno del Pino", 89]],
+      ["#0d5c3a", ["CLE", "Pedro Clerot", 94], ["BAD", "Brando Badoer", 92]],
+      ["#b0122b", ["WHA", "James Wharton", 83], ["SHA", "Louis Sharp", 78]],
+      ["#b9bec4", ["NAK", "Jin Nakamura", 86], ["MCL", "Fionn McLaughlin", 79]],
+      ["#2f6df0", ["LAC", "Nicola Lacorte", 81], ["XIE", "Gerrard Xie", 77]],
+      ["#7a2bd6", ["DAV", "Yevan David", 82], ["BAR", "Fernando Barrichello", 76]],
     ],
   ),
   intermediate: level(
@@ -96,17 +110,18 @@ export const LEVELS: Record<Level, ReturnType<typeof level>> = {
     [0.89, 0.83],
     0.06,
     1,
-    ["MON", "Sebastián Montoya"],
+    ["FIT", "Emerson Fittipaldi Jr.", 82],
     [
-      ["#ff6b1a", ["TSO", "Nikola Tsolov"], ["LEO", "Noel León"]],
-      ["#c8a24a", ["CAM", "Rafael Câmara"], ["DUR", "Joshua Dürksen"]],
-      ["#0d5c3a", ["DUN", "Alex Dunne"], ["STE", "Martinius Stenshorne"]],
-      ["#f2c230", ["MIN", "Gabriele Minì"], ["GOE", "Oliver Goethe"]],
-      ["#2f6df0", ["BEG", "Dino Beganovic"], ["BIL", "Roman Bilinski"]],
-      ["#f2f2ef", ["MAI", "Kush Maini"], ["INT", "Tasanapol Inthraphuvasak"]],
-      ["#1d3b8a", ["HOE", "Laurens van Hoepen"], ["BEN", "John Bennett"]],
-      ["#b9bec4", ["MIY", "Ritomo Miyata"], ["HER", "Colton Herta"]],
-      ["#f070b2", ["VIL", "Rafael Villagómez"], ["YAM", "Hiyu Yamakoshi"]],
+      ["#ff6b1a", ["TSO", "Nikola Tsolov", 98], ["LEO", "Noel León", 94]],
+      ["#c8a24a", ["CAM", "Rafael Câmara", 99], ["DUR", "Joshua Dürksen", 92]],
+      ["#0d5c3a", ["DUN", "Alex Dunne", 97], ["STE", "Martinius Stenshorne", 93]],
+      ["#f2c230", ["MIN", "Gabriele Minì", 96], ["GOE", "Oliver Goethe", 85]],
+      ["#2f6df0", ["BEG", "Dino Beganovic", 95], ["BIL", "Roman Bilinski", 84]],
+      ["#f2f2ef", ["MAI", "Kush Maini", 91], ["INT", "Tasanapol Inthraphuvasak", 89]],
+      ["#1d3b8a", ["HOE", "Laurens van Hoepen", 90], ["BEN", "John Bennett", 86]],
+      ["#b9bec4", ["MIY", "Ritomo Miyata", 88], ["HER", "Colton Herta", 81]],
+      ["#f070b2", ["VIL", "Rafael Villagómez", 87], ["YAM", "Hiyu Yamakoshi", 77]],
+      ["#b0122b", ["MON", "Sebastián Montoya", 83], ["BOY", "Mari Boya", 80]],
     ],
   ),
   pro: level(
@@ -115,17 +130,18 @@ export const LEVELS: Record<Level, ReturnType<typeof level>> = {
     [0.98, 0.93],
     0.02,
     EDGE,
-    ["ALO", "Fernando Alonso"],
+    ["PER", "Sergio Pérez", 85, 81],
     [
-      ["#27f4d2", ["ANT", "Kimi Antonelli"], ["RUS", "George Russell"]],
-      ["#a6051a", ["HAM", "Lewis Hamilton"], ["LEC", "Charles Leclerc"]],
-      ["#ff8000", ["NOR", "Lando Norris"], ["PIA", "Oscar Piastri"]],
-      ["#1e41ff", ["VER", "Max Verstappen"], ["HAD", "Isack Hadjar"]],
-      ["#6692ff", ["LAW", "Liam Lawson"], ["LIN", "Arvid Lindblad"]],
-      ["#ff87bc", ["GAS", "Pierre Gasly"], ["COL", "Franco Colapinto"]],
-      ["#b6babd", ["BEA", "Oliver Bearman"], ["OCO", "Esteban Ocon"]],
-      ["#4a4f55", ["HUL", "Nico Hülkenberg"], ["BOR", "Gabriel Bortoleto"]],
-      ["#64c4ff", ["SAI", "Carlos Sainz"], ["ALB", "Alexander Albon"]],
+      ["#27f4d2", ["ANT", "Kimi Antonelli", 93, 77], ["RUS", "George Russell", 92, 93]],
+      ["#a6051a", ["HAM", "Lewis Hamilton", 90, 91], ["LEC", "Charles Leclerc", 93, 91]],
+      ["#ff8000", ["NOR", "Lando Norris", 94, 85], ["PIA", "Oscar Piastri", 91, 84]],
+      ["#1e41ff", ["VER", "Max Verstappen", 97, 82], ["HAD", "Isack Hadjar", 87, 82]],
+      ["#6692ff", ["LAW", "Liam Lawson", 81, 74], ["LIN", "Arvid Lindblad", 78, 66]],
+      ["#ff87bc", ["GAS", "Pierre Gasly", 86, 78], ["COL", "Franco Colapinto", 75, 74]],
+      ["#b6babd", ["BEA", "Oliver Bearman", 84, 70], ["OCO", "Esteban Ocon", 84, 84]],
+      ["#4a4f55", ["HUL", "Nico Hülkenberg", 85, 85], ["BOR", "Gabriel Bortoleto", 82, 77]],
+      ["#64c4ff", ["SAI", "Carlos Sainz", 85, 80], ["ALB", "Alexander Albon", 83, 76]],
+      ["#229971", ["ALO", "Fernando Alonso", 90, 85], ["STR", "Lance Stroll", 76, 73]],
     ],
   ),
   // ponytail: tuned in race.check.ts against pro.
@@ -135,27 +151,28 @@ export const LEVELS: Record<Level, ReturnType<typeof level>> = {
     [0.98, 0.95],
     0,
     LEGEND_EDGE,
-    ["HUN", "James Hunt"],
+    ["HUN", "James Hunt", 88],
     [
-      ["#a6051a", ["SCH", "Michael Schumacher"], ["LAU", "Niki Lauda"]],
-      ["#27f4d2", ["HAM", "Lewis Hamilton"], ["FAN", "Juan Manuel Fangio"]],
-      ["#ff8000", ["SEN", "Ayrton Senna"], ["PRO", "Alain Prost"]],
-      ["#1e41ff", ["VER", "Max Verstappen"], ["VET", "Sebastian Vettel"]],
-      ["#64c4ff", ["PIQ", "Nelson Piquet"], ["MAN", "Nigel Mansell"]],
-      ["#0d5c3a", ["CLA", "Jim Clark"], ["FIT", "Emerson Fittipaldi"]],
-      ["#f2f2ef", ["BRA", "Jack Brabham"], ["HIL", "Graham Hill"]],
-      ["#1d3b8a", ["STE", "Jackie Stewart"], ["ASC", "Alberto Ascari"]],
-      ["#f2c230", ["ALO", "Fernando Alonso"], ["HAK", "Mika Häkkinen"]],
+      ["#a6051a", ["SCH", "Michael Schumacher", 100], ["LAU", "Niki Lauda", 88]],
+      ["#27f4d2", ["HAM", "Lewis Hamilton", 88], ["FAN", "Juan Manuel Fangio", 100]],
+      ["#ff8000", ["SEN", "Ayrton Senna", 100], ["PRO", "Alain Prost", 100]],
+      ["#1e41ff", ["VER", "Max Verstappen", 100], ["VET", "Sebastian Vettel", 80]],
+      ["#64c4ff", ["PIQ", "Nelson Piquet", 82], ["MAN", "Nigel Mansell", 79]],
+      ["#0d5c3a", ["CLA", "Jim Clark", 96], ["FIT", "Emerson Fittipaldi", 74]],
+      ["#f2f2ef", ["BRA", "Jack Brabham", 62], ["HIL", "Graham Hill", 58]],
+      ["#1d3b8a", ["STE", "Jackie Stewart", 77], ["ASC", "Alberto Ascari", 100]],
+      ["#f2c230", ["ALO", "Fernando Alonso", 100], ["HAK", "Mika Häkkinen", 69]],
+      ["#c9b037", ["ROS", "Nico Rosberg", 79], ["RAI", "Kimi Räikkönen", 71]],
     ],
   ),
 };
-export const CARS = 20;
+export const CARS = 22;
 export const driver = (race: Race, id: number) => LEVELS[race.level].drivers[id]!;
 // A car's colour: its team's, or "" for yours.
 export const colorOf = (race: Race, id: number) => LEVELS[race.level].colors[id >> 1]!;
 
-// The grid without qualifying, as driver ids front to back: the computer in pace order, your
-// teammate the slowest, and you P10.
+// The grid without qualifying, as driver ids front to back: the computer in roster order, your
+// teammate last, and you P10.
 const AI = [...Array(CARS).keys()].slice(2).concat(1);
 export const GRID = [...AI.slice(0, 9), 0, ...AI.slice(9)];
 
@@ -308,9 +325,14 @@ export type Racer = {
   ot: null | "ready" | "on";
   otZone: number;
   bonusLap: number;
-  // Computer cars: the corner they'll overcook (-1 none) and the last corner they rolled for.
+  // Computer cars: the chance of overcooking each corner, the corner they'll overcook (-1 none)
+  // and the last corner they rolled for.
+  slip: number;
   mistake: number;
   rolled: number;
+  // In another car's wake: the top speed its tow adds and the share of grip its dirty air takes.
+  tow: number;
+  dirty: number;
   // You: whether the team has already called you in on these tyres.
   boxCall: boolean;
   // In the lane with no stop planned on this visit: a computer car that strayed in, or any car
@@ -353,14 +375,20 @@ export function newRace(
   lv: Level = "intermediate",
   laps = DISTANCES[0]!,
 ): Race {
-  // Computer paces spread across the level's range in roster order, your teammate the slowest.
-  // Everyone lines up in `grid`'s order.
-  const { pace } = LEVELS[lv];
+  // Computer paces spread across the level's range by pace rating, and mistakes around its rate
+  // by awareness, from half for the most aware to one and a half for the least. Everyone lines up
+  // in `grid`'s order.
+  const { pace, slip, drivers } = LEVELS[lv];
   const { HALF, LENGTH, atDist, dirAt, pointAt, ZONES } = track;
   const options = strategies(laps, track);
   const close = options.filter((o) => o.cost <= options[0]!.cost + CALL[lv]);
+  const ai = drivers.slice(1);
+  const spread = (k: "pace" | "aware", id: number) => {
+    const xs = ai.map((d) => d[k]);
+    const [lo, hi] = [Math.min(...xs), Math.max(...xs)];
+    return (drivers[id]![k] - lo) / (hi - lo || 1);
+  };
   const racers = [...Array(CARS).keys()].map((id): Racer => {
-    const order = AI.indexOf(id);
     const strat = id ? close[Math.floor(rand() * close.length)]! : { at: [], tyres: [tyre] };
     const s = grid.indexOf(id);
     const m = gridAt(s);
@@ -382,7 +410,7 @@ export function newRace(
       stop: 0,
       served: false,
       pit: false,
-      pace: id === 0 ? pace[0] : pace[0] - ((pace[0] - pace[1]) * order) / (CARS - 2),
+      pace: id === 0 ? pace[0] : pace[1] + (pace[0] - pace[1]) * spread("pace", id),
       stops: strat.at,
       plan: strat.tyres,
       pitting: false,
@@ -404,8 +432,11 @@ export function newRace(
       ot: null,
       otZone: 0,
       bonusLap: -1,
+      slip: slip * (1.5 - spread("aware", id)),
       mistake: -1,
       rolled: -1,
+      tow: 0,
+      dirty: 0,
       boxCall: false,
       through: false,
     };
@@ -447,7 +478,7 @@ export function aiInput(r: Racer, race: Race): Input {
   const k = CORNERS.findIndex((c) => fwd(c.turnIn - 250, m) < 50);
   if (k >= 0 && r.rolled !== k) {
     r.rolled = k;
-    r.mistake = race.slips && slip > 0 && race.rand() < slip + 0.08 * (1 - r.life) ? k : -1;
+    r.mistake = race.slips && r.slip > 0 && race.rand() < r.slip + 0.08 * (1 - r.life) ? k : -1;
   }
   if (r.mistake >= 0 && fwd(CORNERS[r.mistake]!.at, m) < 200) r.mistake = -1;
   const at = atDist(m + 5);
@@ -513,7 +544,9 @@ export function aiInput(r: Racer, race: Race): Input {
   }
   // Don't turn into a car alongside: hold the line until one of you is clear. Two cars
   // swapping sides would otherwise lean on each other down to a crawl. A car heading for the pit
-  // entry has the line over any car it leads, or one tucked in on its right shuts it out.
+  // entry (before the line) has the line over any car it leads, or one tucked in on its right
+  // shuts it out; rejoining after the line it doesn't, or the cars rejoining together all squeeze
+  // onto one line and lean on each other to a stop.
   const now = lateral(car.x, car.y, r.p);
   const beside = race.racers.some((o) => {
     const d = lateral(o.car.x, o.car.y, o.p) - now;
@@ -521,7 +554,7 @@ export function aiInput(r: Racer, race: Race): Input {
     return (
       o !== r &&
       Math.abs(gap) < 6 &&
-      !(r.pitting && gap < 0) &&
+      !(r.pitting && s < 0 && gap < 0) &&
       d * (to - now) > 0 &&
       Math.abs(d) < 3
     );
@@ -698,6 +731,35 @@ function battery(race: Race, r: Racer, input: Input, dt: number) {
   return 0;
 }
 
+// Slipstream: the nearest car up to TOW_M ahead, within WAKE of the same line, tows up to TOW_TOP
+// more top speed, and inside DIRTY_M its dirty air takes up to DIRTY of the grip, both fading
+// with the gap. Nothing in the pit lane. ponytail: a gap along the lap and a lateral band, not
+// real wake geometry.
+const TOW_M = 40;
+const TOW_TOP = 12 / 3.6;
+const DIRTY_M = 25;
+const DIRTY = 0.05;
+const WAKE = 2;
+function wake(race: Race, r: Racer) {
+  const { LENGTH, ahead, lateral } = race.track;
+  const at = lateral(r.car.x, r.car.y, r.p);
+  let gap = Infinity;
+  if (!r.pit)
+    for (const o of race.racers) {
+      const d = ahead(r.p * LENGTH, o.p * LENGTH);
+      if (
+        o !== r &&
+        !o.pit &&
+        d > 0 &&
+        d < gap &&
+        Math.abs(lateral(o.car.x, o.car.y, o.p) - at) < WAKE
+      )
+        gap = d;
+    }
+  r.tow = TOW_TOP * Math.max(0, 1 - gap / TOW_M);
+  r.dirty = DIRTY * Math.max(0, 1 - gap / DIRTY_M);
+}
+
 // One frame for every car. `you` is the player's input, or null to hold them (before the lights).
 // Returns the player's split, if this frame made one.
 export function tick(race: Race, you: Input, dt: number): Split | null {
@@ -735,7 +797,9 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     if (r.pit) r.pitting = true;
     const input = r.id === 0 && !r.pitting && r.finish === null ? you : aiInput(r, race);
     const moved = Math.abs(dp) < 0.02 && dp > 0;
-    const top = power(race, r, from, p * LENGTH, moved, input) + battery(race, r, input, dt);
+    wake(race, r);
+    const top =
+      power(race, r, from, p * LENGTH, moved, input) + battery(race, r, input, dt) + r.tow;
     const g = carGrip(race, r);
     step(car, input, dt, onGrass(edge), g, top);
     pitStop(race, r, dt);
@@ -747,9 +811,10 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
         dt * TYRES[r.tyre].wear * v * ((WEAR * MONZA) / LENGTH + (allFourOff(edge) ? GRASS : 0)),
     );
     r.wrong = Math.cos(car.h - dirAt(p)) < -0.5 && car.v > 4.2 ? r.wrong + dt : 0;
-    // Track limits, once per trip off. The pit entry's side doesn't count, nor being pushed
-    // off: contact in the last second excuses it.
-    const entry = s > PIT_IN && s < PIT_OUT && PIT_SIDE * lateral(car.x, car.y, p) > 0;
+    // Track limits, once per trip off. The pit lane's side doesn't count, to 30 m past the exit
+    // for a car rejoining alongside another, nor being pushed off: contact in the last second
+    // excuses it.
+    const entry = s > PIT_IN && s < PIT_OUT + 30 && PIT_SIDE * lateral(car.x, car.y, p) > 0;
     const off = allFourOff(edge) && !entry && r.finish === null && r.lap.start !== null;
     if (off && !r.off && race.t - r.touchT > 1000) strike(race, r);
     r.off = off;

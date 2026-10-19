@@ -127,11 +127,12 @@ export function step(car: Car, input: Input, dt: number, grass: boolean, g = 1, 
 export const gear = (v: number) =>
   v < -0.5 ? "R" : Math.min(8, Math.max(1, 1 + Math.floor((v / TOP) * 8)));
 
-// Profiles every 0.05 of grip from 1.15 (softs, and a pro's extra grip) down to 0.55 (fully
+// Profiles every 0.05 of grip from MOST (softs, and a legend's extra grip) down to 0.55 (fully
 // worn), blended between. Downforce means the fast corners lose more than √grip would say, so
-// it's worth the ~13k sums at load.
-const STEPS = 13;
-const grips = (k: number) => 1.15 - k * 0.05;
+// it's worth the ~20k sums at load.
+const MOST = 1.5;
+const STEPS = 20;
+const grips = (k: number) => MOST - k * 0.05;
 // The racing line keeps this far from the tarmac edge.
 const LINE_MARGIN = 1.6;
 
@@ -159,6 +160,29 @@ function seeded(seed: number) {
   };
 }
 
+// Indices 0..n-1 bucketed into CELL m squares by each one's box ([x0, y0, x1, y1]) grown by pad,
+// for the lookups every car makes every frame. A cell lists every index whose padded box touches
+// it, in order, so a search over a cell's list finds what a search over all of them would within
+// pad of the box.
+const CELL = 25;
+const cellKey = (cx: number, cy: number) => cx * 100003 + cy;
+function grid(n: number, box: (i: number) => readonly number[], pad: number) {
+  const cells = new Map<number, number[]>();
+  for (let i = 0; i < n; i++) {
+    const [x0, y0, x1, y1] = box(i) as [number, number, number, number];
+    for (let cx = Math.floor((x0 - pad) / CELL); cx <= Math.floor((x1 + pad) / CELL); cx++)
+      for (let cy = Math.floor((y0 - pad) / CELL); cy <= Math.floor((y1 + pad) / CELL); cy++) {
+        const k = cellKey(cx, cy);
+        const list = cells.get(k);
+        if (list) list.push(i);
+        else cells.set(k, [i]);
+      }
+  }
+  const none: number[] = [];
+  return (x: number, y: number) =>
+    cells.get(cellKey(Math.floor(x / CELL), Math.floor(y / CELL))) ?? none;
+}
+
 export function buildTrack(def: TrackDef) {
   // The source centreline isn't quite central, so shift each point half the difference between
   // its two widths. Then the track is HALF[i] either side of PATH[i], never under 9.5 m: three of
@@ -173,10 +197,17 @@ export function buildTrack(def: TrackDef) {
   // Distance along the lap to each point; CUM[N] is the full lap.
   const CUM = cumulative(PATH);
   const LENGTH = CUM[N]!;
-  // The point a given distance round the lap.
+  // The point a given distance round the lap, by bisection: it's called thousands of times a
+  // frame.
   const atDist = (m: number) => {
     const d = ((m % LENGTH) + LENGTH) % LENGTH;
-    return Math.max(0, CUM.findIndex((c) => c > d) - 1);
+    let [lo, hi] = [0, N];
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (CUM[mid]! > d) hi = mid;
+      else lo = mid;
+    }
+    return lo;
   };
 
   const NORMALS = normals(PATH);
@@ -192,13 +223,28 @@ export function buildTrack(def: TrackDef) {
   const CURVE = curvature(5, PATH, LENGTH);
 
   // Distance from the centreline and from the tarmac edge, and how far round the lap (0 to 1) the
-  // nearest point is. ponytail: linear scan over ~1,400 segments a frame; search around the last
-  // index if it ever shows.
+  // nearest point is. The segments within NEAR m of (x, y)'s cell first: a car is never that far
+  // from the centreline, and if one of them is within NEAR it's nearer than any outside. Otherwise
+  // all ~1,400.
+  const NEAR = 40;
+  const segments = grid(
+    N,
+    (i) => {
+      const [[ax, ay], [bx, by]] = [PATH[i]!, PATH[(i + 1) % N]!];
+      return [Math.min(ax, bx), Math.min(ay, by), Math.max(ax, bx), Math.max(ay, by)];
+    },
+    NEAR,
+  );
+  const all = [...Array(N).keys()];
   function nearest(x: number, y: number) {
+    const near = scan(x, y, segments(x, y));
+    return near.dist <= NEAR ? near : scan(x, y, all);
+  }
+  function scan(x: number, y: number, at: number[]) {
     let best = Infinity;
     let p = 0;
     let half = 0;
-    for (let i = 0; i < N; i++) {
+    for (const i of at) {
       const [ax, ay] = PATH[i]!;
       const [bx, by] = PATH[(i + 1) % N]!;
       const dx = bx - ax;
@@ -284,7 +330,7 @@ export function buildTrack(def: TrackDef) {
   // The speed limit at point i on tyres with grip g, driving `line` of the way from the
   // centreline (0) to the racing line (1).
   const limitAt = (i: number, g: number, line = 0) => {
-    const f = Math.min(STEPS - 1, Math.max(0, (1.15 - g) / 0.05));
+    const f = Math.min(STEPS - 1, Math.max(0, (MOST - g) / 0.05));
     const k = Math.min(STEPS - 2, Math.floor(f));
     const at = (w: number[][]) => w[k]![i]! + (w[k + 1]![i]! - w[k]![i]!) * (f - k);
     return line ? at(WORN) + (at(LINE_WORN) - at(WORN)) * line : at(WORN);
@@ -336,9 +382,9 @@ export function buildTrack(def: TrackDef) {
     const lat = out - PIT_SIDE * pitOffset(i);
     return out > HALF[i]! && lat > -PIT_HALF && lat < PIT_HALF + PIT_SIDE * working(i);
   };
-  // One box per team, 24 m apart in the working lane from just after the lane is fully out:
-  // room for a car pulling out of one not to meet a car turning into the next.
-  const BOXES = Array.from({ length: 10 }, (_, k) => {
+  // One box per team (race.ts CARS / 2), 24 m apart in the working lane from just after the lane
+  // is fully out: room for a car pulling out of one not to meet a car turning into the next.
+  const BOXES = Array.from({ length: 11 }, (_, k) => {
     const i = atDist(PIT_FROM + 10 + k * 24);
     // On a path point, so the paint and the stop agree to the centimetre.
     const s = signed(CUM[i]! / LENGTH);
@@ -401,8 +447,13 @@ export function buildTrack(def: TrackDef) {
     });
   });
   // The pit wall, between the track and the flat of the lane, starting a little after the lane
-  // is fully out so a car that turns in late still makes it.
-  const PIT_WALL = offset((i) => PIT_SIDE * (HALF[i]! + 4));
+  // is fully out so a car that turns in late still makes it. It starts at the tarmac's edge and
+  // angles out to 4 m beyond it over 20 m, so a car that's late across glances off it into the
+  // lane rather than nosing into its end.
+  const PIT_WALL = offset((i) => {
+    const s = signed(CUM[i]! / LENGTH);
+    return PIT_SIDE * (HALF[i]! + 4 * Math.min(1, Math.max(0, (s - PIT_FROM - 20) / 20)));
+  });
   for (let i = atDist(PIT_FROM + 20); i !== atDist(PIT_TO); i = (i + 1) % N)
     WALLS.push([...PIT_WALL[i]!, ...PIT_WALL[(i + 1) % N]!]);
 
@@ -463,10 +514,20 @@ export function buildTrack(def: TrackDef) {
     plant(x, y, 7);
   }
 
-  // ponytail: checks every obstacle every frame (about 2,200, cheap next to drawing); bucket them
-  // in a grid if it ever shows in a profile.
+  // Only the walls and trees in the car's cell, the ones close enough to check.
+  const wallsAt = grid(
+    WALLS.length,
+    (i) => [WALLS[i]![0], WALLS[i]![1], WALLS[i]![0], WALLS[i]![1]],
+    12,
+  );
+  const treesAt = grid(
+    TREES.length,
+    (i) => [TREES[i]!.x, TREES[i]!.y, TREES[i]!.x, TREES[i]!.y],
+    6,
+  );
   function collide(car: Car) {
-    for (const [ax, ay, bx, by] of WALLS) {
+    for (const i of wallsAt(car.x, car.y)) {
+      const [ax, ay, bx, by] = WALLS[i]!;
       if (Math.abs(car.x - ax) > 12 || Math.abs(car.y - ay) > 12) continue;
       const dx = bx - ax;
       const dy = by - ay;
@@ -476,8 +537,10 @@ export function buildTrack(def: TrackDef) {
       );
       touch(car, ax + t * dx, ay + t * dy, WALL_HALF_THICK);
     }
-    for (const t of TREES)
+    for (const i of treesAt(car.x, car.y)) {
+      const t = TREES[i]!;
       if (Math.abs(car.x - t.x) < 6 && Math.abs(car.y - t.y) < 6) touch(car, t.x, t.y, t.r);
+    }
     for (const { x, y, fx, fy } of STANDS) {
       const dx = car.x - x;
       const dy = car.y - y;

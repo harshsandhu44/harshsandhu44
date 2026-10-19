@@ -54,7 +54,7 @@ for (const [ms, p] of [
   [400, 6],
   [520, 10],
   [800, 20],
-  [900, 20],
+  [900, 22],
 ] as [number, number][])
   assert.equal(gridSlot(ms) + 1, p, `${ms} ms starts P${p}`);
 
@@ -63,6 +63,21 @@ const seeded = (seed: number) => () => {
   seed = (seed * 16807) % 2147483647;
   return seed / 2147483647;
 };
+
+// Ratings: in F1 Verstappen (8) has the best pace and Colapinto (13) the worst, and
+// Lindblad (11) the least awareness and Russell (3) the most.
+{
+  const rs = newRace(getTrack("monza"), GRID, seeded(1), "medium", "pro").racers;
+  const paces = rs.slice(1).map((r) => r.pace);
+  assert.equal(rs[8]!.pace, Math.max(...paces), "the best pace rating drives quickest");
+  assert.equal(rs[13]!.pace, Math.min(...paces), "and the worst slowest");
+  assert.ok(rs[11]!.slip > rs[3]!.slip, "the less aware make more mistakes");
+  const legends = newRace(getTrack("monza"), GRID, seeded(1), "medium", "legends").racers;
+  assert.ok(
+    legends.every((r) => r.slip === 0),
+    "legends make none",
+  );
+}
 const still = { gas: false, brake: false, steer: 0 };
 const DT = 1 / 30;
 
@@ -385,6 +400,22 @@ assert.ok(
     straight > 8 && straight < 12,
     `Straight Mode is worth ~10 km/h (${straight.toFixed(0)})`,
   );
+
+  // Slipstream: 20 m behind on the same line, half the tow and a little dirty air; the car in
+  // front gets neither, nor does one 3 m to the side.
+  put(b, 4000, 70);
+  put(a, 3980, 70);
+  run(race, DT);
+  assert.ok(
+    Math.abs(a.tow * 3.6 - 6) < 0.5,
+    `half the tow 20 m back (${(a.tow * 3.6).toFixed(1)} km/h)`,
+  );
+  assert.ok(a.dirty > 0 && a.dirty < 0.02, `and some dirty air (${a.dirty.toFixed(3)})`);
+  assert.equal(b.tow + b.dirty, 0, "the car in front has neither");
+  const [x, y] = pointAt(3980, 3);
+  Object.assign(a.car, { x, y });
+  run(race, DT);
+  assert.equal(a.tow + a.dirty, 0, "out of the wake, neither");
 }
 
 // The battery, in MJ: a pro's flying lap at Monza harvests the 8.5 MJ allowance and no more;
@@ -414,8 +445,9 @@ assert.ok(
 }
 
 // Whole races at each level: nineteen computer cars, you parked out of the way. Nobody sits
-// stopped on track, and in the lane nobody waits long: at most a release held for traffic, or
-// a queue behind a teammate's stop.
+// stopped on track, and in the lane nobody waits long: at most a release held for traffic (with
+// half of twenty-two cars stopping on the same lap, a few seconds of it), or a queue behind a
+// teammate's stop.
 const median = (xs: number[]) => xs.slice().sort((a, b) => a - b)[xs.length >> 1]!;
 const field = (lv: Level, track: Track = monza) => {
   const race = newRace(track, GRID, seeded(3), "medium", lv);
@@ -452,13 +484,13 @@ const field = (lv: Level, track: Track = monza) => {
   );
   assert.ok(race.done, `${at}: done once the whole field has the flag`);
   assert.ok(worst.track < 2, `${at}: nobody's stuck (${worst.track.toFixed(1)} s)`);
-  assert.ok(worst.lane < 5, `${at}: nobody waits long in the lane (${worst.lane.toFixed(1)} s)`);
+  assert.ok(worst.lane < 7, `${at}: nobody waits long in the lane (${worst.lane.toFixed(1)} s)`);
   const bests = race.racers.map((r) => r.best);
   // A car whose every lap was deleted has no best; it isn't the front.
   const front = Math.min(...bests.filter(Boolean));
   assert.ok(
-    track !== monza || (Math.min(...bests) > 84_000 && Math.max(...bests) < 112_000),
-    `${at}: laps from 1:24 to 1:52 (${fmt(Math.min(...bests))} to ${fmt(Math.max(...bests))})`,
+    track !== monza || (Math.min(...bests) > 78_000 && Math.max(...bests) < 112_000),
+    `${at}: laps from 1:18 to 1:52 (${fmt(Math.min(...bests))} to ${fmt(Math.max(...bests))})`,
   );
   assert.ok(
     race.msgs.some((m) => m.kind === "fastest"),
@@ -485,13 +517,13 @@ const [am, mid, pro, leg] = levels as [
   (typeof levels)[0],
   (typeof levels)[0],
 ];
-// The ladder: the front of each field laps about 1:36, 1:31 and 1:26, and pro's winner takes
-// about 7:30, which a clean race from the player (about 1:26 laps) only just beats.
+// The ladder: the front of each field laps about 1:36, 1:31 and 1:22, and pro's winner takes
+// about 7:00, about what a clean race from the player (pole pace on mediums) takes.
 const near = (ms: number, want: number, by: number) => Math.abs(ms - want) < by;
 assert.ok(near(am.front, 95_500, 1500), `amateur's front laps about 1:36 (${fmt(am.front)})`);
 assert.ok(near(mid.front, 91_000, 1500), `intermediate's about 1:31 (${fmt(mid.front)})`);
-assert.ok(near(pro.front, 86_500, 1000), `pro's about 1:26 (${fmt(pro.front)})`);
-assert.ok(near(pro.win, 450_000, 10_000), `pro's winner takes about 7:30 (${fmt(pro.win)})`);
+assert.ok(near(pro.front, 82_000, 1000), `pro's about 1:22 (${fmt(pro.front)})`);
+assert.ok(near(pro.win, 420_000, 10_000), `pro's winner takes about 7:00 (${fmt(pro.win)})`);
 assert.ok(pro.lap < mid.lap && mid.lap < am.lap, "the better the field, the quicker it laps");
 assert.ok(am.strikes > 0, "computer cars make mistakes and pay for them");
 assert.ok(pro.strikes < am.strikes, "and pros make fewer");
@@ -657,7 +689,8 @@ for (const def of TRACKS) {
 
 // Qualifying, run as the drive runs it: every race ticked together. On every track each
 // computer car sets a time, and you, sat still with no lap, start last. At Monza you're driven by
-// the computer instead, set a time too, and the live delta stays sensible all the way round.
+// the computer instead, set a time too, and the live delta stays sensible all the way round (the
+// computer at your grip, without pro's edge, is about 6 s off pole).
 for (const { id, name } of TRACKS) {
   const q = newQuali(getTrack(id), "pro", seeded(5));
   const me = q[0]!.racers[0]!;
@@ -673,8 +706,11 @@ for (const { id, name } of TRACKS) {
     `${name}: every computer car sets a quali time`,
   );
   if (drive) {
-    assert.ok(me.best > 0 && worst > 0 && worst < 5, `${name}: a lap and a delta (${worst})`);
-    console.log(`${name} quali: pole ${fmt(order[0]!.best)}`);
+    assert.ok(me.best > 0 && worst > 0 && worst < 10, `${name}: a lap and a delta (${worst})`);
+    // Pole is a clean lap from the player: 1:20.5.
+    const pole = order[0]!.best;
+    assert.ok(Math.abs(pole - 80_500) < 500, `${name}: pro pole about 1:20.5 (${fmt(pole)})`);
+    console.log(`${name} quali: pole ${fmt(pole)}`);
   } else assert.equal(order.at(-1)!.id, 0, `${name}: no time starts last`);
 }
 

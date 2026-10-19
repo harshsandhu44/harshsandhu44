@@ -1,8 +1,9 @@
 // The circuits to pick from, in the picker's order. Corners, Straight Mode zones (the old DRS
 // zones) and pit lanes are read off each centreline's curvature and placed against OpenStreetMap
 // by hand; metres are round the lap from the line. Pit lanes are simplified to the main straight
-// on their real side. Where pro laps quicker against a clean lap than at Monza, proEdge gives it
-// less grip, so pro is as hard on every track; legendsEdge does the same for legends against pro.
+// on their real side. Grip counts for more or less of a lap from track to track, so proEdge sets
+// pro's extra grip on each one to lap as close to a clean lap as at Monza, so pro is as hard on
+// every track; legendsEdge does the same for legends against pro.
 import { INTERLAGOS_DATA } from "./interlagos.ts";
 import { MONZA_DATA } from "./monza.ts";
 import { REDBULLRING_DATA } from "./redbullring.ts";
@@ -40,8 +41,8 @@ export const TRACKS: TrackDef[] = [
     pit: { side: 1, in: -420, from: -300, to: 120, out: 220 },
     stands: [...row(-10, -200, -110, -20, 70), ...corner(-1, 4920)],
     seed: 1922,
-    grip: 0.275,
-    stop: 0.228,
+    grip: 0.259,
+    stop: 0.248,
   },
   {
     id: "spa",
@@ -69,13 +70,13 @@ export const TRACKS: TrackDef[] = [
     ],
     // ponytail: the real lane leaves in the Bus Stop and rejoins after La Source; here it's
     // between them, so it never crosses a chicane.
-    pit: { side: 1, in: -185, from: -110, to: 130, out: 230 },
+    pit: { side: 1, in: -200, from: -125, to: 140, out: 240 },
     stands: [...row(-10, -140, -50, 40, 130), ...corner(-1, 365)],
     seed: 1921,
-    grip: 0.385,
-    stop: 0.098,
-    proEdge: 1.09,
-    legendsEdge: 1.12,
+    grip: 0.396,
+    stop: 0.105,
+    proEdge: 1.23,
+    legendsEdge: 1.27,
   },
   {
     id: "silverstone",
@@ -106,13 +107,13 @@ export const TRACKS: TrackDef[] = [
     ],
     // ponytail: the real lane leaves at Vale and rejoins after Farm; here it's on the Hamilton
     // straight between Club and Abbey.
-    pit: { side: 1, in: -178, from: -100, to: 135, out: 215 },
+    pit: { side: 1, in: -205, from: -125, to: 140, out: 215 },
     stands: [...row(-10, -120, -30, 60, 150), ...corner(-1, 2079)],
     seed: 1948,
-    grip: 0.43,
-    stop: 0.109,
-    proEdge: 1.05,
-    legendsEdge: 1.095,
+    grip: 0.422,
+    stop: 0.121,
+    proEdge: 1.173,
+    legendsEdge: 1.21,
   },
   {
     id: "interlagos",
@@ -141,10 +142,10 @@ export const TRACKS: TrackDef[] = [
     pit: { side: -1, in: -420, from: -300, to: 120, out: 220 },
     stands: [...row(10, -200, -110, -20, 70), ...row(RUNOFF + 2, 245, 330)],
     seed: 1940,
-    grip: 0.43,
-    stop: 0.243,
-    proEdge: 1.067,
-    legendsEdge: 1.095,
+    grip: 0.324,
+    stop: 0.258,
+    proEdge: 1.207,
+    legendsEdge: 1.23,
   },
   {
     id: "redbullring",
@@ -174,10 +175,10 @@ export const TRACKS: TrackDef[] = [
     pit: { side: 1, in: -285, from: -195, to: 120, out: 220 },
     stands: [...row(-10, -170, -80, 10, 100), ...corner(-1, 1394)],
     seed: 1969,
-    grip: 0.31,
-    stop: 0.186,
-    proEdge: 1.1,
-    legendsEdge: 1.13,
+    grip: 0.305,
+    stop: 0.199,
+    proEdge: 1.28,
+    legendsEdge: 1.33,
   },
 ];
 
