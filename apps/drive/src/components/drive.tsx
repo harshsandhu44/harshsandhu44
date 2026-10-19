@@ -14,8 +14,11 @@ import {
   driver,
   gap,
   grip,
+  newQuali,
   newRace,
   order,
+  qualiDelta,
+  qualiOrder,
   results,
   tick,
   wrongWay,
@@ -36,8 +39,6 @@ const SOUND = "monza-sound";
 const LEVEL = "monza-level";
 const LAPS = "monza-laps";
 const DASH = "-:--.---";
-// ponytail: everyone starts P10 until a qualifying session sets the grid.
-const GRID_SLOT = 9;
 const KEYS: Record<string, "up" | "down" | "left" | "right" | "ot"> = {
   ArrowUp: "up",
   w: "up",
@@ -113,7 +114,7 @@ const CONTROLS: [string[], string][] = [
 const RULES: [string, string][] = [
   [
     "Start",
-    "You start tenth, and you go when the lights go out. Amateur races the F3 grid, intermediate F2 and pro F1: on the racing line, with the fewest mistakes and a little more grip than your car. Legends is the world champions: no mistakes, and a perfect race only just keeps up.",
+    "You start tenth, or qualify for your slot: one flying lap on softs from a rolling start, and the grid lines up by lap time. Track limits, the pit lane or abandoning the lap leaves you without a time, at the back. Go when the lights go out. Amateur races the F3 grid, intermediate F2 and pro F1: on the racing line, with the fewest mistakes and a little more grip than your car. Legends is the world champions: no mistakes, and a perfect race only just keeps up.",
   ],
   [
     "Tyres & pits",
@@ -147,7 +148,9 @@ const plus = (s: number, dp = 3) => {
 };
 const lapsDown = (n: number) => `+${n} lap${n > 1 ? "s" : ""}`;
 
+// A race's classification, or qualifying's, where each row's time is its lap (0 for none).
 type Result = {
+  quali: boolean;
   table: ReturnType<typeof results>;
   fastest: number | null;
   level: Level;
@@ -161,6 +164,17 @@ const debrief = (pos: number) =>
     : pos <= 5
       ? `Good job, P${pos}.`
       : `P${pos}. We'll get them next time.`;
+// And at the end of qualifying.
+const qualiWord = (pos: number, timed: boolean) =>
+  !timed
+    ? "No time. We start from the back."
+    : pos === 1
+      ? "Pole! What a lap."
+      : `P${pos}. Let's go racing.`;
+const radio = ({ quali, table }: Result) => {
+  const k = table.findIndex((r) => !r.id);
+  return quali ? qualiWord(k + 1, !!table[k]!.best) : debrief(k + 1);
+};
 
 // The whole page. three.js (in scene.ts) loads on mount and draws the circuit; the race
 // (race.ts) runs in one rAF loop here, which writes the HUD straight to the DOM so React doesn't
@@ -191,10 +205,22 @@ export default function Drive() {
     const n: number = read(LAPS, DISTANCES[0]!);
     return DISTANCES.includes(n) ? n : DISTANCES[0]!;
   });
+  // The grid for the next race, as driver ids front to back: GRID (you P10) until you qualify,
+  // and back to it after the race or on a new track, field or distance.
+  const [lineup, setLineup] = useState(GRID);
+  const lineupRef = useRef(GRID);
+  const slot = lineup.indexOf(0) + 1;
+  const qualified = lineup !== GRID;
+  const unqualify = () => {
+    lineupRef.current = GRID;
+    setLineup(GRID);
+  };
   const levelRef = useRef(level);
   const lapsRef = useRef(laps);
   const regrid = useRef<() => void>(() => {});
   const go = useRef<(t: Tyre) => void>(() => {});
+  const qualify = useRef<() => void>(() => {});
+  const abandon = useRef<() => void>(() => {});
   const fit = useRef<(t: Tyre) => void>(() => {});
   const fitWrap = useRef<HTMLDivElement>(null);
   const fitEls = useRef<HTMLButtonElement[]>([]);
@@ -203,6 +229,7 @@ export default function Drive() {
   const tyreName = useRef<HTMLSpanElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const map = useRef<HTMLCanvasElement>(null);
+  const lapName = useRef<HTMLSpanElement>(null);
   const lapEl = useRef<HTMLSpanElement>(null);
   const posEl = useRef<HTMLSpanElement>(null);
   const timeEl = useRef<HTMLSpanElement>(null);
@@ -214,7 +241,9 @@ export default function Drive() {
   const waitText = useRef<HTMLParagraphElement>(null);
   const skip = useRef<() => void>(() => {});
   const pauseEl = useRef<HTMLDivElement>(null);
+  const abandonEl = useRef<HTMLButtonElement>(null);
   const togglePause = useRef<() => void>(() => {});
+  const towerEl = useRef<HTMLDivElement>(null);
   const towerEls = useRef<HTMLDivElement[]>([]);
   const modeEl = useRef<HTMLDivElement>(null);
   const lampEls = useRef<HTMLSpanElement[]>([]);
@@ -286,8 +315,12 @@ export default function Drive() {
 
     // The race runs through these phases. The grid screen waits for your tyres (the flyover
     // plays behind it), then the lights come on a second apart and go out after an unannounced
-    // pause, as in the hero.
+    // pause, as in the hero. Qualifying runs the same phases with `quali` set: your race (`race`,
+    // just you) and the computer's, one car each, ticked together. Its grid waits in `nextGrid`
+    // for the classification's button.
     let race: Race;
+    let quali: Race[] | null = null;
+    let nextGrid: number[] | null = null;
     let scene: Scene | null = null;
     let phase: "grid" | "lights" | "racing" = "grid";
     let phaseAt = 0;
@@ -442,8 +475,27 @@ export default function Drive() {
         .join("  ·  ");
     };
 
+    // Qualifying's stand-in for the position: your live delta, green when you're quicker.
+    const showDelta = () => {
+      const d = qualiDelta(quali!);
+      const el = posEl.current!;
+      el.textContent = d === null ? "–" : `${d < 0 ? "−" : "+"}${Math.abs(d).toFixed(2)}`;
+      el.classList.toggle("text-go", d !== null && d < 0);
+    };
+
     const start = () => {
-      race = newRace(track, GRID, Math.random, "medium", levelRef.current, lapsRef.current);
+      race = newRace(
+        track,
+        lineupRef.current,
+        Math.random,
+        "medium",
+        levelRef.current,
+        lapsRef.current,
+      );
+      quali = null;
+      towerEl.current!.hidden = false;
+      lapName.current!.textContent = "Lap";
+      posEl.current!.classList.remove("text-go");
       scene?.paint(LEVELS[race.level].colors);
       phase = "grid";
       setGrid(true);
@@ -470,9 +522,20 @@ export default function Drive() {
       if (phase === "grid" || race.done) return;
       paused = !paused;
       pauseEl.current!.hidden = !paused;
+      abandonEl.current!.hidden = !quali;
       keys.clear();
     };
+    // Ends your quali lap without a time.
+    abandon.current = () => {
+      race.racers[0]!.finish = race.t;
+      togglePause.current();
+    };
+    // Out of qualifying onto its grid; out of a race, back to P10.
     again.current = () => {
+      const g = nextGrid ?? GRID;
+      nextGrid = null;
+      lineupRef.current = g;
+      setLineup(g);
       setResult(null);
       start();
     };
@@ -480,16 +543,29 @@ export default function Drive() {
     regrid.current = () => {
       if (phase === "grid") start();
     };
-    go.current = (t) => {
-      const me = race.racers[0]!;
-      [me.tyre, me.stints] = [t, [t]];
-      drawBoard();
+    const launch = () => {
       scene?.skipIntro();
       keys.clear();
       [phase, phaseAt] = ["lights", performance.now()];
       setGrid(false);
-      // Picking tyres is a click or a key, so the browser lets a remembered "sound on" start.
+      // Lining up or qualifying is a click or a key, so the browser lets a remembered "sound on"
+      // start.
       if (read(SOUND, false)) engine.current ??= createEngine();
+    };
+    go.current = (t) => {
+      const me = race.racers[0]!;
+      [me.tyre, me.stints] = [t, [t]];
+      drawBoard();
+      launch();
+    };
+    qualify.current = () => {
+      quali = newQuali(track, levelRef.current);
+      race = quali[0]!;
+      towerEl.current!.hidden = true;
+      nearEl.current!.textContent = "";
+      lapName.current!.textContent = "Quali";
+      showDelta();
+      launch();
     };
     // Only while there's a stop still to make on this visit.
     fit.current = (t) => {
@@ -535,12 +611,47 @@ export default function Drive() {
         const split = tick(race, { gas, brake, steer, ot }, dt);
         // After your flag, Skip runs the rest of the field to theirs a few hundred frames at a time.
         if (skipping) for (let n = 0; n < 300 && !race.done; n++) tick(race, still, 1 / 30);
+        if (quali) {
+          // The pit lane or track limits end your lap without a time. Once it's over the rest
+          // run to their flags the same way, then the classification sets the grid.
+          if (me.finish === null && (me.pit || me.lap.invalid)) me.finish = race.t;
+          if (me.finish !== null) skipping = true;
+          const over = quali.every((q) => q.done);
+          for (const q of quali.slice(1))
+            for (let n = 0; n < (skipping ? 300 : 1) && !q.done; n++)
+              tick(q, still, skipping ? 1 / 30 : dt);
+          if (!over && quali.every((q) => q.done)) {
+            const table = qualiOrder(quali).map(({ id, best }) => ({
+              id,
+              time: best,
+              down: 0,
+              best,
+              penalty: 0,
+              stints: [],
+              stops: 0,
+            }));
+            nextGrid = table.map((r) => r.id);
+            const res = {
+              quali: true,
+              table,
+              level: race.level,
+              laps: lapsRef.current,
+              fastest: null,
+            };
+            race.msgs.push({ kind: "radio", id: 0, text: radio(res) });
+            setResult(res);
+          }
+        }
         if (split) {
           const s = split.sector;
           if (s === 0) for (const i of [1, 2]) paintSector(i, "", "");
           const pb = split.valid && (!mine[s] || split.ms <= mine[s]);
           if (pb) mine[s] = split.ms;
-          const fl = split.valid && split.ms <= race.sectors[s]!;
+          // In qualifying, against the whole field's.
+          const best = quali
+            ? Math.min(...quali.map((q) => q.sectors[s] || Infinity))
+            : race.sectors[s]!;
+          const fl = split.valid && split.ms <= best;
           paintSector(s, secs(split.ms), fl ? "fl" : pb ? "pb" : "slow");
         }
         if (split?.lap) {
@@ -554,7 +665,7 @@ export default function Drive() {
             write(BEST(trackId), record);
           }
         }
-        if (race.done && !wasDone) {
+        if (race.done && !wasDone && !quali) {
           const table = results(race);
           race.msgs.push({
             kind: "radio",
@@ -562,14 +673,15 @@ export default function Drive() {
             text: debrief(table.findIndex((r) => !r.id) + 1),
           });
           const { level, laps, fastest } = race;
-          setResult({ table, level, laps, fastest: fastest?.id ?? null });
+          setResult({ quali: false, table, level, laps, fastest: fastest?.id ?? null });
         }
         if (t - board > 500) {
           board = t;
-          drawBoard();
+          if (quali) showDelta();
+          else drawBoard();
         }
         // The classification waits for the whole field to take the flag.
-        const waiting = me.finish !== null && !race.done;
+        const waiting = !quali && me.finish !== null && !race.done;
         waitEl.current!.hidden = !waiting;
         if (waiting) {
           const left = race.racers.filter((r) => r.finish === null).length;
@@ -578,9 +690,13 @@ export default function Drive() {
         }
       }
 
-      lapEl.current!.textContent = `${Math.min(me.laps + 1, race.laps)}/${race.laps}`;
+      lapEl.current!.textContent = quali ? "" : `${Math.min(me.laps + 1, race.laps)}/${race.laps}`;
       const time = timeEl.current!;
-      time.textContent = fmt(phase === "racing" && me.finish === null ? race.t - me.lap.start! : 0);
+      // Zero until a rolling start reaches the line.
+      const { start: from } = me.lap;
+      time.textContent = fmt(
+        phase === "racing" && me.finish === null && from !== null ? race.t - from : 0,
+      );
       time.classList.toggle("text-accent", me.lap.invalid);
 
       const ease = Math.min(1, dt * 12);
@@ -715,7 +831,7 @@ export default function Drive() {
       <div className="flex items-center gap-x-6 text-base tabular-nums">
         <span className="disp text-xl">{def.name}</span>
         <span className={`${label} hidden md:inline`}>
-          Grid<span className="ml-2 text-paper">P{GRID_SLOT + 1}</span>
+          Grid<span className="ml-2 text-paper">P{slot}</span>
         </span>
         <button
           type="button"
@@ -759,10 +875,10 @@ export default function Drive() {
           <div className={`${panel} p-2.5 md:p-3.5`}>
             <div className="flex items-baseline gap-3">
               <span ref={posEl} className="disp text-[26px] leading-none md:text-[32px]">
-                P{GRID_SLOT + 1}
+                P{slot}
               </span>
               <span className={label}>
-                Lap{" "}
+                <span ref={lapName}>Lap</span>{" "}
                 <span ref={lapEl} className="text-paper">
                   1/{laps}
                 </span>
@@ -808,7 +924,7 @@ export default function Drive() {
             <div ref={limitsEl} hidden className="mt-1 text-sm text-soft md:text-[15px]" />
           </div>
 
-          <div className={`${panel} hidden w-48 py-1.5 text-sm md:block`}>
+          <div ref={towerEl} className={`${panel} hidden w-48 py-1.5 text-sm md:block`}>
             <div
               ref={modeEl}
               className="px-3 pb-0.5 text-right text-xs font-semibold tracking-wide text-soft uppercase"
@@ -907,6 +1023,15 @@ export default function Drive() {
             <p className="disp text-xl leading-none whitespace-nowrap">Paused</p>
             <p className={`${label} mt-1 whitespace-nowrap pointer-coarse:hidden`}>P to resume</p>
           </div>
+          <button
+            ref={abandonEl}
+            type="button"
+            hidden
+            onClick={() => abandon.current()}
+            className="min-h-11 rounded-md px-4 font-semibold ring-1 ring-paper/25 active:scale-[.98]"
+          >
+            Abandon lap
+          </button>
           <button
             type="button"
             onClick={() => togglePause.current()}
@@ -1035,9 +1160,11 @@ export default function Drive() {
             <div
               className={`${panel} max-h-full w-full max-w-sm overflow-y-auto p-4 md:max-w-lg md:p-5`}
             >
-              <p className="disp text-xl">Grid P{GRID_SLOT + 1}</p>
+              <p className="disp text-xl">Grid P{slot}</p>
               <p className={`${label} mt-1`}>
-                Pick the track, the field, the distance and your tyres.
+                {qualified
+                  ? "Qualified. A new track, field or distance means qualifying again."
+                  : "Pick the track, the field, the distance and your tyres. Qualify for a better slot."}
               </p>
               {trackRecord ? (
                 <p className={`${label} mt-1`}>
@@ -1060,6 +1187,7 @@ export default function Drive() {
                       onClick={() => {
                         if (t.id === trackId) return;
                         write(TRACK, t.id);
+                        unqualify();
                         setStatus("loading");
                         setTrackId(t.id);
                       }}
@@ -1094,6 +1222,7 @@ export default function Drive() {
                     onClick={() => {
                       setLevel(l);
                       write(LEVEL, l);
+                      unqualify();
                       levelRef.current = l;
                       regrid.current();
                     }}
@@ -1114,6 +1243,7 @@ export default function Drive() {
                     onClick={() => {
                       setLaps(n);
                       write(LAPS, n);
+                      unqualify();
                       lapsRef.current = n;
                       regrid.current();
                     }}
@@ -1141,14 +1271,25 @@ export default function Drive() {
                   </button>
                 ))}
               </div>
-              <button
-                type="button"
-                autoFocus
-                onClick={() => go.current(tyre)}
-                className="mt-4 min-h-11 w-full rounded-md bg-paper font-semibold text-ink active:scale-[.98]"
-              >
-                Line up
-              </button>
+              <div className="mt-4 flex gap-2">
+                {!qualified && (
+                  <button
+                    type="button"
+                    onClick={() => qualify.current()}
+                    className="min-h-11 flex-1 rounded-md font-semibold ring-1 ring-paper/25 active:scale-[.98]"
+                  >
+                    Qualify
+                  </button>
+                )}
+                <button
+                  type="button"
+                  autoFocus
+                  onClick={() => go.current(tyre)}
+                  className="min-h-11 flex-1 rounded-md bg-paper font-semibold text-ink active:scale-[.98]"
+                >
+                  Line up
+                </button>
+              </div>
               <p className="mt-2 text-xs text-soft pointer-coarse:hidden">
                 1, 2 or 3 to pick, Enter to line up.
               </p>
@@ -1198,16 +1339,19 @@ export default function Drive() {
                 className="text-xs font-semibold tracking-wide text-soft uppercase motion-safe:animate-rowin"
                 style={{ animationDelay: "0.9s" }}
               >
-                {def.name} · {result.laps} laps · {LEVELS[result.level].series} grid
+                {def.name} · {result.quali ? "Qualifying" : `${result.laps} laps`} ·{" "}
+                {LEVELS[result.level].series} grid
               </p>
               <div
                 className="mt-1 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 motion-safe:animate-rowin"
                 style={{ animationDelay: "1s" }}
               >
                 <div>
-                  <p className="disp text-[28px] leading-none md:text-[36px]">Classification</p>
+                  <p className="disp text-[28px] leading-none md:text-[36px]">
+                    {result.quali ? "Qualifying" : "Classification"}
+                  </p>
                   <p className="mt-2 text-sm text-soft">
-                    Your fastest lap{" "}
+                    {result.quali ? "Your lap" : "Your fastest lap"}{" "}
                     <span className="text-paper">
                       {result.table.find((r) => !r.id)?.best
                         ? fmt(result.table.find((r) => !r.id)!.best)
@@ -1218,7 +1362,7 @@ export default function Drive() {
                     <span className="mr-2 text-xs font-semibold tracking-wide text-accent uppercase">
                       Radio
                     </span>
-                    {debrief(result.table.findIndex((r) => !r.id) + 1)}
+                    {radio(result)}
                   </p>
                 </div>
                 <button
@@ -1227,7 +1371,7 @@ export default function Drive() {
                   onClick={() => again.current()}
                   className="min-h-11 w-full rounded-md bg-paper px-6 font-semibold text-ink active:scale-[.98] md:w-auto"
                 >
-                  Race again
+                  {result.quali ? "To the grid" : "Race again"}
                 </button>
               </div>
               <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
@@ -1237,11 +1381,15 @@ export default function Drive() {
                       <th className="w-8 py-1 font-normal">Pos</th>
                       <th className="py-1 font-normal">Driver</th>
                       <th className="py-1 text-right font-normal">Time</th>
-                      <th className="py-1 pl-3 text-right font-normal">Pits</th>
-                      <th className="py-1 pl-3 font-normal">Tyres</th>
-                      <th className="hidden py-1 pl-3 text-right font-normal md:table-cell">
-                        Best
-                      </th>
+                      {!result.quali && (
+                        <>
+                          <th className="py-1 pl-3 text-right font-normal">Pits</th>
+                          <th className="py-1 pl-3 font-normal">Tyres</th>
+                          <th className="hidden py-1 pl-3 text-right font-normal md:table-cell">
+                            Best
+                          </th>
+                        </>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -1274,34 +1422,43 @@ export default function Drive() {
                               ) : null}
                             </span>
                           </td>
-                          <td className="py-1 text-right">
-                            {r.down
-                              ? lapsDown(r.down)
-                              : k
-                                ? plus((r.time - leader) / 1000)
-                                : fmt(r.time)}
+                          <td className="py-1 pr-2 text-right">
+                            {result.quali && !r.time
+                              ? "No time"
+                              : r.down
+                                ? lapsDown(r.down)
+                                : k
+                                  ? plus((r.time - leader) / 1000)
+                                  : fmt(r.time)}
                           </td>
-                          <td className="py-1 pl-3 text-right">{r.stops}</td>
-                          <td className="py-1 pl-3">
-                            <span
-                              className="flex gap-1 font-semibold"
-                              aria-label={r.stints.map((t) => TYRES[t].name).join(", then ")}
-                            >
-                              {r.stints.map((t, i) => (
-                                <span key={i} className={TYRE_INK[t]} aria-hidden>
-                                  {letter(t)}
+                          {!result.quali && (
+                            <>
+                              <td className="py-1 pl-3 text-right">{r.stops}</td>
+                              <td className="py-1 pl-3">
+                                <span
+                                  className="flex gap-1 font-semibold"
+                                  aria-label={r.stints.map((t) => TYRES[t].name).join(", then ")}
+                                >
+                                  {r.stints.map((t, i) => (
+                                    <span key={i} className={TYRE_INK[t]} aria-hidden>
+                                      {letter(t)}
+                                    </span>
+                                  ))}
                                 </span>
-                              ))}
-                            </span>
-                          </td>
-                          <td className="hidden py-1 pr-2 pl-3 text-right md:table-cell">
-                            <span className="inline-flex items-center gap-1.5">
-                              {result.fastest === r.id && (
-                                <span title="Fastest lap" className="size-2 rounded-full bg-fl" />
-                              )}
-                              {r.best ? fmt(r.best) : DASH}
-                            </span>
-                          </td>
+                              </td>
+                              <td className="hidden py-1 pr-2 pl-3 text-right md:table-cell">
+                                <span className="inline-flex items-center gap-1.5">
+                                  {result.fastest === r.id && (
+                                    <span
+                                      title="Fastest lap"
+                                      className="size-2 rounded-full bg-fl"
+                                    />
+                                  )}
+                                  {r.best ? fmt(r.best) : DASH}
+                                </span>
+                              </td>
+                            </>
+                          )}
                         </tr>
                       );
                     })}
