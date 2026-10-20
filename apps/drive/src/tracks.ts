@@ -76,7 +76,7 @@ export const TRACKS: TrackDef[] = [
     grip: 0.396,
     stop: 0.105,
     proEdge: 1.23,
-    legendsEdge: 1.27,
+    legendsEdge: 1.26,
   },
   {
     id: "silverstone",

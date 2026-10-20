@@ -1,6 +1,8 @@
 // The race the drive runs: twenty cars, five laps, tyres that wear and a pit stop to change them.
 // Plain maths like track.ts, so race.check.ts can run whole races headless.
 import {
+  CAR_HALF_LENGTH,
+  CAR_HALF_WIDTH,
   TOP,
   WORK,
   allFourOff,
@@ -47,6 +49,13 @@ const EDGE = 1.33;
 const LEGEND_EDGE = 1.4;
 // How far under its limit (m/s) a legend has to be to pull out and pass.
 const PASS = 15;
+// A car's width and a metre, centre to centre: the room a computer car leaves one alongside,
+// and how far over it pulls out to pass.
+const SPACE = 2 * CAR_HALF_WIDTH + 1;
+// Centre to centre, how close a computer car runs behind another at the same speed: tucked up
+// for the tow at 60 m/s and over, and 4 m more by 20 m/s, as through a slow corner cars sit at an
+// angle to each other and the gap round the lap understates how close their corners are.
+const follow = (v: number) => 8 + 4 * Math.max(0, Math.min(1, (60 - v) / 40));
 // A computer car's extra grip: its level's edge (1 below pro), or the track's own for pro and
 // legends.
 export const edgeOf = ({ level: lv, track }: Race) =>
@@ -497,13 +506,23 @@ export function aiInput(r: Racer, race: Race): Input {
     }
   }
 
+  // Where a car is across the track from this level's line. Cars on a line that swings across
+  // the track, through a chicane, keep their offsets from it, so traffic is judged in these.
+  const off = (o: Racer) => lateral(o.car.x, o.car.y, o.p) - line * RACING[atDist(o.p * LENGTH)]!;
+  // A car in a lane (an offset) up to 30 m ahead, or from `from` m back (and a second further for
+  // each m/s it's closing at), overlapping a car there: the rearmost, so from 0 the nearest.
   const ahead = (lane: number, from: number) =>
-    race.racers.find((o) => {
-      const ds = o.dist - r.dist;
-      return (
-        o !== r && ds > from && ds < 30 && Math.abs(lateral(o.car.x, o.car.y, o.p) - lane) < 2.5
-      );
-    });
+    race.racers
+      .filter((o) => {
+        const ds = o.dist - r.dist;
+        const back = from < 0 ? from - Math.max(0, o.car.v - car.v) : from;
+        return (
+          o !== r && ds > back && ds < 30 && Math.abs(off(o) - lane) < 2 * CAR_HALF_WIDTH + 0.2
+        );
+      })
+      .sort((a, b) => a.dist - b.dist)[0];
+  const now = lateral(car.x, car.y, r.p);
+  const mine = off(r);
   // Lanes are offsets from the line, kept on the tarmac.
   const room = HALF[i]! - 1.5;
   const base = line * RACING[i]!;
@@ -514,7 +533,7 @@ export function aiInput(r: Racer, race: Race): Input {
     // through them. Along the boxes, turn into the working lane for its own box and back out
     // after the stop.
     want = Math.min(want, Math.sqrt(PIT_V ** 2 + 2 * 8 * Math.max(0, PIT_IN + 40 - s)));
-    const block = ahead(lateral(car.x, car.y, r.p), 0);
+    const block = ahead(mine, 0);
     if (block && block.car.v < car.v)
       want = Math.min(want, block.car.v + Math.sqrt(16 * Math.max(0, block.dist - r.dist - 7)));
     const box = BOXES[r.id >> 1]!.s;
@@ -534,34 +553,50 @@ export function aiInput(r: Racer, race: Race): Input {
     // a mistake only pulls out with no corner coming, and is back on the line for the next.
     const clear = slip > 0 || limitAt(at, g * r.pace, line) > car.v + PASS;
     if (!clear) r.lane = 0;
-    const block = ahead(lat(r.lane), 0);
+    const block = ahead(lat(r.lane) - base, 0);
     if (block && block.car.v < car.v + 1) {
-      const free = clear ? [3, -3, 0].find((l) => !ahead(lat(l), -8)) : undefined;
+      const free = clear ? [SPACE, -SPACE, 0].find((l) => !ahead(lat(l) - base, -8)) : undefined;
       if (free !== undefined && race.t > r.laneT) [r.lane, r.laneT] = [free, race.t + 2000];
-      else want = Math.min(want, block.car.v);
-    } else if (r.lane && race.t > r.laneT && !ahead(lat(0), -10)) r.lane = 0;
+    } else if (r.lane && race.t > r.laneT && !ahead(lat(0) - base, -10)) r.lane = 0;
     to = lat(r.lane);
+    // Behind a car where it is now, no quicker than lets it stop its follow distance behind should
+    // that car brake as hard (with a margin), and closer than that, backing off.
+    const front = ahead(mine, 0);
+    if (front) {
+      const gap = front.dist - r.dist - follow(front.car.v);
+      const stop = 1.6 * g * brakeAt(front.car.v);
+      want = Math.min(want, gap > 0 ? Math.sqrt(front.car.v ** 2 + stop * gap) : front.car.v + gap);
+    }
   }
-  // Don't turn into a car alongside: hold the line until one of you is clear. Two cars
-  // swapping sides would otherwise lean on each other down to a crawl. A car heading for the pit
-  // entry (before the line) has the line over any car it leads, or one tucked in on its right
-  // shuts it out; rejoining after the line it doesn't, or the cars rejoining together all squeeze
-  // onto one line and lean on each other to a stop.
-  const now = lateral(car.x, car.y, r.p);
-  const beside = race.racers.some((o) => {
-    const d = lateral(o.car.x, o.car.y, o.p) - now;
-    const gap = o.dist - r.dist;
-    return (
-      o !== r &&
-      Math.abs(gap) < 6 &&
-      !(r.pitting && s < 0 && gap < 0) &&
-      d * (to - now) > 0 &&
-      Math.abs(d) < 3
-    );
-  });
-  if (beside) to = now;
+  let held = false;
+  if (r.pitting) {
+    // In the lane, don't turn into a car alongside: hold the line until one of you is clear. A
+    // car heading for the pit entry (before the line) has the line over any car it leads, or one
+    // tucked in on its right shuts it out; rejoining after the line it doesn't, or the cars
+    // rejoining together all squeeze onto one line and lean on each other to a stop.
+    held = race.racers.some((o) => {
+      const d = lateral(o.car.x, o.car.y, o.p) - now;
+      const gap = o.dist - r.dist;
+      return (
+        o !== r && Math.abs(gap) < 6 && !(s < 0 && gap < 0) && d * (to - now) > 0 && Math.abs(d) < 3
+      );
+    });
+    if (held) to = now;
+  } else
+    // On track, a car's width for any car alongside, moving over to make it. With no room on its
+    // side, the car further back lifts and drops in behind; the one ahead keeps what room it can.
+    for (const o of race.racers) {
+      const gap = o.dist - r.dist;
+      const lo = off(o) + base;
+      if (o === r || Math.abs(gap) > 2 * CAR_HALF_LENGTH + 1 || Math.abs(to - lo) >= SPACE)
+        continue;
+      held = true;
+      const side = Math.sign(mine - off(o)) || 1;
+      to = Math.max(-room, Math.min(room, lo + side * SPACE));
+      if (Math.abs(to - lo) < SPACE - 0.1 && gap > 0) want = Math.min(want, o.car.v - 2);
+    }
   // Held off the line, a legend backs off to the centreline's speed rather than run wide.
-  if (beside && !slip) want = Math.min(want, limitAt(at, g * r.pace));
+  if (held && !slip) want = Math.min(want, limitAt(at, g * r.pace));
 
   const [tx, ty] = pointAt(look, to);
   let diff = Math.atan2(ty - car.y, tx - car.x) - car.h;

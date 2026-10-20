@@ -632,28 +632,36 @@ function touch(car: Car, px: number, py: number, r: number) {
   const d = Math.hypot(dx, dy);
   if (d < CAR_R + r && d > 1e-6) hit(car, dx / d, dy / d, CAR_R + r - d);
 }
-// Car against car. Each is two circles, nose and tail, so they can run close side by side and
-// nose to tail without overlapping. They push apart evenly, and the one driving into the other
-// faster drops to just under its speed, once, so cars leaning on each other don't bleed speed.
-const ends = (c: Car) => {
-  const fx = Math.cos(c.h) * 1.6;
-  const fy = Math.sin(c.h) * 1.6;
-  return [
-    [c.x + fx, c.y + fy],
-    [c.x - fx, c.y - fy],
-  ] as const;
-};
+// Car against car. Each is a rectangle, the car's length by its width over the wheels, so a nose
+// can't tuck in between another's front and rear wheels. Separating axes: the overlap on each
+// car's own two axes, and the smallest is the way out. They push apart evenly, and the one driving
+// into the other faster drops to just under its speed, once, so cars leaning on each other don't
+// bleed speed.
+export const CAR_HALF_LENGTH = 2.75;
 export function bump(a: Car, b: Car) {
-  if (Math.abs(a.x - b.x) > 6 || Math.abs(a.y - b.y) > 6) return false;
-  let depth = 0;
+  if (Math.abs(a.x - b.x) > 6.1 || Math.abs(a.y - b.y) > 6.1) return false;
+  const [dx, dy] = [b.x - a.x, b.y - a.y];
+  // How far a car reaches along the unit axis (ux, uy).
+  const reach = (c: Car, ux: number, uy: number) => {
+    const [f, s] = [
+      Math.cos(c.h) * ux + Math.sin(c.h) * uy,
+      Math.cos(c.h) * uy - Math.sin(c.h) * ux,
+    ];
+    return CAR_HALF_LENGTH * Math.abs(f) + CAR_HALF_WIDTH * Math.abs(s);
+  };
+  let depth = Infinity;
   let nx = 0;
   let ny = 0;
-  for (const [ax, ay] of ends(a))
-    for (const [bx, by] of ends(b)) {
-      const d = Math.hypot(bx - ax, by - ay);
-      if (2.2 - d > depth && d > 1e-6) [depth, nx, ny] = [2.2 - d, (bx - ax) / d, (by - ay) / d];
+  for (const h of [a.h, b.h])
+    for (const [ux, uy] of [
+      [Math.cos(h), Math.sin(h)],
+      [-Math.sin(h), Math.cos(h)],
+    ] as const) {
+      const d = dx * ux + dy * uy;
+      const over = reach(a, ux, uy) + reach(b, ux, uy) - Math.abs(d);
+      if (over <= 0) return false;
+      if (over < depth) [depth, nx, ny] = [over, d < 0 ? -ux : ux, d < 0 ? -uy : uy];
     }
-  if (!depth) return false;
   a.x -= (nx * depth) / 2;
   a.y -= (ny * depth) / 2;
   b.x += (nx * depth) / 2;

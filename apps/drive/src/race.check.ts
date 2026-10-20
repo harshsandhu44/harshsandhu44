@@ -218,6 +218,11 @@ for (const def of TRACKS) pitStop(getTrack(def.id));
   assert.ok(a.v < 30 && b.v === 30, "the car behind loses speed");
   const c: Car = { x: 0, y: 3, h: 0, v: 50 };
   assert.ok(!bump({ x: 0, y: 0, h: 0, v: 50 }, c), "side by side with room doesn't");
+  // Between the wheels used to be a gap two circles left; a nose there is in the car now.
+  const e: Car = { x: 0, y: 0, h: 0, v: 0 };
+  const d: Car = { x: 0, y: 3.5, h: -Math.PI / 2, v: 10 };
+  assert.ok(bump(e, d), "a nose into the sidepod touches");
+  assert.ok(d.y - e.y >= 1.3 + 2.75 - 1e-9, "and is pushed back out");
 }
 
 // Wrong way: driving back round the track, not reversing.
@@ -418,6 +423,26 @@ assert.ok(
   Object.assign(a.car, { x, y });
   run(race, DT);
   assert.equal(a.tow + a.dirty, 0, "out of the wake, neither");
+}
+
+// Racecraft: two computer cars squeezed side by side down the straight after Ascari open up to a
+// car's width.
+{
+  const race = newRace(monza, GRID, seeded(7), "medium", "amateur");
+  race.racers = race.racers.filter((r) => r.id === 2 || r.id === 3);
+  race.slips = false;
+  const [a, b] = race.racers as [Race["racers"][number], Race["racers"][number]];
+  const { LENGTH, dirAt, lateral, nearest, pointAt } = monza;
+  const put = (r: typeof a, m: number, lat: number) => {
+    const [x, y] = pointAt(m, lat);
+    Object.assign(r.car, { x, y, h: dirAt(m / LENGTH), v: 60 });
+    [r.p, r.dist, r.launch] = [nearest(x, y).p, m, 0];
+  };
+  put(a, 4000, -1.4);
+  put(b, 4000, 1.4);
+  run(race, 1.5);
+  const apart = Math.abs(lateral(a.car.x, a.car.y, a.p) - lateral(b.car.x, b.car.y, b.p));
+  assert.ok(apart > 3.4, `side by side, a car's width and more apart (${apart.toFixed(1)} m)`);
 }
 
 // The battery, in MJ: a pro's flying lap at Monza harvests the 8.5 MJ allowance and no more;
