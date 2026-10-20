@@ -56,15 +56,35 @@ const SPACE = 2 * CAR_HALF_WIDTH + 1;
 // for the tow at 60 m/s and over, and 4 m more by 20 m/s, as through a slow corner cars sit at an
 // angle to each other and the gap round the lap understates how close their corners are.
 const follow = (v: number) => 8 + 4 * Math.max(0, Math.min(1, (60 - v) / 40));
+// The quickest a car on grip g can run `gap` m (centre to centre) behind one at `v`: no quicker
+// than lets it stop its follow distance behind should that car brake as hard (with a margin), and
+// closer than that, backing off.
+const behind = (v: number, gap: number, g: number) => {
+  const d = gap - follow(v);
+  return d > 0 ? Math.sqrt(v ** 2 + 1.6 * g * brakeAt(v) * d) : v + d;
+};
+// Steering for a car to head at (x, y).
+const aim = (car: Car, [x, y]: [number, number]) => {
+  let diff = Math.atan2(y - car.y, x - car.x) - car.h;
+  diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+  return Math.max(-1, Math.min(1, diff * 4));
+};
 // A computer car's extra grip: its level's edge (1 below pro), or the track's own for pro and
 // legends.
 export const edgeOf = ({ level: lv, track }: Race) =>
   (lv === "pro" ? track.PRO_EDGE : lv === "legends" ? track.LEGENDS_EDGE : undefined) ??
   LEVELS[lv].edge;
-// A car's grip on its tyres: a computer car's scaled by its edge.
-// Close behind another car its dirty air takes some of that.
-export const carGrip = (race: Race, r: Racer) =>
-  grip(r.life, r.tyre) * (r.id ? edgeOf(race) : 1) * (1 - r.dirty);
+// A car's grip on its tyres: a computer car's scaled by its edge. Close behind another car its
+// dirty air takes some of that, and so do cold tyres and damage; on a puncture it has little.
+export const carGrip = (race: Race, r: Racer) => {
+  const g =
+    grip(r.life, r.tyre) *
+    (r.id ? edgeOf(race) : 1) *
+    (1 - r.dirty) *
+    (1 - COLD * (1 - r.warm)) *
+    (1 - r.damage);
+  return r.puncture ? Math.max(MOST_WORN, g * 0.6) : g;
+};
 // Awareness defaults to pace, for the levels that rate only by championship place.
 type Seat = [code: string, name: string, pace: number, aware?: number];
 type Team = [color: string, a: Seat, b: Seat];
@@ -190,62 +210,86 @@ export const GRID = [...AI.slice(0, 9), 0, ...AI.slice(9)];
 export const gridSlot = (ms: number) => Math.min(CARS - 1, Math.max(0, Math.ceil((ms - 250) / 30)));
 const gridAt = (slot: number) => -10 - 8 * slot;
 
-// Tyres: life runs from 1 (new) to 0, and grip falls away faster as they go, to 1 - FADE when
-// they're finished. Distance wears them, and only all four wheels on the grass wears them faster;
-// sliding and a wheel or two off cost nothing extra. A medium nearly lasts the race; a compound
-// scales its grip and how fast it wears. ponytail: tuned in race.check.ts so a medium reaches lap
-// 4 before the call, and with tyres this long-lived a no-stop is the quick way round, the stops
-// within about 10 s of it. These are the knobs.
-// Wear is per metre at Monza, where it was tuned, and scaled to the lap elsewhere so a set lasts
-// the same number of laps on every track.
-const WEAR = 1 / 36000;
-const MONZA = 5793;
+// Tyres, like a Grand Prix squeezed into the distance: life runs from 1 (new) to 0, grip falls
+// away gently as a set wears and then off a cliff under CLIFF_AT, and a compound reaches the cliff
+// after a share of the race whatever its length (on a track of average wear; track.WEAR scales
+// it). Only all four wheels on the grass wears them faster; sliding and a wheel or two off cost
+// nothing extra. A set fresh from the pits is cold, short of COLD of its grip until it has warmed
+// up over a share of a lap, softs quickest. ponytail: tuned in race.check.ts to F1's gaps, a soft
+// about 0.8 s a lap quicker than a medium at Monza and a hard 0.5 s slower; these are the knobs.
+const DEG = 0.1;
+const CLIFF = 0.3;
+const CLIFF_AT = 0.25;
 const GRASS = 1 / 2000;
-const FADE = 0.45;
+const COLD = 0.1;
 export type Tyre = "soft" | "medium" | "hard";
-export const TYRES: Record<Tyre, { grip: number; wear: number; name: string }> = {
-  soft: { grip: 1.04, wear: 1.5, name: "Softs" },
-  medium: { grip: 1, wear: 1, name: "Mediums" },
-  hard: { grip: 0.92, wear: 0.6, name: "Hards" },
+export const TYRES: Record<Tyre, { grip: number; last: number; warm: number; name: string }> = {
+  soft: { grip: 1.04, last: 0.35, warm: 0.3, name: "Softs" },
+  medium: { grip: 1, last: 0.55, warm: 0.5, name: "Mediums" },
+  hard: { grip: 0.975, last: 0.8, warm: 0.7, name: "Hards" },
 };
-export const grip = (life: number, tyre: Tyre) => TYRES[tyre].grip * (1 - FADE * (1 - life) ** 2);
-// Laps a set lasts before it's too far gone (about 0.15 of its life left).
-export const STINT: Record<Tyre, number> = { soft: 3, medium: 5, hard: 9 };
+export const grip = (life: number, tyre: Tyre) =>
+  TYRES[tyre].grip * (1 - DEG * (1 - life) - CLIFF * Math.max(0, 1 - life / CLIFF_AT) ** 2);
+// Laps a set lasts to the cliff, in a race of `laps`. Qualifying's one lap wears like the
+// shortest race.
+export const stintLaps = (t: Tyre, laps: number, track: Track) =>
+  (TYRES[t].last * Math.max(laps, DISTANCES[0]!)) / track.WEAR;
+const lapWear = (t: Tyre, laps: number, track: Track) => (1 - CLIFF_AT) / stintLaps(t, laps, track);
 const COMPOUNDS: Tyre[] = ["soft", "medium", "hard"];
-// The team fits the softest set that reaches the flag, given the full laps left after this one,
-// or mediums when nothing will and there's another stop to come.
-export const teamPick = (left: number): Tyre => COMPOUNDS.find((t) => STINT[t] > left) ?? "medium";
-// The computer's strategy: every way to run the race with up to three stops and stints of at
-// least two laps (so never a stop on the first or last lap), each scored in fresh-medium
-// laps: a lap at its mid-lap grip, slowing as grip ^ -GRIP_POWER, plus the track's cost of a stop.
-// Each car takes one at random from those within its level's margin of the best. Returns the laps
-// they stop at the end of and the set for each stint, best first.
+
+// The strategist: every way to run the laps left with up to two more stops (three in the race),
+// each stint at least two laps, scored in fresh-medium laps: a lap at its mid-lap grip, slowing as
+// grip ^ -GRIP_POWER, plus the track's cost of a stop. A set is never run to within IN_HAND of the
+// end of its life, and only plans that run two compounds over the race count, as the rules have it. From the start (no `now`) every set is new; mid-race the car
+// is on `now.tyre` at `now.life` after `now.from` laps, can stop at the end of any lap from
+// `now.first`, and a stop then costs `now.cheap` of one (under a Safety Car or VSC). Each plan is
+// the laps it stops at the end of and the set for each stint from here; `visit` sees each.
 // ponytail: an estimate from the tyre model, not raced out; race.check.ts races the picks.
-const LAP_WEAR = WEAR * MONZA;
-export function strategies(laps: number, track: Track) {
+const IN_HAND = 0.05;
+type Plan = { at: number[]; tyres: Tyre[]; cost: number };
+type Now = { from: number; first: number; tyre: Tyre; life: number; used: Tyre[]; cheap: number };
+function walkPlans(laps: number, track: Track, now: Now | null, visit: (p: Plan) => void) {
   const { GRIP_POWER, STOP_LAPS } = track;
-  const table = Object.fromEntries(
-    COMPOUNDS.map((t) => {
-      const sum = [0];
-      for (let k = 0; k < laps; k++) {
-        const life = Math.max(0, 1 - LAP_WEAR * TYRES[t].wear * (k + 0.5));
-        sum.push(sum[k]! + grip(life, t) ** -GRIP_POWER);
-      }
-      return [t, sum];
-    }),
+  const run = (t: Tyre, life: number, n: number) => {
+    if (n && life - lapWear(t, laps, track) * n < IN_HAND) return Infinity;
+    let sum = 0;
+    for (let k = 0; k < n; k++)
+      sum += grip(Math.max(0, life - lapWear(t, laps, track) * (k + 0.5)), t) ** -GRIP_POWER;
+    return sum;
+  };
+  const fresh = Object.fromEntries(
+    COMPOUNDS.map((t) => [t, [...Array(laps + 1).keys()].map((n) => run(t, 1, n))]),
   ) as Record<Tyre, number[]>;
-  const all: { at: number[]; tyres: Tyre[]; cost: number }[] = [];
+  const used = now?.used ?? [];
+  const more = Math.min(2, 3 - Math.max(0, used.length - 1));
+  // New sets from the end of lap `done`, after `at` stops so far.
   const walk = (done: number, at: number[], tyres: Tyre[], cost: number) => {
     for (const t of COMPOUNDS) {
-      all.push({ at, tyres: [...tyres, t], cost: cost + table[t][laps - done]! });
-      if (at.length < 3)
+      const all = [...tyres, t];
+      if (new Set([...used, ...all]).size > 1)
+        visit({ at, tyres: all, cost: cost + fresh[t][laps - done]! });
+      if (at.length < more)
         for (let n = 2; n <= laps - done - 2; n++)
-          walk(done + n, [...at, done + n], [...tyres, t], cost + table[t][n]! + STOP_LAPS);
+          walk(done + n, [...at, done + n], all, cost + fresh[t][n]! + STOP_LAPS);
     }
   };
-  walk(0, [], [], 0);
+  if (!now) return walk(0, [], [], 0);
+  const { from, first, tyre, life, cheap } = now;
+  if (new Set([...used, tyre]).size > 1)
+    visit({ at: [], tyres: [tyre], cost: run(tyre, life, laps - from) });
+  for (let end = Math.max(first, from); more > 0 && end <= laps - 2; end++) {
+    const stop = STOP_LAPS * (end === first ? cheap : 1);
+    walk(end, [end], [tyre], run(tyre, life, end - from) + stop);
+  }
+}
+export function strategies(laps: number, track: Track) {
+  const all: Plan[] = [];
+  walkPlans(laps, track, null, (p) => all.push(p));
   return all.sort((a, b) => a.cost - b.cost);
 }
+// The team's plan for a race started on `tyre`.
+export const teamPlan = (laps: number, track: Track, tyre: Tyre) =>
+  strategies(laps, track).find((p) => p.tyres[0] === tyre)!;
 // How far off the best a level's strategists stray, in laps (about 8, 5, 2 and half a second).
 const CALL: Record<Level, number> = {
   amateur: 0.09,
@@ -280,6 +324,34 @@ const OT_HARVEST = 0.5;
 export const PIT_V = 120 / 3.6;
 export const STOP = 2.5;
 const BOX_BRAKE = 12;
+
+// Incidents, at about 2026's rates whatever the distance. A breakdown: the car coasts off the
+// tarmac and stops, or limps to its box if the pit entry's within LIMP m. A hit costing more than
+// CRASH m/s of speed on a wall (about 150 km/h head on), or SMASH m/s car to car (running into one
+// about 90 km/h slower), is a crash out; harder than DENT m/s leaves lasting damage, up to
+// DAMAGE. ponytail: SMASH is set from race.check.ts's whole races, about one crash out in two.
+// A puncture, from contact or a set run to nothing, limps to the box at PUNCTURE_V.
+const FAIL = 0.04;
+const FAULTS = ["Engine", "Gearbox", "Hydraulics", "Power unit", "Brakes"];
+const LIMP = 800;
+const LIMP_V = 30;
+const CRASH = 50;
+const SMASH = 25;
+const DENT = 10;
+const DAMAGE = 0.15;
+const PUNCTURE_V = 25;
+const LIMP_BRAKE = 6;
+// The worst grip the corner profiles go down to (track.ts).
+const MOST_WORN = 0.55;
+// The VSC: every car held to VSC_V for VSC_LAPS of a lap. The Safety Car drives at SC_PACE of the
+// corner speeds, up to SC_TOP, and comes in at the first pit entry after three quarters of a lap. Under either a
+// stop costs about this share of one, the field being slow.
+const VSC_V = 40;
+const VSC_LAPS = 0.6;
+const SC_PACE = 0.7;
+const SC_TOP = 50;
+const SC_STOP = 0.45;
+const VSC_STOP = 0.6;
 
 export type Racer = {
   // Driver index into the level's roster: 0 is you, and id >> 1 is the team (and its box).
@@ -347,11 +419,29 @@ export type Racer = {
   // In the lane with no stop planned on this visit: a computer car that strayed in, or any car
   // after the flag. It drives straight through in the fast lane.
   through: boolean;
+  // How far the set on the car has warmed up, 0 (cold) to 1.
+  warm: number;
+  // Incidents (see race.incidents): why the car's out of the race (null while it's running) and
+  // whether its wreck is still out there; how far into the race (m) its mechanical failure comes
+  // (Infinity for none) and what fails; lasting damage, a share off its grip and top speed; and a
+  // puncture.
+  out: string | null;
+  wreck: boolean;
+  failAt: number;
+  fault: string;
+  damage: number;
+  puncture: boolean;
+  // Queued behind the Safety Car until it crosses the line at the restart; the top speed a Safety
+  // Car, VSC or blue flag holds it to; and the blue flag: 0, or the side (+1 right of the faster
+  // car) to move over to.
+  held: boolean;
+  cap: number;
+  blue: number;
 };
 
 // Race Control and your team radio, queued for the HUD.
 export type Msg = {
-  kind: "limits" | "flag" | "penalty" | "fastest" | "radio";
+  kind: "limits" | "flag" | "penalty" | "fastest" | "radio" | "sc" | "out";
   id: number;
   text: string;
 };
@@ -374,6 +464,12 @@ export type Race = {
   // Whether computer cars make mistakes (off for the strategy check), and the dice.
   slips: boolean;
   rand: () => number;
+  // Whether cars fail, crash out and puncture (the game's races; not qualifying or the checks).
+  incidents: boolean;
+  // A Safety Car or VSC: which, when a VSC ends, and whether it's ending (the Safety Car is in
+  // this lap); and the Safety Car itself while it's on track, with how far it's driven.
+  neutral: { kind: "sc" | "vsc"; end: number; ending: boolean } | null;
+  sc: { car: Car; p: number; run: number } | null;
 };
 
 export function newRace(
@@ -383,6 +479,7 @@ export function newRace(
   tyre: Tyre = "medium",
   lv: Level = "intermediate",
   laps = DISTANCES[0]!,
+  incidents = false,
 ): Race {
   // Computer paces spread across the level's range by pace rating, and mistakes around its rate
   // by awareness, from half for the most aware to one and a half for the least. Everyone lines up
@@ -398,7 +495,8 @@ export function newRace(
     return (drivers[id]![k] - lo) / (hi - lo || 1);
   };
   const racers = [...Array(CARS).keys()].map((id): Racer => {
-    const strat = id ? close[Math.floor(rand() * close.length)]! : { at: [], tyres: [tyre] };
+    // Too short a race for a stop (qualifying), and you, plan nothing here.
+    const strat = (id && close[Math.floor(rand() * close.length)]) || { at: [], tyres: [tyre] };
     const s = grid.indexOf(id);
     const m = gridAt(s);
     const [x, y] = pointAt(m, (s % 2 ? 1 : -1) * (HALF[atDist(m)]! / 2.5));
@@ -448,9 +546,26 @@ export function newRace(
       dirty: 0,
       boxCall: false,
       through: false,
+      warm: 1,
+      out: null,
+      wreck: false,
+      failAt: Infinity,
+      fault: "",
+      damage: 0,
+      puncture: false,
+      held: false,
+      cap: Infinity,
+      blue: 0,
     };
   });
   for (const r of racers) r.lap.start = 0;
+  // About one car in twenty-five breaks down, somewhere in the race.
+  if (incidents)
+    for (const r of racers)
+      if (rand() < FAIL) {
+        r.failAt = (0.1 + 0.9 * rand()) * laps * LENGTH;
+        r.fault = FAULTS[Math.floor(rand() * FAULTS.length)]!;
+      }
   return {
     track,
     level: lv,
@@ -465,6 +580,9 @@ export function newRace(
     crossed: ZONES.map(() => -Infinity),
     slips: true,
     rand,
+    incidents,
+    neutral: null,
+    sc: null,
   };
 }
 
@@ -477,6 +595,16 @@ export function aiInput(r: Racer, race: Race): Input {
   const { ahead: fwd, atDist, lateral, limitAt, pitOffset, pointAt, signed } = race.track;
   if (race.t < r.launch) return { gas: false, brake: false, steer: 0 };
   const s = signed(r.p);
+  // Broken down, and not limping to the box: coast off the tarmac on the nearer side (away from
+  // the pit wall along the pit straight) and stop there.
+  if (r.dist >= r.failAt && !r.pitting && !r.stops.includes(r.laps + 1)) {
+    const { PIT_OUT } = race.track;
+    const now = lateral(car.x, car.y, r.p);
+    const side = s > PIT_IN - 50 && s < PIT_OUT + 50 ? -PIT_SIDE : Math.sign(now) || 1;
+    const far = r.p * LENGTH + 10 + car.v * 0.25;
+    const steer = aim(car, pointAt(far, side * (HALF[atDist(far)]! + 6)));
+    return { gas: false, brake: Math.abs(now) > HALF[atDist(r.p * LENGTH)]! + 2, steer };
+  }
   const look = r.p * LENGTH + 10 + Math.abs(car.v) * 0.25;
   const i = atDist(look);
   const g = carGrip(race, r);
@@ -487,7 +615,9 @@ export function aiInput(r: Racer, race: Race): Input {
   const k = CORNERS.findIndex((c) => fwd(c.turnIn - 250, m) < 50);
   if (k >= 0 && r.rolled !== k) {
     r.rolled = k;
-    r.mistake = race.slips && r.slip > 0 && race.rand() < r.slip + 0.08 * (1 - r.life) ? k : -1;
+    // Nobody overcooks one under a Safety Car or VSC.
+    const risk = race.slips && r.slip > 0 && r.cap === Infinity;
+    r.mistake = risk && race.rand() < r.slip + 0.08 * (1 - r.life) ? k : -1;
   }
   if (r.mistake >= 0 && fwd(CORNERS[r.mistake]!.at, m) < 200) r.mistake = -1;
   const at = atDist(m + 5);
@@ -509,15 +639,19 @@ export function aiInput(r: Racer, race: Race): Input {
   // Where a car is across the track from this level's line. Cars on a line that swings across
   // the track, through a chicane, keep their offsets from it, so traffic is judged in these.
   const off = (o: Racer) => lateral(o.car.x, o.car.y, o.p) - line * RACING[atDist(o.p * LENGTH)]!;
-  // A car in a lane (an offset) up to 30 m ahead, or from `from` m back (and a second further for
-  // each m/s it's closing at), overlapping a car there: the rearmost, so from 0 the nearest.
-  const ahead = (lane: number, from: number) =>
+  // A car in a lane (an offset) up to `to` m ahead, or from `from` m back (and a second further
+  // for each m/s it's closing at), overlapping a car there: the rearmost, so from 0 the nearest.
+  const ahead = (lane: number, from: number, to = 30) =>
     race.racers
       .filter((o) => {
         const ds = o.dist - r.dist;
         const back = from < 0 ? from - Math.max(0, o.car.v - car.v) : from;
         return (
-          o !== r && ds > back && ds < 30 && Math.abs(off(o) - lane) < 2 * CAR_HALF_WIDTH + 0.2
+          o !== r &&
+          !o.out &&
+          ds > back &&
+          ds < to &&
+          Math.abs(off(o) - lane) < 2 * CAR_HALF_WIDTH + 0.2
         );
       })
       .sort((a, b) => a.dist - b.dist)[0];
@@ -545,28 +679,36 @@ export function aiInput(r: Racer, race: Race): Input {
     const fast = (o: Racer) => Math.abs(lateral(o.car.x, o.car.y, o.p) - pitOffset(i)) < 2.5;
     const traffic = race.racers.some(
       (o) =>
-        o !== r && o.pit && o.car.v > 2 && fast(o) && o.dist - r.dist > -20 && o.dist - r.dist < 4,
+        o !== r &&
+        !o.out &&
+        o.pit &&
+        o.car.v > 2 &&
+        fast(o) &&
+        o.dist - r.dist > -20 &&
+        o.dist - r.dist < 4,
     );
     if (r.served && s - box < 3 && traffic) want = 0;
   } else {
     // Off the line the corners are tighter than the line's speeds, so a driver who never makes
-    // a mistake only pulls out with no corner coming, and is back on the line for the next.
-    const clear = slip > 0 || limitAt(at, g * r.pace, line) > car.v + PASS;
+    // a mistake only pulls out with no corner coming, and is back on the line for the next. Under
+    // the Safety Car nobody pulls out.
+    const clear = !r.held && (slip > 0 || limitAt(at, g * r.pace, line) > car.v + PASS);
     if (!clear) r.lane = 0;
     const block = ahead(lat(r.lane) - base, 0);
     if (block && block.car.v < car.v + 1) {
-      const free = clear ? [SPACE, -SPACE, 0].find((l) => !ahead(lat(l) - base, -8)) : undefined;
+      // A blue-flagged car is passed whatever's coming.
+      const free =
+        clear || (block.blue && !r.held)
+          ? [SPACE, -SPACE, 0].find((l) => !ahead(lat(l) - base, -8))
+          : undefined;
       if (free !== undefined && race.t > r.laneT) [r.lane, r.laneT] = [free, race.t + 2000];
     } else if (r.lane && race.t > r.laneT && !ahead(lat(0) - base, -10)) r.lane = 0;
-    to = lat(r.lane);
-    // Behind a car where it is now, no quicker than lets it stop its follow distance behind should
-    // that car brake as hard (with a margin), and closer than that, backing off.
-    const front = ahead(mine, 0);
-    if (front) {
-      const gap = front.dist - r.dist - follow(front.car.v);
-      const stop = 1.6 * g * brakeAt(front.car.v);
-      want = Math.min(want, gap > 0 ? Math.sqrt(front.car.v ** 2 + stop * gap) : front.car.v + gap);
-    }
+    // Shown the blue flag, over to the side away from the faster car.
+    to = lat(r.blue ? r.blue * SPACE : r.lane);
+    // Behind a car where it is now, at a safe distance: looking far enough ahead to stop for a
+    // queue at a hairpin.
+    const front = ahead(mine, 0, 120);
+    if (front) want = Math.min(want, behind(front.car.v, front.dist - r.dist, g));
   }
   let held = false;
   if (r.pitting) {
@@ -578,7 +720,12 @@ export function aiInput(r: Racer, race: Race): Input {
       const d = lateral(o.car.x, o.car.y, o.p) - now;
       const gap = o.dist - r.dist;
       return (
-        o !== r && Math.abs(gap) < 6 && !(s < 0 && gap < 0) && d * (to - now) > 0 && Math.abs(d) < 3
+        o !== r &&
+        !o.out &&
+        Math.abs(gap) < 6 &&
+        !(s < 0 && gap < 0) &&
+        d * (to - now) > 0 &&
+        Math.abs(d) < 3
       );
     });
     if (held) to = now;
@@ -588,24 +735,29 @@ export function aiInput(r: Racer, race: Race): Input {
     for (const o of race.racers) {
       const gap = o.dist - r.dist;
       const lo = off(o) + base;
-      if (o === r || Math.abs(gap) > 2 * CAR_HALF_LENGTH + 1 || Math.abs(to - lo) >= SPACE)
+      if (o === r || o.out || Math.abs(gap) > 2 * CAR_HALF_LENGTH + 1 || Math.abs(to - lo) >= SPACE)
         continue;
       held = true;
       const side = Math.sign(mine - off(o)) || 1;
       to = Math.max(-room, Math.min(room, lo + side * SPACE));
       if (Math.abs(to - lo) < SPACE - 0.1 && gap > 0) want = Math.min(want, o.car.v - 2);
     }
+  // A wreck ahead: round it on the side with more room, whatever's coming.
+  if (!r.pitting)
+    for (const o of race.racers) {
+      if (!o.wreck || fwd(m, o.p * LENGTH) > 150) continue;
+      const lo = lateral(o.car.x, o.car.y, o.p);
+      if (Math.abs(to - lo) < SPACE) to = lo + (lo > 0 ? -1 : 1) * SPACE;
+    }
   // Held off the line, a legend backs off to the centreline's speed rather than run wide.
   if (held && !slip) want = Math.min(want, limitAt(at, g * r.pace));
+  want = Math.min(want, r.cap);
 
-  const [tx, ty] = pointAt(look, to);
-  let diff = Math.atan2(ty - car.y, tx - car.x) - car.h;
-  diff = Math.atan2(Math.sin(diff), Math.cos(diff));
   const over = car.v > want;
   return {
     gas: !over,
     brake: over && car.v > want + 1,
-    steer: Math.max(-1, Math.min(1, diff * 4)),
+    steer: aim(car, pointAt(look, to)),
     ot: true,
   };
 }
@@ -664,8 +816,8 @@ function pitStop(race: Race, r: Racer, dt: number) {
     car.v = 0;
     r.stop -= dt;
     if (r.stop <= 0) {
-      [r.life, r.served, r.boxCall] = [1, true, false];
-      [r.tyre, r.fit] = [r.fit ?? teamPick(race.laps - r.laps - 1), null];
+      [r.life, r.served, r.boxCall, r.warm, r.puncture] = [1, true, false, 0, false];
+      [r.tyre, r.fit] = [r.fit ?? nextSet(race, r), null];
       r.stints.push(r.tyre);
       r.set = r.laps;
     }
@@ -679,17 +831,117 @@ function pitStop(race: Race, r: Racer, dt: number) {
   const box = BOXES[r.id >> 1]!.s;
   const d = box - signed(r.p);
   if (r.served || r.through || d < 0 || d > 30) return;
-  const mate = race.racers.find((o) => o.id === (r.id ^ 1));
+  const mate = race.racers.find((o) => o.id === (r.id ^ 1) && !o.out);
   const md = mate && box - signed(mate.p);
   const wait = mate?.pit && !mate.served && (mate.stop > 0 || (md! >= 0 && md! < d));
   const to = wait ? d - 8 : d;
   car.v = Math.min(car.v, Math.sqrt(2 * BOX_BRAKE * Math.max(0, to)));
   if (to < 1) car.v = 0;
-  if (!wait && d < 1) r.stop = STOP;
+  // A car that limped in broken down retires here.
+  if (!wait && d < 1) {
+    if (r.dist >= r.failAt) retire(race, r, r.fault);
+    else r.stop = STOP;
+  }
 }
 
 const say = (race: Race, kind: Msg["kind"], id: number, text: string) =>
   race.msgs.push({ kind, id, text });
+const code = (race: Race, r: Racer) => driver(race, r.id).code;
+
+// The first lap a car can stop at the end of: this one while the pit entry's still ahead.
+const firstChance = (race: Race, r: Racer) => {
+  const s = race.track.signed(r.p);
+  return r.laps + (s > race.track.PIT_IN - 250 && s < 0 ? 2 : 1);
+};
+const nowOf = (race: Race, r: Racer, first: number, cheap: number) => ({
+  from: r.laps,
+  first,
+  tyre: r.tyre,
+  life: r.life,
+  used: r.stints,
+  cheap,
+});
+// The team re-plans the race from where the car is, a stop at the first chance costing `cheap`
+// of one: the best plan, if it beats the one the car's on by more than the level's margin
+// (always, for you) or that one can't be run any more. Returns whether it now stops at the first
+// chance.
+function replan(race: Race, r: Racer, cheap = 1) {
+  const first = firstChance(race, r);
+  const k = r.stops.findIndex((n) => n >= first);
+  const mine = (k < 0 ? [] : r.stops.slice(k)).join();
+  const sets = [r.tyre, ...(k < 0 ? [] : r.plan.slice(k + 1))].join();
+  let best: Plan | null = null;
+  let cost = Infinity;
+  walkPlans(race.laps, race.track, nowOf(race, r, first, cheap), (p) => {
+    if (!best || p.cost < best.cost) best = p;
+    if (p.at.join() === mine && p.tyres.join() === sets) cost = p.cost;
+  });
+  const pick = best as Plan | null;
+  if (pick && pick.cost < cost - (r.id ? CALL[race.level] : 0))
+    [r.stops, r.plan] = [pick.at, pick.tyres];
+  return r.stops.includes(first);
+}
+// The set for a stop now: the next in the best plan that stops here, or this late in the race,
+// a compound the car hasn't run yet.
+function nextSet(race: Race, r: Racer): Tyre {
+  let best: Plan | null = null;
+  walkPlans(race.laps, race.track, nowOf(race, r, r.laps, 1), (p) => {
+    if (p.at[0] === r.laps && (!best || p.cost < best.cost)) best = p;
+  });
+  return (best as Plan | null)?.tyres[1] ?? COMPOUNDS.find((t) => !r.stints.includes(t)) ?? "soft";
+}
+
+// Out of the race where it is. A wreck in the pit lane is wheeled away; on track it brings out
+// the Safety Car if it's a crash (there's debris) or stopped on the tarmac, else the VSC.
+function retire(race: Race, r: Racer, why: string, crash = false) {
+  const { HALF, LENGTH, atDist, lateral } = race.track;
+  [r.out, r.wreck, r.car.v, r.puncture] = [why || "Retired", !r.pit, 0, false];
+  if (r.id === 0) say(race, "radio", 0, "Sorry, retire the car.");
+  say(race, "out", r.id, `${crash ? "Crash" : "Car stopped"} · ${code(race, r)} · ${why}`);
+  if (!r.wreck) return;
+  const on = Math.abs(lateral(r.car.x, r.car.y, r.p)) < HALF[atDist(r.p * LENGTH)]!;
+  deploy(race, crash || on ? "sc" : "vsc");
+}
+// Neutralises the race (once anyone's taken the flag it's run). A second incident extends a VSC
+// or keeps the Safety Car out longer, and one that needs the Safety Car upgrades a VSC. Then
+// every team looks at a cheap stop.
+function deploy(race: Race, kind: "sc" | "vsc") {
+  const rs = race.racers.filter((r) => !r.out && r.finish === null);
+  if (rs.length < race.racers.filter((r) => !r.out).length || !rs.length) return;
+  const n = race.neutral;
+  const lap = race.fastest?.ms ?? 90_000;
+  if (kind === "vsc") {
+    if (n?.kind === "sc") return;
+    if (n) n.end = Math.max(n.end, race.t + VSC_LAPS * lap);
+    else {
+      race.neutral = { kind, end: race.t + VSC_LAPS * lap, ending: false };
+      say(race, "sc", -1, "Virtual Safety Car deployed");
+    }
+  } else if (n?.kind === "sc" && race.sc) [race.sc.run, n.ending] = [0, false];
+  else {
+    race.neutral = { kind, end: Infinity, ending: false };
+    // Out ahead of the leader, on the centreline.
+    const { LENGTH, dirAt, pointAt, nearest } = race.track;
+    const lead = rs.reduce((a, b) => (b.dist > a.dist ? b : a));
+    const [x, y] = pointAt(lead.p * LENGTH + 100, 0);
+    const p = nearest(x, y).p;
+    race.sc = { car: { x, y, h: dirAt(p), v: Math.min(lead.car.v, SC_TOP) }, p, run: 0 };
+    for (const r of rs) [r.held, r.lane] = [true, 0];
+    say(race, "sc", -1, "Safety Car deployed");
+  }
+  for (const r of rs) {
+    const busy = r.dist >= r.failAt || r.puncture || r.pitting;
+    if (busy || !replan(race, r, kind === "sc" ? SC_STOP : VSC_STOP)) continue;
+    if (r.id === 0) boxCall(race, r, `${kind === "sc" ? "Safety Car" : "VSC"}. Box, box.`);
+  }
+}
+// The radio calls you in, with the set the team has out (yours if you've picked one).
+function boxCall(race: Race, r: Racer, why: string) {
+  const k = r.stops.indexOf(firstChance(race, r));
+  r.fit ??= (k >= 0 && r.plan[k + 1]) || nextSet(race, r);
+  r.boxCall = true;
+  say(race, "radio", 0, `${why} ${TYRES[r.fit].name} ready.`);
+}
 
 // One more excursion: the lap's deleted (lapTick does that), the third brings the black and
 // white flag, and every one after that costs time, 5 s and then 10 s each, like F1.
@@ -786,6 +1038,7 @@ function wake(race: Race, r: Racer) {
       const d = ahead(r.p * LENGTH, o.p * LENGTH);
       if (
         o !== r &&
+        !o.out &&
         !o.pit &&
         d > 0 &&
         d < gap &&
@@ -797,6 +1050,114 @@ function wake(race: Race, r: Racer) {
   r.dirty = DIRTY * Math.max(0, 1 - gap / DIRTY_M);
 }
 
+// A hit that cost a car `loss` m/s: out of the race over `limit`, lasting damage over DENT, and car
+// to car it can puncture a tyre. Nudges queueing in the pit lane don't count.
+function impact(race: Race, r: Racer, loss: number, limit: number) {
+  if (!race.incidents || r.out || r.pit || r.finish !== null) return;
+  if (loss >= limit) return retire(race, r, "Crash", true);
+  if (loss > DENT) r.damage = Math.min(DAMAGE, r.damage + (0.05 * (loss - DENT)) / (limit - DENT));
+  if (limit === SMASH && loss > 8 && race.rand() < 0.08) puncture(race, r);
+}
+// A puncture: with damage too it's the end, else the car limps to its box at the first chance.
+function puncture(race: Race, r: Racer) {
+  if (r.puncture) return;
+  r.puncture = true;
+  say(race, "out", r.id, `Puncture · ${code(race, r)}`);
+  if (r.damage > 0.1) {
+    [r.failAt, r.fault] = [r.dist + 1, "Puncture damage"];
+    return;
+  }
+  [r.stops, r.plan] = [[firstChance(race, r)], [r.tyre, nextSet(race, r)]];
+  if (r.id === 0) boxCall(race, r, "Puncture. Box, box.");
+}
+// Covering the undercut: a rival within about two seconds that has just stopped brings a car in
+// this lap, if its own stop's within three laps anyway. ponytail: "two seconds" is 150 m either
+// side of where it was before its stop.
+function cover(race: Race, r: Racer) {
+  const { LENGTH, STOP_LAPS } = race.track;
+  const k = r.stops.findIndex((n) => n > r.laps);
+  const next = r.stops[k];
+  if (next === undefined || next - r.laps > 3 || next === r.laps + 1) return;
+  const near = race.racers.some((o) => {
+    const d = o.dist - r.dist;
+    return (
+      o !== r &&
+      !o.out &&
+      o.stints.length > 1 &&
+      o.set >= r.laps - 1 &&
+      o.set > r.set &&
+      d < 150 &&
+      d > -STOP_LAPS * LENGTH - 150
+    );
+  });
+  if (near) r.stops[k] = r.laps + 1;
+}
+// Racing again: the wrecks are cleared away.
+function green(race: Race) {
+  race.neutral = null;
+  for (const r of race.racers) r.wreck = false;
+  say(race, "sc", -1, "Green flag");
+}
+// The Safety Car, VSC and blue flags for a frame: drives the Safety Car, ends a VSC, and sets
+// every car's cap and blue flag.
+function neutralise(race: Race, dt: number) {
+  const { LENGTH, PIT_IN, ahead: fwd, atDist, lateral, limitAt, nearest, pointAt } = race.track;
+  const rs = race.racers.filter((r) => !r.out);
+  for (const r of rs) [r.cap, r.blue] = [Infinity, 0];
+  const n = race.neutral;
+  const pace = (m: number) => Math.min(SC_TOP, SC_PACE * limitAt(atDist(m + 5), 1));
+  if (n?.kind === "vsc") {
+    if (!n.ending && race.t > n.end - 5000) {
+      n.ending = true;
+      say(race, "sc", -1, "VSC ending");
+    }
+    if (race.t >= n.end) green(race);
+    else for (const r of rs) r.cap = VSC_V;
+  }
+  const sc = race.sc;
+  if (sc && n) {
+    const m = sc.p * LENGTH;
+    const want = pace(m);
+    const steer = aim(sc.car, pointAt(m + 10 + sc.car.v * 0.25, 0));
+    step(sc.car, { gas: sc.car.v < want, brake: sc.car.v > want + 1, steer }, dt, false, 1, TOP);
+    const p = nearest(sc.car.x, sc.car.y).p;
+    sc.run += fwd(m, p * LENGTH);
+    sc.p = p;
+    if (!n.ending && sc.run > 0.75 * LENGTH) {
+      n.ending = true;
+      say(race, "sc", -1, "Safety Car in this lap");
+    }
+    // ponytail: it's gone at the pit entry rather than drive down the lane.
+    const s = race.track.signed(p);
+    if (n.ending && s > PIT_IN - 30 && s < PIT_IN) race.sc = null;
+  }
+  // In the queue nobody passes: each car keeps its distance to the one ahead on track (the Safety
+  // Car, for the leader). With the Safety Car in, whoever has nothing close ahead (the leader)
+  // runs at its pace to the line.
+  for (const r of rs) {
+    if (!r.held || r.pit) continue;
+    const m = r.p * LENGTH;
+    let [gap, v] = race.sc ? [fwd(m, race.sc.p * LENGTH), race.sc.car.v] : [Infinity, 0];
+    for (const o of rs) {
+      const d = fwd(m, o.p * LENGTH);
+      if (o !== r && !o.pit && d < gap) [gap, v] = [d, o.car.v];
+    }
+    r.cap = race.sc || gap < 300 ? behind(v, gap, carGrip(race, r)) : pace(m);
+  }
+  if (race.neutral || rs.some((r) => r.held)) return;
+  // Blue flags: a car a lap or more up, up to 60 m behind on track, is let by.
+  for (const r of rs) {
+    if (r.pit || r.finish !== null) continue;
+    for (const o of rs) {
+      const up = o.dist - r.dist > LENGTH / 2;
+      if (!up || o.pit || o.finish !== null || fwd(o.p * LENGTH, r.p * LENGTH) > 60) continue;
+      const side = lateral(r.car.x, r.car.y, r.p) - lateral(o.car.x, o.car.y, o.p);
+      r.blue = Math.sign(side) || 1;
+      r.cap = Math.min(r.cap, o.car.v - 6);
+    }
+  }
+}
+
 // One frame for every car. `you` is the player's input, or null to hold them (before the lights).
 // Returns the player's split, if this frame made one.
 export function tick(race: Race, you: Input, dt: number): Split | null {
@@ -806,21 +1167,34 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
   // Race distance between the checkpoints the gaps are timed at.
   const CP = LENGTH / 50;
   let mine: Split | null = null;
+  neutralise(race, dt);
   for (const r of race.racers) {
+    // Out of the race: a wreck sits where it stopped, until it's cleared away.
+    if (r.out) continue;
     const { car } = r;
     const { edge: e, p } = nearest(car.x, car.y);
     // Progress only counts small steps, so a jump to another part of the lap doesn't.
     let dp = p - r.p;
     dp -= Math.round(dp);
+    const was = r.dist;
     if (Math.abs(dp) < 0.02) r.dist += dp * LENGTH;
     const from = r.p * LENGTH;
     r.p = p;
     r.pit = inPit(car.x, car.y, p);
     const edge = r.pit ? -1 : e;
     const s = signed(p);
-    // A computer car heads in at the end of a lap it planned to stop on, with that stint's set.
+    // A breakdown, called on the radio if it's yours: near the pit entry the car limps to its box.
+    if (r.finish === null && was < r.failAt && r.dist >= r.failAt) {
+      const limp = s > PIT_IN - LIMP && s < PIT_IN - 10;
+      if (limp) [r.stops, r.plan] = [[r.laps + 1], [r.tyre, r.tyre]];
+      if (r.id === 0)
+        say(race, "radio", 0, `We have a problem. ${limp ? "Box, box." : "Pull over."}`);
+    }
+    const failed = r.dist >= r.failAt;
+    // A computer car (or a broken-down one) heads in at the end of a lap it planned to stop on,
+    // with that stint's set.
     const due = r.stops.indexOf(r.laps + 1);
-    if (r.id && due >= 0 && s > PIT_IN - 200 && s < PIT_IN && !r.pitting) {
+    if ((r.id || failed) && due >= 0 && s > PIT_IN - 200 && s < PIT_IN && !r.pitting) {
       r.pitting = true;
       r.fit = r.plan[due + 1] ?? null;
     }
@@ -828,25 +1202,42 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
 
     // Anyone in the lane is driven down it: you to your box when the team takes over, and a
     // computer car that strays in without a stop planned, or any car after the flag, straight
-    // through. After the flag the team drives you round too.
+    // through. After the flag the team drives you round too, and once you've broken down.
     if (!r.pit) r.through = false;
     else if (!r.pitting && (r.id || r.finish !== null)) r.through = true;
     if (r.pit) r.pitting = true;
-    const input = r.id === 0 && !r.pitting && r.finish === null ? you : aiInput(r, race);
+    const input = r.id === 0 && !r.pitting && r.finish === null && !failed ? you : aiInput(r, race);
     const moved = Math.abs(dp) < 0.02 && dp > 0;
+    // Over the line once the Safety Car's in: racing again, the first across bringing the green.
+    if (r.held && !race.sc && moved && p * LENGTH < from) {
+      r.held = false;
+      if (race.neutral?.kind === "sc") green(race);
+    }
     wake(race, r);
     const top =
       power(race, r, from, p * LENGTH, moved, input) + battery(race, r, input, dt) + r.tow;
     const g = carGrip(race, r);
-    step(car, input, dt, onGrass(edge), g, top);
+    const v0 = car.v;
+    step(car, input, dt, onGrass(edge), g, top * (1 - r.damage));
+    // Held to a Safety Car, the VSC or a blue flag, braking down to it; limping, slowing gently so
+    // nobody runs into the back of it.
+    if (car.v > r.cap) car.v = Math.max(0, r.cap, Math.min(car.v, v0 - brakeAt(v0) * g * dt));
+    const limp = failed ? LIMP_V : r.puncture ? PUNCTURE_V : Infinity;
+    if (car.v > limp) car.v = Math.max(limp, Math.min(car.v, v0 - LIMP_BRAKE * dt));
     pitStop(race, r, dt);
+    if (r.out) continue;
+    const hit = car.v;
     collide(car);
+    impact(race, r, hit - car.v, CRASH);
+    // Broken down and rolled to a stop.
+    if (failed && !r.out && !r.pit && car.v < 0.5) retire(race, r, r.fault);
+    if (r.out) continue;
     const v = Math.abs(car.v);
-    r.life = Math.max(
-      0,
-      r.life -
-        dt * TYRES[r.tyre].wear * v * ((WEAR * MONZA) / LENGTH + (allFourOff(edge) ? GRASS : 0)),
-    );
+    const wear = lapWear(r.tyre, race.laps, race.track) / LENGTH + (allFourOff(edge) ? GRASS : 0);
+    r.life = Math.max(0, r.life - dt * v * wear);
+    r.warm = Math.min(1, r.warm + (dt * v) / (TYRES[r.tyre].warm * LENGTH));
+    if (race.incidents && r.life <= 0 && r.finish === null && race.rand() < 0.05 * dt)
+      puncture(race, r);
     r.wrong = Math.cos(car.h - dirAt(p)) < -0.5 && car.v > 4.2 ? r.wrong + dt : 0;
     // Track limits, once per trip off. The pit lane's side doesn't count, to 30 m past the exit
     // for a car rejoining alongside another, nor being pushed off: contact in the last second
@@ -855,14 +1246,13 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     const off = allFourOff(edge) && !entry && r.finish === null && r.lap.start !== null;
     if (off && !r.off && race.t - r.touchT > 1000) strike(race, r);
     r.off = off;
-    if (r.id === 0 && r.life < 0.3 && !r.boxCall && r.finish === null) {
-      r.boxCall = true;
-      r.fit ??= teamPick(race.laps - r.laps - 1);
-      say(race, "radio", 0, `Box, box. ${TYRES[r.fit].name} ready.`);
-    }
+    // On a set near the cliff with no stop planned, the team calls you in anyway.
+    const planned = r.stops.some((n) => n > r.laps);
+    if (r.id === 0 && r.life < CLIFF_AT + 0.05 && !r.boxCall && !planned && r.finish === null)
+      boxCall(race, r, "Box, box.");
     // Into the lane without the call: the team still has a set out.
     if (r.id === 0 && r.pit && !r.served && r.fit === null) {
-      r.fit = teamPick(race.laps - r.laps - 1);
+      r.fit = nextSet(race, r);
       say(race, "radio", 0, `${TYRES[r.fit].name} ready.`);
     }
 
@@ -882,6 +1272,20 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
       if (r.id === 0 && r.laps === race.laps - 1) say(race, "radio", 0, "Last lap. Bring it home.");
       const leaderDone = race.racers.some((o) => o.finish !== null);
       if (r.finish === null && (r.laps >= race.laps || leaderDone)) r.finish = race.t;
+      // The team re-plans at the line (not with the car on its way to a stop), and calls you in on
+      // the lap you're to stop.
+      if (r.finish === null && !failed && !r.puncture && !r.pitting) {
+        replan(race, r);
+        if (r.id) cover(race, r);
+        else if (r.stops.includes(r.laps + 1))
+          boxCall(
+            race,
+            r,
+            new Set(r.stints).size < 2 && r.laps >= race.laps - 2
+              ? "Box, box. We still need the second compound."
+              : "Box this lap.",
+          );
+      }
     }
     if (r.id === 0) mine = split;
     const cp = Math.floor(r.dist / CP);
@@ -892,25 +1296,38 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
   }
   const rs = race.racers;
   for (let a = 0; a < rs.length; a++)
-    for (let b = a + 1; b < rs.length; b++)
-      if (bump(rs[a]!.car, rs[b]!.car)) rs[a]!.touchT = rs[b]!.touchT = race.t;
-  // Done once every car has taken the flag, or, should one never get there, three average laps
-  // after the winner.
+    for (let b = a + 1; b < rs.length; b++) {
+      // ponytail: wrecks aren't solid, so nobody piles into one; the computer steers round them.
+      const [x, y] = [rs[a]!, rs[b]!];
+      if (x.out || y.out) continue;
+      // How fast they were closing, along the line between them.
+      const [vx, vy] = [x.car.v, y.car.v];
+      if (!bump(x.car, y.car)) continue;
+      x.touchT = y.touchT = race.t;
+      impact(race, x, vx - x.car.v, SMASH);
+      impact(race, y, vy - y.car.v, SMASH);
+    }
+  // Done once every car has taken the flag or is out, or, should one never get there, three
+  // average laps after the winner.
   const won = Math.min(...rs.map((r) => r.finish ?? Infinity));
-  if (rs.every((r) => r.finish !== null) || race.t - won > (3 * won) / race.laps) race.done = true;
+  if (rs.every((r) => r.finish !== null || r.out) || race.t - won > (3 * won) / race.laps)
+    race.done = true;
   return mine;
 }
 
 export const wrongWay = (r: Racer) => r.wrong > 1;
 
-// Running order: finishers by time with penalties added, then everyone else by distance.
+// Running order: finishers by time with penalties added, then everyone else by distance, and
+// the cars out of the race last.
 export const order = (race: Race) =>
   race.racers
     .slice()
-    .sort((a, b) =>
-      a.finish !== null || b.finish !== null
-        ? (a.finish ?? Infinity) + a.penalty - ((b.finish ?? Infinity) + b.penalty)
-        : b.dist - a.dist,
+    .sort(
+      (a, b) =>
+        +!!a.out - +!!b.out ||
+        (a.finish !== null || b.finish !== null
+          ? (a.finish ?? Infinity) + a.penalty - ((b.finish ?? Infinity) + b.penalty)
+          : b.dist - a.dist),
     );
 // Seconds behind the leader, from when each passed the same checkpoint; once in, from the flag
 // with penalties added, as the classification will have it.
@@ -922,7 +1339,8 @@ export const gap = (race: Race, r: Racer) => {
 
 // Final classification once the race is done: lapped cars are shown laps down, and any car that
 // never made it to the flag too, placed by the time it would take for the rest at its average
-// speed so far.
+// speed so far. Then the cars out of the race, furthest first, and last any disqualified for
+// finishing on a single compound.
 export function results(race: Race) {
   const total = race.laps * race.track.LENGTH;
   return race.racers
@@ -930,8 +1348,9 @@ export function results(race: Race) {
       const run = r.finish ?? race.t + (total - r.dist) / (Math.max(r.dist, 1) / race.t);
       const time = run + r.penalty;
       const down = race.laps - r.laps;
-      const { id, best, penalty, stints } = r;
-      return { id, time, down, best, penalty, stints, stops: stints.length - 1 };
+      const { id, best, penalty, stints, out } = r;
+      const dsq = r.finish !== null && new Set(stints).size < 2;
+      return { id, time, down, best, penalty, stints, stops: stints.length - 1, out, dsq };
     })
-    .sort((a, b) => a.down - b.down || a.time - b.time);
+    .sort((a, b) => +a.dsq - +b.dsq || +!!a.out - +!!b.out || a.down - b.down || a.time - b.time);
 }

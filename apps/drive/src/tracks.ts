@@ -3,7 +3,8 @@
 // by hand; metres are round the lap from the line. Pit lanes are simplified to the main straight
 // on their real side. Grip counts for more or less of a lap from track to track, so proEdge sets
 // pro's extra grip on each one to lap as close to a clean lap as at Monza, so pro is as hard on
-// every track; legendsEdge does the same for legends against pro.
+// every track; legendsEdge does the same for legends against pro. Wear is how hard each is on
+// tyres, by eye from Pirelli's ratings: Silverstone and Spa the hardest, Monza the easiest.
 import { INTERLAGOS_DATA } from "./interlagos.ts";
 import { MONZA_DATA } from "./monza.ts";
 import { REDBULLRING_DATA } from "./redbullring.ts";
@@ -43,6 +44,7 @@ export const TRACKS: TrackDef[] = [
     seed: 1922,
     grip: 0.259,
     stop: 0.248,
+    wear: 0.8,
   },
   {
     id: "spa",
@@ -75,6 +77,7 @@ export const TRACKS: TrackDef[] = [
     seed: 1921,
     grip: 0.396,
     stop: 0.105,
+    wear: 1.2,
     proEdge: 1.23,
     legendsEdge: 1.26,
   },
@@ -112,6 +115,7 @@ export const TRACKS: TrackDef[] = [
     seed: 1948,
     grip: 0.422,
     stop: 0.121,
+    wear: 1.25,
     proEdge: 1.19,
     legendsEdge: 1.21,
   },
@@ -144,8 +148,9 @@ export const TRACKS: TrackDef[] = [
     seed: 1940,
     grip: 0.324,
     stop: 0.258,
+    wear: 1,
     proEdge: 1.23,
-    legendsEdge: 1.26,
+    legendsEdge: 1.29,
   },
   {
     id: "redbullring",
@@ -177,8 +182,9 @@ export const TRACKS: TrackDef[] = [
     seed: 1969,
     grip: 0.305,
     stop: 0.199,
+    wear: 0.85,
     proEdge: 1.29,
-    legendsEdge: 1.33,
+    legendsEdge: 1.36,
   },
 ];
 

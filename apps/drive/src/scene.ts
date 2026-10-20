@@ -567,6 +567,26 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
     return b;
   });
   const body = bodies[0]!;
+  // The Safety Car: one more of the car, in silver, with an amber light bar on top.
+  const safety = new THREE.Group();
+  {
+    const b = car!.root.clone(true);
+    b.traverse((o) => {
+      if (!(o instanceof THREE.Mesh) || o.material.name !== "red") return;
+      o.material = o.material.clone();
+      (o.material as THREE.MeshStandardMaterial).color.set(C.chrome);
+    });
+    const k = 5.5 / car!.size.z;
+    b.scale.setScalar(k);
+    const bar = new THREE.Mesh(
+      new THREE.BoxGeometry(1.2, 0.15, 0.3),
+      new THREE.MeshBasicMaterial({ color: "#ff9a1f" }),
+    );
+    bar.position.y = car!.size.y * k + 0.08;
+    safety.add(b, bar);
+    safety.visible = false;
+    scene.add(safety);
+  }
   // A car in a slipstream: Lucide's wind icon (ISC) on the tarmac behind it, the streaks' tails
   // at the car, fading in with the tow.
   const windCanvas = document.createElement("canvas");
@@ -630,9 +650,18 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
 
   return {
     // Every car on track, yours first (only yours in qualifying, the rest hidden), each one's
-    // share of the full tow, and each team's crew: 0 in the garage, 1 a car in the lane, 2 a car
-    // stopped at the box.
-    frame(cars: Car[], tows: number[], steer: number, dt: number, crews: number[]) {
+    // share of the full tow, each team's crew (0 in the garage, 1 a car in the lane, 2 a car
+    // stopped at the box), which cars are gone (out of the race, their wrecks cleared) and the
+    // Safety Car, if it's out.
+    frame(
+      cars: Car[],
+      tows: number[],
+      steer: number,
+      dt: number,
+      crews: number[],
+      gone: boolean[] = [],
+      sc: Car | null = null,
+    ) {
       let moved = false;
       crews.forEach((want, k) => {
         if (want === 2) atCar(k, cars);
@@ -646,14 +675,19 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
       });
       if (moved) crewBody.instanceMatrix.needsUpdate = crewHead.instanceMatrix.needsUpdate = true;
       const c = cars[0]!;
-      bodies.forEach((b, k) => (b.visible = k < cars.length));
+      bodies.forEach((b, k) => (b.visible = k < cars.length && !gone[k]));
+      safety.visible = !!sc;
+      if (sc) {
+        safety.position.set(sc.x, RIDE, sc.y);
+        safety.rotation.y = Math.PI / 2 - sc.h;
+      }
       cars.forEach((o, k) => {
         bodies[k]!.position.set(o.x, RIDE, o.y);
         bodies[k]!.rotation.y = Math.PI / 2 - o.h;
       });
       winds.forEach((w, k) => {
         const o = cars[k];
-        w.visible = !!o && tows[k]! > 0;
+        w.visible = !!o && tows[k]! > 0 && !gone[k];
         if (!o || !w.visible) return;
         // Its middle 4.5 m behind the car's, just off the rear wing.
         w.position.x = o.x - Math.cos(o.h) * 4.5;

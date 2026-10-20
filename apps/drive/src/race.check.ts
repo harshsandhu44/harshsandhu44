@@ -6,7 +6,6 @@ import { TRACKS, getTrack } from "./tracks.ts";
 import {
   CARS,
   DISTANCES,
-  STINT,
   LEVELS,
   PIT_V,
   edgeOf,
@@ -14,9 +13,10 @@ import {
   grip,
   order,
   STOP,
+  stintLaps,
   strategies,
   gridSlot,
-  teamPick,
+  teamPlan,
   GRID,
   aiInput,
   newQuali,
@@ -99,57 +99,90 @@ const run = (race: Race, secs: number, until = () => false) => {
   for (let f = 0; f < secs / DT && !until(); f++) tick(race, still, DT);
   return race;
 };
+// The same with no stops, whatever the team would re-plan.
+const nonStop = (race: Race, secs: number, until = () => false) =>
+  run(race, secs, () => {
+    for (const r of race.racers) [r.stops, r.plan] = [[], [r.tyre]];
+    return until();
+  });
 
-// Tyres: a worn set laps slower.
-const lapOn = (life: number) => {
-  const race = solo(1, (r) => ([r.life, r.tyre] = [life, "medium"]));
+// Tyres: a lap on a set held at `life` (and warm), alone, on a mid pace.
+const lapAt = (life: number, tyre: Tyre = "medium", track: Track = monza) => {
+  const race = solo(10, (r) => ([r.tyre, r.stops] = [tyre, []]), "pro", track);
   const r = race.racers[0]!;
   race.slips = false;
-  run(race, 400, () => r.laps >= 2);
+  for (let f = 0; f < 400 / DT && r.laps < 3; f++) {
+    [r.life, r.warm, r.stops, r.plan] = [life, 1, [], [tyre]];
+    tick(race, still, DT);
+  }
   return r.best;
 };
-const fresh = lapOn(1);
-assert.ok(lapOn(0) > fresh + 1000, `worn tyres are slower (${fmt(fresh)} vs ${fmt(lapOn(0))})`);
-
-// How long each compound lasts, with mistakes on: life at the end of each lap, no stop.
-const stint = (tyre: Tyre, seed: number) => {
-  const race = newRace(monza, GRID, seeded(seed));
+const fresh = lapAt(1);
+assert.ok(lapAt(0) > fresh + 5000, `worn tyres are slower (${fmt(fresh)} vs ${fmt(lapAt(0))})`);
+// Wear is gentle to the cliff (a quarter of the set left) and steep past it.
+{
+  const [cliff, gone] = [lapAt(0.25) - fresh, lapAt(0.05) - lapAt(0.25)];
+  assert.ok(cliff > 800 && cliff < 2500, `to the cliff a set loses a second or two (${cliff})`);
+  assert.ok(gone > 2 * cliff, `and past it far more (${gone})`);
+}
+// F1's gaps at Monza: a soft about 0.8 s a lap quicker than a medium, a hard 0.5 s slower.
+{
+  const [soft, hard] = [fresh - lapAt(1, "soft"), lapAt(1, "hard") - fresh];
+  assert.ok(soft > 500 && soft < 1100, `softs about 0.8 s quicker (${soft})`);
+  assert.ok(hard > 300 && hard < 800, `hards about 0.5 s slower (${hard})`);
+}
+// A cold set from the pits is slower over the first half lap.
+{
+  const half = (warm: number) => {
+    const race = solo(10, (r) => ([r.warm, r.launch] = [warm, 0]));
+    race.slips = false;
+    run(race, 120, () => race.racers[0]!.dist > LENGTH / 2);
+    return race.t;
+  };
+  const [cold, warm] = [half(0), half(1)];
+  assert.ok(cold - warm > 200, `cold tyres cost time (${(cold - warm).toFixed(0)} ms)`);
+}
+// A set lasts its share of the race to the cliff, at any distance, faster on harder tracks: life
+// lost per lap on a medium, alone, over its first two laps.
+for (const laps of [DISTANCES[0]!, DISTANCES.at(-1)!]) {
+  const race = newRace(monza, GRID, seeded(7), "medium", "pro", laps);
   race.racers = race.racers.filter((r) => r.id === 10);
   const r = race.racers[0]!;
-  [r.tyre, r.stops, r.plan] = [tyre, [], [tyre]];
-  const lives: number[] = [];
-  run(race, 900, () => {
-    if (r.laps > lives.length) lives.push(r.life);
-    return r.finish !== null;
-  });
-  return lives;
-};
-for (const seed of [7, 11]) {
-  // The box call comes under 0.3: not before lap 4 on mediums, not before lap 3 on softs.
-  const m = stint("medium", seed);
-  assert.ok(m[2]! > 0.3, `mediums reach lap 4 before the call (${m[2]!.toFixed(2)})`);
-  const s = stint("soft", seed);
-  assert.ok(s[1]! > 0.3, `softs reach lap 3 before the call (${s[1]!.toFixed(2)})`);
-  const h = stint("hard", seed);
-  assert.ok(h[LAPS - 1]! > 0, `hards go the distance (${h[LAPS - 1]!.toFixed(2)})`);
+  [r.tyre, r.stints] = ["medium", ["medium"]];
+  race.slips = false;
+  for (let f = 0; f < 400 / DT && r.laps < 2; f++) {
+    [r.stops, r.plan] = [[], ["medium"]];
+    tick(race, still, DT);
+  }
+  // From the grid, a little over two laps.
+  const lap = (1 - r.life) / ((r.dist + 10 + 8 * GRID.indexOf(10)) / LENGTH);
+  const want = 0.75 / stintLaps("medium", laps, monza);
+  assert.ok(
+    Math.abs(lap / want - 1) < 0.15,
+    `${laps} laps: a medium wears to plan (${lap.toFixed(3)})`,
+  );
 }
-assert.deepEqual(
-  [1, 2, 3, 4, 6, 9, 14].map(teamPick),
-  ["soft", "soft", "medium", "medium", "hard", "medium", "medium"],
-  "team picks: the softest set that reaches the flag, or mediums when another stop's to come",
+assert.ok(
+  stintLaps("medium", 10, getTrack("silverstone")) < stintLaps("medium", 10, monza),
+  "Silverstone is harder on tyres than Monza",
 );
-// Every computer car's plan covers the distance, each stint at least two laps (so no stop on the
-// first or last lap) on a set that lasts it.
+// Every computer car's plan stops at least once and runs two compounds, each stint at least two
+// laps (so no stop on the first or last lap) and never past the end of a set's life.
 for (const laps of DISTANCES)
   for (const seed of [1, 2, 3])
     for (const r of newRace(monza, GRID, seeded(seed), "medium", "pro", laps).racers.slice(1)) {
       const ends = [...r.stops, laps];
       assert.equal(r.plan.length, ends.length, `${laps} laps: a set per stint`);
+      assert.ok(r.stops.length >= 1 && new Set(r.plan).size > 1, `${laps} laps: two compounds`);
       ends.forEach((end, k) => {
         const len = end - (ends[k - 1] ?? 0);
-        assert.ok(len >= 2 && len <= STINT[r.plan[k]!], `${laps} laps: ${len} on ${r.plan[k]}`);
+        const most = stintLaps(r.plan[k]!, laps, monza) / 0.75;
+        assert.ok(len >= 2 && len <= most, `${laps} laps: ${len} on ${r.plan[k]}`);
       });
     }
+// The team's plan for you starts on the set you pick.
+for (const t of ["soft", "medium", "hard"] as const)
+  assert.equal(teamPlan(10, monza, t).tyres[0], t, `the team plans a race on ${t}s`);
 
 // Pit lane.
 const box = BOXES[1]!;
@@ -454,14 +487,14 @@ assert.ok(
   const r = race.racers[0]!;
   let most = 0;
   const lap = (n: number) =>
-    run(race, 600, () => {
+    nonStop(race, 600, () => {
       if (r.laps === n) most = Math.max(most, r.harvested);
       return r.laps > n;
     });
   lap(1);
   assert.ok(most > 8 && most <= 8.5 + 1e-9, `a lap harvests up to 8.5 MJ (${most.toFixed(2)})`);
   [r.charge, r.harvested] = [0, 0];
-  run(race, 1);
+  nonStop(race, 1);
   assert.ok(r.clipping && r.charge > 0, "flat out on a flat battery, it super clips");
   [most, r.bonusLap] = [0, r.laps];
   lap(r.laps);
@@ -471,18 +504,21 @@ assert.ok(
   );
 }
 
-// Whole races at each level: nineteen computer cars, you parked out of the way. Nobody sits
-// stopped on track, and in the lane nobody waits long: at most a release held for traffic (with
-// half of twenty-two cars stopping on the same lap, a few seconds of it), or a queue behind a
-// teammate's stop.
+// Whole races at each level: nineteen computer cars, you parked out of the way, all on the same
+// plan (mediums, then hards from the end of lap 2 or 3, by driver), so the levels are compared on
+// the driving and not on who's on fresh softs. Nobody sits stopped on track, and in the lane
+// nobody waits long: at most a release held for traffic (with half the field stopping on the same
+// lap, a few seconds of it), or a queue behind a teammate's stop.
 const median = (xs: number[]) => xs.slice().sort((a, b) => a - b)[xs.length >> 1]!;
 const field = (lv: Level, track: Track = monza) => {
   const race = newRace(track, GRID, seeded(3), "medium", lv);
   race.racers = race.racers.filter((r) => r.id !== 0);
   const stuck = new Map<number, number>();
   const worst = { track: 0, lane: 0 };
+  for (const r of race.racers) [r.tyre, r.stints] = ["medium", ["medium"]];
   run(race, 900, () => {
     for (const r of race.racers) {
+      [r.stops, r.plan] = [[2 + (r.id % 2)], ["medium", "hard"]];
       const s =
         r.car.v < 1 && r.stop <= 0 && r.finish === null && race.t > 2000
           ? (stuck.get(r.id) ?? 0) + DT
@@ -545,12 +581,13 @@ const [am, mid, pro, leg] = levels as [
   (typeof levels)[0],
 ];
 // The ladder: the front of each field laps about 1:36, 1:31 and 1:22, and pro's winner takes
-// about 7:00, about what a clean race from the player (pole pace on mediums) takes.
+// about 7:15, about what a clean race from the player (pole pace on mediums) takes with the stop
+// everyone has to make.
 const near = (ms: number, want: number, by: number) => Math.abs(ms - want) < by;
 assert.ok(near(am.front, 95_500, 1500), `amateur's front laps about 1:36 (${fmt(am.front)})`);
 assert.ok(near(mid.front, 91_000, 1500), `intermediate's about 1:31 (${fmt(mid.front)})`);
 assert.ok(near(pro.front, 82_000, 1000), `pro's about 1:22 (${fmt(pro.front)})`);
-assert.ok(near(pro.win, 420_000, 10_000), `pro's winner takes about 7:00 (${fmt(pro.win)})`);
+assert.ok(near(pro.win, 435_000, 10_000), `pro's winner takes about 7:15 (${fmt(pro.win)})`);
 assert.ok(pro.lap < mid.lap && mid.lap < am.lap, "the better the field, the quicker it laps");
 assert.ok(am.strikes > 0, "computer cars make mistakes and pay for them");
 assert.ok(pro.strikes < am.strikes, "and pros make fewer");
@@ -572,7 +609,7 @@ const clean = (track: Track) => {
   const race = solo(2, (r) => ([r.tyre, r.stops] = ["medium", []]), "pro", track);
   race.racers[0]!.pace = 1 / edgeOf(race);
   race.slips = false;
-  run(race, 600, () => race.racers[0]!.laps >= 3);
+  nonStop(race, 600, () => race.racers[0]!.laps >= 3);
   return race.racers[0]!.best;
 };
 const proGap = pro.front / clean(monza);
@@ -587,21 +624,42 @@ for (const def of TRACKS.slice(1)) {
   );
   assert.ok(p.lap < m.lap && m.lap < a.lap, `${def.name}: the better the field, the quicker`);
   assert.ok(Math.abs(gap - proGap) < 0.01, `${def.name}: pro is as hard as at Monza`);
-  assert.ok(a.front / p.front > am.front / pro.front - 0.01, `${def.name}: amateur no harder`);
-  assert.ok(m.front / p.front > mid.front / pro.front - 0.01, `${def.name}: intermediate too`);
+  const ratio = (x: number, y: number) => `(${(x / y).toFixed(4)})`;
+  assert.ok(
+    a.front / p.front > am.front / pro.front - 0.01,
+    `${def.name}: amateur no harder ${ratio(a.front, p.front)}`,
+  );
+  assert.ok(
+    m.front / p.front > mid.front / pro.front - 0.01,
+    `${def.name}: intermediate too ${ratio(m.front, p.front)}`,
+  );
   legends(l, p, def.name);
 }
 
-// Strategy: soft or medium with a stop, against medium or hard without, alone, on a mid pace.
-const strat = (tyre: Tyre, pitLap: number) => {
-  const r = solo(10, (x) => ([x.tyre, x.stops, x.plan] = [tyre, pitLap ? [pitLap] : [], [tyre]]));
-  r.slips = false;
-  run(r, 900, () => r.racers[0]!.finish !== null);
-  return r.racers[0]!.finish!;
+// Races a plan as given, alone: held to it every frame, as the team re-plans at the line.
+const raced = (race: Race, at: number[], tyres: Tyre[], secs: number) => {
+  const r = race.racers[0]!;
+  [r.tyre, r.stints] = [tyres[0]!, [tyres[0]!]];
+  race.slips = false;
+  for (let f = 0; f < secs / DT && r.finish === null; f++) {
+    [r.stops, r.plan] = [at, tyres];
+    tick(race, still, DT);
+  }
+  return r.finish!;
 };
-const plans = [strat("soft", 2), strat("medium", 3), strat("medium", 0), strat("hard", 0)];
-console.log(`soft-stop, medium-stop, medium, hard: ${plans.map(fmt).join(", ")}`);
-assert.ok(Math.max(...plans) - Math.min(...plans) < 10_000, "every strategy comes out close");
+// Strategy: the one-stops on every pair of compounds, alone, on a mid pace, all come out close.
+{
+  const plans = (
+    [
+      ["soft", "medium", 2],
+      ["medium", "hard", 3],
+      ["soft", "hard", 2],
+      ["hard", "medium", 3],
+    ] as const
+  ).map(([a, b, at]) => raced(solo(10), [at], [a, b], 900));
+  console.log(`soft-medium, medium-hard, soft-hard, hard-medium: ${plans.map(fmt).join(", ")}`);
+  assert.ok(Math.max(...plans) - Math.min(...plans) < 10_000, "every strategy comes out close");
+}
 
 // The computer's strategy model, per track. Its two numbers, measured on driver 10 alone: how a
 // lap slows on a worn set (lap time going as grip ^ -GRIP_POWER) and what a stop costs, in
@@ -620,7 +678,7 @@ for (const def of TRACKS) {
   const lapAt = (life: number) => {
     const { race, r } = alone(t, 3, [], ["medium"]);
     for (let f = 0; f < 400 / DT && r.laps < 3; f++) {
-      r.life = life;
+      [r.life, r.stops, r.plan] = [life, [], ["medium"]];
       tick(race, still, DT);
     }
     return r.best;
@@ -628,7 +686,7 @@ for (const def of TRACKS) {
   const stopping = (stops: number[]) => {
     const { race, r } = alone(t, 3, stops, ["medium", "medium"]);
     for (let f = 0; f < 600 / DT && r.finish === null; f++) {
-      r.life = 1;
+      [r.life, r.stops, r.plan] = [1, stops, ["medium", "medium"]];
       tick(race, still, DT);
     }
     return r.finish!;
@@ -637,29 +695,24 @@ for (const def of TRACKS) {
   const power = Math.log(lapAt(0.6) / fresh) / -Math.log(grip(0.6, "medium"));
   const stop = (stopping([2]) - stopping([])) / fresh;
   const all = strategies(10, t);
-  const rivals = [
-    ...all.slice(0, 2),
-    ...[0, 1, 2, 3].map((n) => all.find((o) => o.at.length === n)!),
-  ];
-  const raced = [...new Set(rivals)].map(({ at, tyres }) => {
-    const { race, r } = alone(t, 10, at, tyres);
-    run(race, 2400, () => r.finish !== null);
-    return r.finish!;
-  });
+  const rivals = [...all.slice(0, 2), ...[1, 2].map((n) => all.find((o) => o.at.length === n)!)];
+  const times = [...new Set(rivals)].map(({ at, tyres }) =>
+    raced(alone(t, 10, at, tyres).race, at, tyres, 2400),
+  );
   console.log(
     `${def.name}: grip power ${power.toFixed(3)}, a stop ${stop.toFixed(3)} laps, ` +
-      `pick ${fmt(raced[0]!)} against ${raced.slice(1).map(fmt).join(", ")}`,
+      `pick ${fmt(times[0]!)} against ${times.slice(1).map(fmt).join(", ")}`,
   );
   assert.ok(Math.abs(power - t.GRIP_POWER) < 0.04, `${def.name}: grip power ${power.toFixed(3)}`);
   assert.ok(Math.abs(stop - t.STOP_LAPS) < 0.02, `${def.name}: a stop ${stop.toFixed(3)} laps`);
   assert.ok(
-    raced[0]! - Math.min(...raced) < 1500,
+    times[0]! - Math.min(...times) < 1500,
     `${def.name}: the model's pick is near the best`,
   );
 }
 
-// The longest race: everyone finishes, having made every stop they planned and never run a set
-// down to nothing.
+// The longest race: everyone finishes, on two compounds and no more than three stops, the team
+// re-planning as it goes, and never runs a set down to nothing.
 {
   const laps = DISTANCES.at(-1)!;
   const race = newRace(monza, GRID, seeded(3), "medium", "pro", laps);
@@ -674,8 +727,8 @@ for (const def of TRACKS) {
     `${laps} laps: everyone finishes`,
   );
   assert.ok(
-    race.racers.every((r) => r.stints.length === r.plan.length),
-    `${laps} laps: every planned stop is made`,
+    race.racers.every((r) => new Set(r.stints).size > 1 && r.stints.length <= 4),
+    `${laps} laps: two compounds, three stops at most`,
   );
   assert.ok(worn > 0.05, `${laps} laps: no set runs out (${worn.toFixed(2)} left at worst)`);
   console.log(`${laps} laps: won in ${fmt(results(race)[0]!.time)}`);
@@ -688,6 +741,8 @@ for (const def of TRACKS) {
   race.racers = race.racers.filter((r) => r.id === 10 || r.id === 11);
   race.slips = false;
   race.racers[1]!.launch = Infinity;
+  // Two compounds, so it isn't disqualified; too short a race to plan a stop.
+  race.racers[0]!.stints = ["medium", "hard"];
   run(race, 600, () => race.done);
   const won = race.racers[0]!.finish!;
   assert.ok(race.done && race.racers[1]!.finish === null, "done without the car that never left");
@@ -749,5 +804,189 @@ for (const { id, name } of TRACKS) {
     console.log(`${name} quali: pole ${fmt(pole)}`);
   } else assert.equal(order.at(-1)!.id, 0, `${name}: no time starts last`);
 }
+
+// Finishing on a single compound is a disqualification, classified last.
+{
+  const race = newRace(monza, GRID, seeded(7));
+  race.racers = race.racers.filter((r) => r.id === 10 || r.id === 11);
+  const [a, b] = race.racers as [Race["racers"][number], Race["racers"][number]];
+  [a.finish, a.laps, a.stints, b.finish, b.laps, b.stints] = [
+    1,
+    LAPS,
+    ["medium"],
+    2,
+    LAPS,
+    ["medium", "hard"],
+  ];
+  const table = results(race);
+  assert.deepEqual(
+    table.map((r) => [r.id, r.dsq]),
+    [
+      [11, false],
+      [10, true],
+    ],
+    "one compound is a DSQ",
+  );
+}
+
+// Incidents. A few computer cars spread round Monza, the dice for breakdowns put away.
+const incident = (ids: number[]) => {
+  const race = newRace(monza, GRID, seeded(7), "medium", "pro", 10, true);
+  race.racers = race.racers.filter((r) => ids.includes(r.id));
+  for (const r of race.racers) r.failAt = Infinity;
+  race.slips = false;
+  return race;
+};
+const onTarmac = (r: Race["racers"][number]) =>
+  Math.abs(lateral(r.car.x, r.car.y, r.p)) < HALF[atDist(r.p * LENGTH)]!;
+// A breakdown out of reach of the pits: the car coasts off the tarmac and stops, the VSC holds
+// everyone to its speed, then the green clears the wreck away.
+{
+  const race = incident([4, 10]);
+  const [a, b] = race.racers as [Race["racers"][number], Race["racers"][number]];
+  [b.failAt, b.fault] = [1500, "Engine"];
+  run(race, 120, () => b.out !== null);
+  assert.equal(b.out, b.fault, "a breakdown retires the car");
+  assert.ok(!onTarmac(b) && b.wreck, "off the tarmac");
+  assert.equal(race.neutral?.kind, "vsc", "and brings the VSC");
+  run(race, 5);
+  assert.ok(a.car.v < 41, `the VSC holds the others to its speed (${a.car.v.toFixed(1)})`);
+  run(race, 120, () => race.neutral === null);
+  assert.ok(race.neutral === null && !b.wreck, "the VSC ends and the wreck is cleared");
+  assert.ok(
+    race.msgs.some((m) => m.text === "Green flag"),
+    "with the green flag",
+  );
+}
+// A crash: head on into the pit wall at 216 km/h. Out comes the Safety Car; the field queues
+// behind it with nobody passing, a computer car due a stop soon takes the cheap one, and at the
+// restart each car is racing again over the line.
+{
+  const ids = [2, 4, 6, 8, 10, 12, 14, 16];
+  const race = incident(ids);
+  run(race, 90);
+  const x = race.racers.at(-1)!;
+  const [px, py] = pointAt(-150, HALF[0]! - 1);
+  Object.assign(x.car, { x: px, y: py, h: dirAt(nearest(px, py).p) + Math.PI / 2, v: 60 });
+  x.launch = Infinity;
+  run(race, 0.5, () => x.out !== null);
+  assert.equal(x.out, "Crash", "a hard hit on a wall is a crash out");
+  assert.equal(race.neutral?.kind, "sc", "and brings the Safety Car");
+  const rest = race.racers.filter((r) => r !== x);
+  const stints = rest.map((r) => r.stints.length);
+  const rank = (rs: typeof rest) =>
+    rs
+      .slice()
+      .sort((p, q) => q.dist - p.dist)
+      .map((r) => r.id);
+  const before = rank(rest);
+  let spread = Infinity;
+  run(race, 400, () => {
+    if (race.sc && race.sc.run > LENGTH / 2) {
+      const ds = rest.filter((r) => !r.pit).map((r) => r.dist);
+      spread = Math.min(spread, (Math.max(...ds) - Math.min(...ds)) / (ds.length - 1));
+    }
+    return rest.every((r) => !r.held);
+  });
+  const pitted = rest.filter((r, k) => r.stints.length > stints[k]!);
+  const kept = (ids: number[]) => ids.filter((id) => !pitted.some((r) => r.id === id));
+  console.log(`Safety Car: ${pitted.length} stopped under it, ${spread.toFixed(1)} m a car`);
+  assert.deepEqual(kept(rank(rest)), kept(before), "nobody passes under the Safety Car");
+  assert.ok(spread < 15, `the field closes up (${spread.toFixed(1)} m a car)`);
+  assert.ok(pitted.length > 0, "a cheap stop under the Safety Car is taken");
+  assert.ok(race.neutral === null && !x.wreck, "the restart clears the wreck");
+}
+// A smaller hit leaves lasting damage, and a puncture limps to the box and is fixed there.
+{
+  const race = incident([10, 11]);
+  const [a, b] = race.racers as [Race["racers"][number], Race["racers"][number]];
+  for (const r of race.racers) r.launch = Infinity;
+  const put = (r: typeof a, m: number, v: number) => {
+    const [x, y] = pointAt(m, 0);
+    Object.assign(r.car, { x, y, h: dirAt(m / LENGTH), v });
+    r.p = nearest(x, y).p;
+  };
+  put(a, 3996, 40);
+  put(b, 4000, 22);
+  run(race, DT);
+  assert.ok(a.damage > 0 && !a.out, `an 18 m/s hit is damage (${a.damage.toFixed(3)})`);
+  const limp = incident([10]);
+  const r = limp.racers[0]!;
+  run(limp, 30);
+  [r.puncture, r.stops, r.plan] = [true, [r.laps + 1], [r.tyre, "hard"]];
+  const from = limp.t;
+  let fastest = 0;
+  run(limp, 600, () => {
+    if (r.puncture && limp.t - from > 10_000) fastest = Math.max(fastest, r.car.v);
+    return r.stints.length > 1;
+  });
+  assert.ok(!r.puncture && r.stints.length === 2, "a puncture is fixed at the stop");
+  assert.ok(fastest < 25.5, `limping slowly (${(fastest * 3.6).toFixed(0)} km/h)`);
+}
+// The undercut: a rival just in front that stops brings a car with its own stop due soon in the
+// lap after.
+{
+  const cover = (rival: boolean) => {
+    const race = newRace(monza, GRID, seeded(7), "medium", "pro", 10);
+    race.racers = race.racers.filter((r) => r.id === 10 || r.id === 11);
+    race.slips = false;
+    const [r, o] = race.racers as [Race["racers"][number], Race["racers"][number]];
+    const put = (x: typeof r, m: number) => {
+      const [px, py] = pointAt(m, x === r ? -2 : 2);
+      Object.assign(x.car, { x: px, y: py, h: dirAt(m / LENGTH), v: 60 });
+      [x.p, x.dist, x.launch, x.laps, x.lap.start] = [nearest(px, py).p, LENGTH + m, 0, 1, 0];
+      x.lap.halfway = true;
+    };
+    // The rival a stop's worth of track behind, about where it'd rejoin from alongside.
+    put(r, -100);
+    put(o, -100 - monza.STOP_LAPS * LENGTH);
+    [r.tyre, r.stints, r.life, r.stops, r.plan] = [
+      "medium",
+      ["medium"],
+      0.45,
+      [4],
+      ["medium", "hard"],
+    ];
+    if (rival) [o.stints, o.set] = [["medium", "hard"], 1];
+    run(race, 5, () => r.laps === 2);
+    return r.laps === 2 && r.stops.includes(r.laps + 1);
+  };
+  assert.ok(cover(true), "a rival's stop is covered");
+  assert.ok(!cover(false), "and without it, the plan stands");
+}
+// Blue flags: a lapped computer car lets a car a lap up by, and so does yours.
+for (const id of [11, 0]) {
+  const race = newRace(monza, GRID, seeded(7), "medium", "pro", 10);
+  race.racers = race.racers.filter((r) => r.id === 10 || r.id === id);
+  race.slips = false;
+  const [fast, slow] = [
+    race.racers.find((r) => r.id === 10)!,
+    race.racers.find((r) => r.id === id)!,
+  ];
+  const put = (r: typeof fast, m: number, laps: number) => {
+    const [x, y] = pointAt(m, 0);
+    Object.assign(r.car, { x, y, h: dirAt(m / LENGTH), v: 60 });
+    [r.p, r.dist, r.launch, r.laps, r.stops] = [nearest(x, y).p, laps * LENGTH + m, 0, laps, []];
+  };
+  put(fast, 3920, 3);
+  put(slow, 3960, 2);
+  slow.pace = 0.9;
+  const at = (r: typeof fast) => r.p * LENGTH;
+  let blue = false;
+  for (let f = 0; f < 20 / DT && monza.ahead(at(slow), at(fast)) > LENGTH / 2; f++) {
+    tick(race, id ? still : aiInput(slow, race), DT);
+    blue ||= slow.blue !== 0;
+  }
+  assert.ok(blue, `${id ? "the computer" : "you"}: shown the blue flag`);
+  assert.ok(monza.ahead(at(slow), at(fast)) < LENGTH / 2, `${id ? "the computer" : "you"}: let by`);
+}
+// With incidents on, every race still gets done.
+for (const { id, name } of TRACKS)
+  for (const seed of [1, 2]) {
+    const race = newRace(getTrack(id), GRID, seeded(seed), "medium", "pro", LAPS, true);
+    race.racers = race.racers.filter((r) => r.id !== 0);
+    run(race, 1200, () => race.done);
+    assert.ok(race.done, `${name}: a race with incidents gets done`);
+  }
 
 console.log("race: ok");
