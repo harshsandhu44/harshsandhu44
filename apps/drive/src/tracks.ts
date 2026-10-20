@@ -112,7 +112,7 @@ export const TRACKS: TrackDef[] = [
     seed: 1948,
     grip: 0.422,
     stop: 0.121,
-    proEdge: 1.173,
+    proEdge: 1.19,
     legendsEdge: 1.21,
   },
   {
@@ -144,8 +144,8 @@ export const TRACKS: TrackDef[] = [
     seed: 1940,
     grip: 0.324,
     stop: 0.258,
-    proEdge: 1.207,
-    legendsEdge: 1.23,
+    proEdge: 1.23,
+    legendsEdge: 1.26,
   },
   {
     id: "redbullring",
@@ -177,7 +177,7 @@ export const TRACKS: TrackDef[] = [
     seed: 1969,
     grip: 0.305,
     stop: 0.199,
-    proEdge: 1.28,
+    proEdge: 1.29,
     legendsEdge: 1.33,
   },
 ];

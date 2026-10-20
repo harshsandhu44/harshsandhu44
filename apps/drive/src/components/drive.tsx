@@ -21,6 +21,7 @@ import {
   qualiOrder,
   results,
   tick,
+  towShare,
   wrongWay,
   type Level,
   type Race,
@@ -793,6 +794,7 @@ export default function Drive() {
         crews[r.id >> 1] = Math.max(crews[r.id >> 1]!, r.stop > 0 ? 2 : r.pit ? 1 : 0);
       scene!.frame(
         race.racers.map((r) => r.car),
+        race.racers.map(towShare),
         steer,
         paused ? 0 : dt,
         crews,

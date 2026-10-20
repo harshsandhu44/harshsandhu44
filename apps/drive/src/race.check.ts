@@ -409,7 +409,7 @@ assert.ok(
   put(a, 3980, 70);
   run(race, DT);
   assert.ok(
-    Math.abs(a.tow * 3.6 - 6) < 0.5,
+    Math.abs(a.tow * 3.6 - 10) < 0.5,
     `half the tow 20 m back (${(a.tow * 3.6).toFixed(1)} km/h)`,
   );
   assert.ok(a.dirty > 0 && a.dirty < 0.02, `and some dirty air (${a.dirty.toFixed(3)})`);

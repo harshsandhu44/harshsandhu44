@@ -567,6 +567,31 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
     return b;
   });
   const body = bodies[0]!;
+  // A car in a slipstream: Lucide's wind icon (ISC) on the tarmac behind it, the streaks' tails
+  // at the car, fading in with the tow.
+  const windCanvas = document.createElement("canvas");
+  windCanvas.width = windCanvas.height = 128;
+  const wc = windCanvas.getContext("2d")!;
+  wc.scale(128 / 24, 128 / 24);
+  Object.assign(wc, { strokeStyle: C.paper, lineWidth: 2, lineCap: "round", lineJoin: "round" });
+  for (const d of [
+    "M12.8 19.6A2 2 0 1 0 14 16H2",
+    "M17.5 8a2.5 2.5 0 1 1 2 4H2",
+    "M9.8 4.4A2 2 0 1 1 11 8H2",
+  ])
+    wc.stroke(new Path2D(d));
+  const windTex = new THREE.CanvasTexture(windCanvas);
+  windTex.colorSpace = THREE.SRGBColorSpace;
+  const windGeo = new THREE.PlaneGeometry(3, 3).rotateX(-Math.PI / 2);
+  const winds = bodies.map(() => {
+    const w = new THREE.Mesh(
+      windGeo,
+      new THREE.MeshBasicMaterial({ map: windTex, transparent: true, depthWrite: false }),
+    );
+    w.position.y = 0.05;
+    scene.add(w);
+    return w;
+  });
   const wheels = ["wheelFrontLeft", "wheelFrontRight"].map((n) => body.getObjectByName(n));
 
   scene.add(new THREE.HemisphereLight("#e4ebf0", "#3d5244", 1.4));
@@ -604,9 +629,10 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
   };
 
   return {
-    // Every car on track, yours first (only yours in qualifying, the rest hidden), and each
-    // team's crew: 0 in the garage, 1 a car in the lane, 2 a car stopped at the box.
-    frame(cars: Car[], steer: number, dt: number, crews: number[]) {
+    // Every car on track, yours first (only yours in qualifying, the rest hidden), each one's
+    // share of the full tow, and each team's crew: 0 in the garage, 1 a car in the lane, 2 a car
+    // stopped at the box.
+    frame(cars: Car[], tows: number[], steer: number, dt: number, crews: number[]) {
       let moved = false;
       crews.forEach((want, k) => {
         if (want === 2) atCar(k, cars);
@@ -624,6 +650,16 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
       cars.forEach((o, k) => {
         bodies[k]!.position.set(o.x, RIDE, o.y);
         bodies[k]!.rotation.y = Math.PI / 2 - o.h;
+      });
+      winds.forEach((w, k) => {
+        const o = cars[k];
+        w.visible = !!o && tows[k]! > 0;
+        if (!o || !w.visible) return;
+        // Its middle 4.5 m behind the car's, just off the rear wing.
+        w.position.x = o.x - Math.cos(o.h) * 4.5;
+        w.position.z = o.y - Math.sin(o.h) * 4.5;
+        w.rotation.y = yaw(-Math.cos(o.h), -Math.sin(o.h));
+        (w.material as THREE.MeshBasicMaterial).opacity = 0.85 * tows[k]!;
       });
       for (const w of wheels) if (w) w.rotation.y = -steer * 0.4;
       sun.position.set(c.x + SUN.x, SUN.y, c.y + SUN.z);

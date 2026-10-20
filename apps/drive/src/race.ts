@@ -736,7 +736,9 @@ function battery(race: Race, r: Racer, input: Input, dt: number) {
 // with the gap. Nothing in the pit lane. ponytail: a gap along the lap and a lateral band, not
 // real wake geometry.
 const TOW_M = 40;
-const TOW_TOP = 12 / 3.6;
+const TOW_TOP = 20 / 3.6;
+// How much of the full tow a car is getting, 0 to 1.
+export const towShare = (r: Racer) => r.tow / TOW_TOP;
 const DIRTY_M = 25;
 const DIRTY = 0.05;
 const WAKE = 2;
