@@ -692,29 +692,34 @@ export type Split = { sector: number; ms: number; valid: boolean; lap: number | 
 // way round, crossed going forward. A lap counts when the car crosses the line going forward
 // after passing halfway going forward, so reversing over the line doesn't. Four wheels off at
 // any point deletes it, like track limits on TV. A lap with no start that's already past halfway
-// is a rolling start: its clock starts at the line.
-export function lapTick(lap: Lap, p: number, edge: number, t: number): Split | null {
+// is a rolling start: its clock starts at the line. A line crossed in a frame `dt` ms long is
+// timed where the car crossed it within the frame, so laps aren't rounded to whole frames.
+export function lapTick(lap: Lap, p: number, edge: number, t: number, dt = 0): Split | null {
   const prev = lap.p;
   lap.p = p;
+  // When the car was at x, moving from prev to `to` this frame (p + 1 across the line).
+  const when = (x: number, to = p) => t - (dt * (to - x)) / (to - prev);
   if (lap.start === null) {
-    if (lap.halfway && prev > 0.75 && p < 0.25) [lap.start, lap.halfway] = [t, false];
+    if (lap.halfway && prev > 0.75 && p < 0.25) [lap.start, lap.halfway] = [when(1, p + 1), false];
     return null;
   }
   if (allFourOff(edge)) lap.invalid = true;
-  const ms = t - lap.start;
   const at = lap.marks.at(-1) ?? 0;
   const line = (lap.marks.length + 1) / 3;
   // A frame moves a few metres. A bigger jump means the nearest point hopped to another part of
   // the lap, so a cut across the infield doesn't cross the sector lines or halfway.
   const fwd = p > prev && p - prev < 0.02;
   if (lap.marks.length < 2 && fwd && prev < line && p >= line) {
+    const ms = when(line) - lap.start;
     lap.marks.push(ms);
     return { sector: lap.marks.length - 1, ms: ms - at, valid: !lap.invalid, lap: null };
   }
   if (fwd && prev < 0.5 && p >= 0.5) lap.halfway = true;
   if (prev > 0.75 && p < 0.25 && lap.halfway) {
+    const end = when(1, p + 1);
+    const ms = end - lap.start;
     const done = { sector: 2, ms: ms - at, valid: !lap.invalid, lap: ms };
-    Object.assign(lap, { start: t, halfway: false, invalid: false, marks: [] });
+    Object.assign(lap, { start: end, halfway: false, invalid: false, marks: [] });
     return done;
   }
   return null;

@@ -49,6 +49,11 @@ const EDGE = 1.33;
 const LEGEND_EDGE = 1.4;
 // How far under its limit (m/s) a legend has to be to pull out and pass.
 const PASS = 15;
+// A computer car's form, drawn fresh each lap: up to this share either side of its pace and top
+// speed, about a tenth of a second, so drivers rated alike don't set the same lap. The top speed
+// matters most for that: the computer's pedals are on or off, so pace alone moves its lap only
+// when a pedal flips a frame earlier or later, and close paces drive the very same lap.
+const FORM = 0.002;
 // A car's width and a metre, centre to centre: the room a computer car leaves one alongside,
 // and how far over it pulls out to pass.
 const SPACE = 2 * CAR_HALF_WIDTH + 1;
@@ -406,8 +411,9 @@ export type Racer = {
   ot: null | "ready" | "on";
   otZone: number;
   bonusLap: number;
-  // Computer cars: the chance of overcooking each corner, the corner they'll overcook (-1 none)
-  // and the last corner they rolled for.
+  // Computer cars: this lap's form (FORM), the chance of overcooking each corner, the corner
+  // they'll overcook (-1 none) and the last corner they rolled for.
+  form: number;
   slip: number;
   mistake: number;
   rolled: number;
@@ -540,6 +546,7 @@ export function newRace(
       otZone: 0,
       bonusLap: -1,
       slip: slip * (1.5 - spread("aware", id)),
+      form: id ? 1 + FORM * (2 * rand() - 1) : 1,
       mistake: -1,
       rolled: -1,
       tow: 0,
@@ -623,7 +630,7 @@ export function aiInput(r: Racer, race: Race): Input {
   const at = atDist(m + 5);
   // The profiles stop at TOP, so a car the 2026 power has taken past it looks down the road for
   // the first point under TOP and brakes for that in time; with none in sight, flat out.
-  const gp = g * (r.mistake >= 0 ? 1.08 : r.pace);
+  const gp = g * (r.mistake >= 0 ? 1.08 : r.pace * r.form);
   let want = limitAt(at, gp, line);
   if (r.finish !== null) want = 0.8 * Math.min(want, TOP);
   else if (want >= TOP) {
@@ -692,7 +699,7 @@ export function aiInput(r: Racer, race: Race): Input {
     // Off the line the corners are tighter than the line's speeds, so a driver who never makes
     // a mistake only pulls out with no corner coming, and is back on the line for the next. Under
     // the Safety Car nobody pulls out.
-    const clear = !r.held && (slip > 0 || limitAt(at, g * r.pace, line) > car.v + PASS);
+    const clear = !r.held && (slip > 0 || limitAt(at, g * r.pace * r.form, line) > car.v + PASS);
     if (!clear) r.lane = 0;
     const block = ahead(lat(r.lane) - base, 0);
     if (block && block.car.v < car.v + 1) {
@@ -750,7 +757,7 @@ export function aiInput(r: Racer, race: Race): Input {
       if (Math.abs(to - lo) < SPACE) to = lo + (lo > 0 ? -1 : 1) * SPACE;
     }
   // Held off the line, a legend backs off to the centreline's speed rather than run wide.
-  if (held && !slip) want = Math.min(want, limitAt(at, g * r.pace));
+  if (held && !slip) want = Math.min(want, limitAt(at, g * r.pace * r.form));
   want = Math.min(want, r.cap);
 
   const over = car.v > want;
@@ -1218,7 +1225,7 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
       power(race, r, from, p * LENGTH, moved, input) + battery(race, r, input, dt) + r.tow;
     const g = carGrip(race, r);
     const v0 = car.v;
-    step(car, input, dt, onGrass(edge), g, top * (1 - r.damage));
+    step(car, input, dt, onGrass(edge), g, top * (1 - r.damage) * r.form);
     // Held to a Safety Car, the VSC or a blue flag, braking down to it; limping, slowing gently so
     // nobody runs into the back of it.
     if (car.v > r.cap) car.v = Math.max(0, r.cap, Math.min(car.v, v0 - brakeAt(v0) * g * dt));
@@ -1257,13 +1264,14 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     }
 
     // Laps after the flag are cool-down laps and count for nothing.
-    const split = r.finish === null ? lapTick(r.lap, p, edge, race.t) : null;
+    const split = r.finish === null ? lapTick(r.lap, p, edge, race.t, dt * 1000) : null;
     const sec = split?.sector ?? 0;
     if (split?.valid && (!race.sectors[sec] || split.ms < race.sectors[sec]!))
       race.sectors[sec] = split.ms;
     if (split?.lap) {
       r.laps++;
       r.harvested = 0;
+      if (r.id) r.form = 1 + FORM * (2 * race.rand() - 1);
       if (split.valid && (!r.best || split.lap < r.best)) r.best = split.lap;
       if (split.valid && (!race.fastest || split.lap < race.fastest.ms)) {
         race.fastest = { id: r.id, ms: split.lap };

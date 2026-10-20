@@ -46,11 +46,11 @@ assert.deepEqual(
   "corners in lap order",
 );
 
-// Drive the progress values a lap would produce, one frame each.
+// Drive the progress values a lap would produce, one second-long frame each.
 const run = (ps: number[], dist = 0) => {
   const lap = newLap();
   lap.start = 0;
-  return ps.map((p, t) => lapTick(lap, p, dist, t * 1000)).filter(Boolean);
+  return ps.map((p, t) => lapTick(lap, p, dist, t * 1000, 1000)).filter(Boolean);
 };
 const laps = (ps: number[], dist = 0) => run(ps, dist).flatMap((s) => (s!.lap ? [s!] : []));
 // Progress in small steps, like frames, through the given waypoints.
@@ -76,6 +76,11 @@ assert.equal(
   laps([...steps(0, 0.95), 0.05], 5)[0]!.valid,
   false,
   "four wheels off deletes the lap",
+);
+assert.equal(
+  laps([...steps(0, 0.995), 0.005])[0]!.lap,
+  100_500,
+  "the line is timed where it's crossed within the frame",
 );
 const idle = newLap();
 assert.equal(lapTick(idle, 0.6, 0, 0), null, "no timing before the first input");

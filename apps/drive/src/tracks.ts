@@ -119,7 +119,7 @@ export const TRACKS: TrackDef[] = [
     stop: 0.138,
     wear: 1.25,
     proEdge: 1.29,
-    legendsEdge: 1.33,
+    legendsEdge: 1.325,
   },
   {
     id: "interlagos",
@@ -152,7 +152,7 @@ export const TRACKS: TrackDef[] = [
     stop: 0.258,
     wear: 1,
     proEdge: 1.23,
-    legendsEdge: 1.29,
+    legendsEdge: 1.27,
   },
   {
     id: "redbullring",
@@ -186,7 +186,7 @@ export const TRACKS: TrackDef[] = [
     stop: 0.199,
     wear: 0.85,
     proEdge: 1.29,
-    legendsEdge: 1.36,
+    legendsEdge: 1.34,
   },
 ];
 
