@@ -221,6 +221,7 @@ export default function Drive() {
   const go = useRef<(t: Tyre) => void>(() => {});
   const qualify = useRef<() => void>(() => {});
   const abandon = useRef<() => void>(() => {});
+  const quit = useRef<() => void>(() => {});
   const fit = useRef<(t: Tyre) => void>(() => {});
   const fitWrap = useRef<HTMLDivElement>(null);
   const fitEls = useRef<HTMLButtonElement[]>([]);
@@ -242,6 +243,7 @@ export default function Drive() {
   const skip = useRef<() => void>(() => {});
   const pauseEl = useRef<HTMLDivElement>(null);
   const abandonEl = useRef<HTMLButtonElement>(null);
+  const quitEl = useRef<HTMLButtonElement>(null);
   const togglePause = useRef<() => void>(() => {});
   const towerEl = useRef<HTMLDivElement>(null);
   const towerEls = useRef<HTMLDivElement[]>([]);
@@ -523,6 +525,7 @@ export default function Drive() {
       paused = !paused;
       pauseEl.current!.hidden = !paused;
       abandonEl.current!.hidden = !quali;
+      quitEl.current!.hidden = !!quali;
       keys.clear();
     };
     // Ends your quali lap without a time.
@@ -530,6 +533,8 @@ export default function Drive() {
       race.racers[0]!.finish = race.t;
       togglePause.current();
     };
+    // Out of a race to the grid screen, on the same grid: a slot you qualified for is kept.
+    quit.current = start;
     // Out of qualifying onto its grid; out of a race, back to P10.
     again.current = () => {
       const g = nextGrid ?? GRID;
@@ -608,6 +613,9 @@ export default function Drive() {
       const me = race.racers[0]!;
       if (phase === "racing" && !paused) {
         const wasDone = race.done;
+        // Before your tick: a lap that ends after every computer car's would otherwise already
+        // read as over, and the classification would never come.
+        const over = quali?.every((q) => q.done);
         const split = tick(race, { gas, brake, steer, ot }, dt);
         // After your flag, Skip runs the rest of the field to theirs a few hundred frames at a time.
         if (skipping) for (let n = 0; n < 300 && !race.done; n++) tick(race, still, 1 / 30);
@@ -616,7 +624,6 @@ export default function Drive() {
           // run to their flags the same way, then the classification sets the grid.
           if (me.finish === null && (me.pit || me.lap.invalid)) me.finish = race.t;
           if (me.finish !== null) skipping = true;
-          const over = quali.every((q) => q.done);
           for (const q of quali.slice(1))
             for (let n = 0; n < (skipping ? 300 : 1) && !q.done; n++)
               tick(q, still, skipping ? 1 / 30 : dt);
@@ -1031,6 +1038,15 @@ export default function Drive() {
             className="min-h-11 rounded-md px-4 font-semibold ring-1 ring-paper/25 active:scale-[.98]"
           >
             Abandon lap
+          </button>
+          <button
+            ref={quitEl}
+            type="button"
+            hidden
+            onClick={() => quit.current()}
+            className="min-h-11 rounded-md px-4 font-semibold ring-1 ring-paper/25 active:scale-[.98]"
+          >
+            Quit
           </button>
           <button
             type="button"

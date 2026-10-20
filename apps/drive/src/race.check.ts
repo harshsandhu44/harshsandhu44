@@ -10,7 +10,9 @@ import {
   LEVELS,
   PIT_V,
   edgeOf,
+  gap,
   grip,
+  order,
   STOP,
   strategies,
   gridSlot,
@@ -671,6 +673,15 @@ for (const def of TRACKS) {
     "and it's classified last",
   );
   assert.ok(results(race)[1]!.down > 0, "laps down");
+}
+
+// Penalties count as the cars take the flag: in 3 s ahead with 5 s to serve is 2 s behind.
+{
+  const race = newRace(monza, GRID, seeded(7));
+  const [a, b] = [race.racers[1]!, race.racers[2]!];
+  [a.finish, a.penalty, b.finish] = [100_000, 5000, 103_000];
+  assert.deepEqual(order(race).slice(0, 2), [b, a], "the tower orders finishers with penalties");
+  assert.deepEqual([gap(race, b), gap(race, a)], [0, 2], "and gaps them with penalties");
 }
 
 // Qualifying sets the whole grid: the cars line up front to back in the order given.

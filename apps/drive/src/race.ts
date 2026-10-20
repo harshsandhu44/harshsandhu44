@@ -866,17 +866,22 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
 
 export const wrongWay = (r: Racer) => r.wrong > 1;
 
-// Running order: finishers by time, then everyone else by distance.
+// Running order: finishers by time with penalties added, then everyone else by distance.
 export const order = (race: Race) =>
   race.racers
     .slice()
     .sort((a, b) =>
       a.finish !== null || b.finish !== null
-        ? (a.finish ?? Infinity) - (b.finish ?? Infinity)
+        ? (a.finish ?? Infinity) + a.penalty - ((b.finish ?? Infinity) + b.penalty)
         : b.dist - a.dist,
     );
-// Seconds behind the leader, from when each passed the same checkpoint.
-export const gap = (race: Race, r: Racer) => (r.cp < 0 ? 0 : (r.cpT - race.cps[r.cp]!) / 1000);
+// Seconds behind the leader, from when each passed the same checkpoint; once in, from the flag
+// with penalties added, as the classification will have it.
+export const gap = (race: Race, r: Racer) => {
+  if (r.finish === null) return r.cp < 0 ? 0 : (r.cpT - race.cps[r.cp]!) / 1000;
+  const lead = Math.min(...race.racers.map((o) => (o.finish ?? Infinity) + o.penalty));
+  return (r.finish + r.penalty - lead) / 1000;
+};
 
 // Final classification once the race is done: lapped cars are shown laps down, and any car that
 // never made it to the flag too, placed by the time it would take for the rest at its average
