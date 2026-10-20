@@ -601,9 +601,13 @@ const legends = (l: typeof leg, p: typeof pro, at: string) => {
 };
 legends(leg, pro, "Monza");
 
+// Pro's pole on the tracks you've set a clean qualifying lap at: your lap (Monza 1:20.567 and
+// Silverstone 1:29.634).
+const POLE: Record<string, number> = { monza: 80_500, silverstone: 89_600 };
 // The ladder carries to every track. A clean lap at your grip on the racing line stands in for
-// you: pro's front runner stays as close to it as at Monza, so pro is as hard everywhere. The
-// lower levels drive nearer the centreline, which costs more on twisty tracks (Silverstone and
+// you: pro's front runner stays as close to it as at Monza, so pro is as hard everywhere. Where
+// you've set a lap (POLE) that's the measure instead, as the stand-in can be far off you: at
+// Silverstone you're 3 s up on a pole as close to it as Monza's. The lower levels drive nearer the centreline, which costs more on twisty tracks (Silverstone and
 // Interlagos most), so they may be easier than at Monza but never harder.
 const clean = (track: Track) => {
   const race = solo(2, (r) => ([r.tyre, r.stops] = ["medium", []]), "pro", track);
@@ -623,7 +627,8 @@ for (const def of TRACKS.slice(1)) {
     `${def.name}: fronts ${[a, m, p, l].map((x) => fmt(x.front)).join(", ")}, pro at ${gap.toFixed(3)} of a clean lap`,
   );
   assert.ok(p.lap < m.lap && m.lap < a.lap, `${def.name}: the better the field, the quicker`);
-  assert.ok(Math.abs(gap - proGap) < 0.01, `${def.name}: pro is as hard as at Monza`);
+  if (!POLE[def.id])
+    assert.ok(Math.abs(gap - proGap) < 0.01, `${def.name}: pro is as hard as at Monza`);
   const ratio = (x: number, y: number) => `(${(x / y).toFixed(4)})`;
   assert.ok(
     a.front / p.front > am.front / pro.front - 0.01,
@@ -781,7 +786,8 @@ for (const def of TRACKS) {
 // Qualifying, run as the drive runs it: every race ticked together. On every track each
 // computer car sets a time, and you, sat still with no lap, start last. At Monza you're driven by
 // the computer instead, set a time too, and the live delta stays sensible all the way round (the
-// computer at your grip, without pro's edge, is about 6 s off pole).
+// computer at your grip, without pro's edge, is about 6 s off pole). Pole is your lap where you've
+// set one.
 for (const { id, name } of TRACKS) {
   const q = newQuali(getTrack(id), "pro", seeded(5));
   const me = q[0]!.racers[0]!;
@@ -796,13 +802,15 @@ for (const { id, name } of TRACKS) {
     order.every((o) => o.best > 0 || o.id === 0),
     `${name}: every computer car sets a quali time`,
   );
-  if (drive) {
+  if (drive)
     assert.ok(me.best > 0 && worst > 0 && worst < 10, `${name}: a lap and a delta (${worst})`);
-    // Pole is a clean lap from the player: 1:20.5.
-    const pole = order[0]!.best;
-    assert.ok(Math.abs(pole - 80_500) < 500, `${name}: pro pole about 1:20.5 (${fmt(pole)})`);
+  else assert.equal(order.at(-1)!.id, 0, `${name}: no time starts last`);
+  const pole = order[0]!.best;
+  if (POLE[id]) {
+    const want = fmt(POLE[id]);
+    assert.ok(Math.abs(pole - POLE[id]) < 500, `${name}: pro pole about ${want} (${fmt(pole)})`);
     console.log(`${name} quali: pole ${fmt(pole)}`);
-  } else assert.equal(order.at(-1)!.id, 0, `${name}: no time starts last`);
+  }
 }
 
 // Finishing on a single compound is a disqualification, classified last.
