@@ -7,8 +7,7 @@
     },
     "apps/drive": {
       "release-type": "node",
-      "component": "drive",
-      "release-as": "1.0.0"
+      "component": "drive"
     }
   }
 }
