@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.0](https://github.com/harshsandhu44/harshsandhu44/compare/app-v1.6.0...app-v1.7.0) (2026-10-21)
+
+
+### Features
+
+* **app:** link Drive it to drive.harshsandhu.com ([#46](https://github.com/harshsandhu44/harshsandhu44/issues/46)) ([de5881a](https://github.com/harshsandhu44/harshsandhu44/commit/de5881a08cfa4fc06c1c5674422f3ac62dd1ccd1))
+
 ## [1.6.0](https://github.com/harshsandhu44/harshsandhu44/compare/app-v1.5.0...app-v1.6.0) (2026-10-18)
 
 
