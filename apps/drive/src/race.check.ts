@@ -601,9 +601,18 @@ const legends = (l: typeof leg, p: typeof pro, at: string) => {
 };
 legends(leg, pro, "Monza");
 
-// Pro's pole on the tracks you've set a clean qualifying lap at: your lap (Monza 1:20.567 and
-// Silverstone 1:29.634).
-const POLE: Record<string, number> = { monza: 80_500, silverstone: 89_600 };
+// Pro's pole on the tracks you've set a clean qualifying lap at: your lap at Monza (1:20.567) and
+// Silverstone (1:29.634); 1% off it at Austin (1:34.119), Las Vegas (1:27.666), Yas Marina
+// (1:25.238), Monaco (1:07.879) and Lusail (1:24.975), so it's within reach of more than you.
+const POLE: Record<string, number> = {
+  monza: 80_500,
+  silverstone: 89_600,
+  austin: 95_100,
+  lasvegas: 88_500,
+  yasmarina: 86_100,
+  monaco: 68_600,
+  lusail: 85_800,
+};
 // The ladder carries to every track. A clean lap at your grip on the racing line stands in for
 // you: pro's front runner stays as close to it as at Monza, so pro is as hard everywhere. Where
 // you've set a lap (POLE) that's the measure instead, as the stand-in can be far off you: at
@@ -988,13 +997,21 @@ for (const id of [11, 0]) {
   assert.ok(blue, `${id ? "the computer" : "you"}: shown the blue flag`);
   assert.ok(monza.ahead(at(slow), at(fast)) < LENGTH / 2, `${id ? "the computer" : "you"}: let by`);
 }
-// With incidents on, every race still gets done.
-for (const { id, name } of TRACKS)
-  for (const seed of [1, 2]) {
+// With incidents on, every race still gets done, and close walls don't take the field: about four
+// crash-outs a race at most, the street circuits included.
+for (const { id, name } of TRACKS) {
+  const seeds = [1, 2];
+  let crashes = 0;
+  for (const seed of seeds) {
     const race = newRace(getTrack(id), GRID, seeded(seed), "medium", "pro", LAPS, true);
     race.racers = race.racers.filter((r) => r.id !== 0);
     run(race, 1200, () => race.done);
     assert.ok(race.done, `${name}: a race with incidents gets done`);
+    crashes += race.racers.filter((r) => r.out === "Crash").length;
   }
+  const mean = crashes / seeds.length;
+  console.log(`${name}: ${mean} crash-outs a race`);
+  assert.ok(mean <= 4, `${name}: about four crash-outs a race at most (${mean})`);
+}
 
 console.log("race: ok");

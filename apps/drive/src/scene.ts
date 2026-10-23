@@ -4,14 +4,86 @@
 // Kit (CC0, kenney.nl), recoloured to the site's tokens at load.
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { CARS } from "@/race";
 import { KERB_R, PIT_HALF, STAND_HALF, WORK, type Car, type Track } from "@/track";
 
 export type Colors = Record<"accent" | "carbon" | "paper" | "chrome" | "ink" | "pit", string>;
 
 const SKY = "#c9d2d6";
+// Mowing stripes: grass in the park, paving round a street circuit, sand in the desert.
 const GRASS = ["#56705c", "#5d7863"];
+const PAVING = ["#55565c", "#5a5b61"];
+const SAND = ["#cbb48a", "#c6ae83"];
 const TREE = "#44634d";
+// The light: the sky (and fog), the hemisphere's sky and ground colours and strength, the sun's
+// colour, strength and offset from the car, and how bright the lamps burn (floodlights, rain
+// lights, the Strip's windows). At night the sun is the floodlights, high and cool; there are no
+// real lights along the track, so the lamps are only bright colours. Yas Marina runs from GOLDEN
+// to NIGHT through SUNSET as the race goes on (frame's `progress`).
+type Light = {
+  sky: string;
+  top: string;
+  low: string;
+  hemi: number;
+  sun: string;
+  sunI: number;
+  at: [number, number, number];
+  lamps: number;
+};
+const DAY: Light = {
+  sky: SKY,
+  top: "#e4ebf0",
+  low: "#3d5244",
+  hemi: 1.4,
+  sun: "#fff1dc",
+  sunI: 2.6,
+  at: [-40, 90, 30],
+  lamps: 0,
+};
+const GOLDEN: Light = {
+  sky: "#e7b48a",
+  top: "#f3d3b2",
+  low: "#4a4036",
+  hemi: 1.15,
+  sun: "#ffb26a",
+  sunI: 2.4,
+  at: [-95, 30, 40],
+  lamps: 0.25,
+};
+const SUNSET: Light = {
+  sky: "#6f4a6e",
+  top: "#b88aa6",
+  low: "#2b2530",
+  hemi: 0.85,
+  sun: "#ff7a45",
+  sunI: 0.9,
+  at: [-110, 10, 40],
+  lamps: 0.8,
+};
+const NIGHT: Light = {
+  sky: "#0a0e1c",
+  top: "#a9b8e6",
+  low: "#1b1e27",
+  hemi: 0.9,
+  sun: "#e8eeff",
+  sunI: 1.9,
+  at: [-15, 120, 10],
+  lamps: 1,
+};
+// Each sky's lights at points through the race, blended between.
+const SKIES: Record<"day" | "night" | "sunset", [number, Light][]> = {
+  day: [[0, DAY]],
+  night: [[0, NIGHT]],
+  sunset: [
+    [0, GOLDEN],
+    [0.3, SUNSET],
+    [0.55, NIGHT],
+  ],
+};
+// The Sphere: 157 m across and 112 m tall, so its centre's 34 m up.
+const SPHERE_R = 78.5;
+const SPHERE_Y = 112 - SPHERE_R;
 const TARMAC = "#3e3e47";
 const PIT_LANE = "#35353d";
 const GRAVEL = "#b3ac9c";
@@ -116,7 +188,8 @@ const place = (x: number, z: number, rot: number, sx: number, sy = sx, sz = sx) 
 export async function createScene(host: HTMLElement, C: Colors, flat: boolean, track: Track) {
   const { BOARDS, BOXES, BOX, CURVE, HALF, MID, PATH, PIT_SIDE, STANDS, TREES, WALLS, ZONES } =
     track;
-  const { atDist, offset, pitOffset, pointAt, working } = track;
+  const { BOARD_GAP, BUILDINGS, RUNOFF, SETTING, SKY: SKY_KIND, SPHERE } = track;
+  const { atDist, nearest, offset, pitOffset, pointAt, wallGap, working } = track;
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.domElement.className = "block size-full";
   host.append(renderer.domElement);
@@ -128,8 +201,10 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
   renderer.shadowMap.type = THREE.PCFShadowMap;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(SKY);
-  scene.fog = new THREE.Fog(SKY, 260, 720);
+  const sky = new THREE.Color(SKY);
+  const fog = new THREE.Fog(SKY, 260, 720);
+  scene.background = sky;
+  scene.fog = fog;
 
   const mid = new THREE.Vector3(MID[0], 0, MID[1]);
 
@@ -139,7 +214,8 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
   mow.width = 2;
   mow.height = 1;
   const mc = mow.getContext("2d")!;
-  GRASS.forEach((g, i) => {
+  const city = SETTING === "riviera" || SETTING === "strip";
+  (city ? PAVING : SETTING === "desert" ? SAND : GRASS).forEach((g, i) => {
     mc.fillStyle = g;
     mc.fillRect(i, 0, 1, 1);
   });
@@ -170,17 +246,19 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
   const R = edge(-1, 0);
   const outer = [edge(1, GRAVEL_WIDTH), edge(-1, GRAVEL_WIDTH)] as const;
 
-  // Gravel traps on the outside (-sign side) of the tight corners.
-  scene.add(
-    flatMesh(
-      strip(R, outer[1], 0.01, (i) => tight[i]! > 0),
-      { color: GRAVEL },
-    ),
-    flatMesh(
-      strip(L, outer[0], 0.01, (i) => tight[i]! < 0),
-      { color: GRAVEL },
-    ),
-  );
+  // Gravel traps on the outside (-sign side) of the tight corners, where there's room for them
+  // before the wall.
+  if (RUNOFF >= GRAVEL_WIDTH)
+    scene.add(
+      flatMesh(
+        strip(R, outer[1], 0.01, (i) => tight[i]! > 0),
+        { color: GRAVEL },
+      ),
+      flatMesh(
+        strip(L, outer[0], 0.01, (i) => tight[i]! < 0),
+        { color: GRAVEL },
+      ),
+    );
   scene.add(
     flatMesh(
       strip(L, R, 0.02, () => true),
@@ -455,6 +533,187 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
     ),
   );
 
+  // The city, placed by track.ts: one mesh of boxes, each in its tone's colour with a window every
+  // 4 m across and 3.5 m up (8 to a texture each way). On the Strip the windows light up at night
+  // from a second texture, about half of them lit.
+  // Everything that glows with the lamps: its emissive strength by day, plus k at full night.
+  const lamped: { m: THREE.MeshStandardMaterial; base: number; k: number }[] = [];
+  if (BUILDINGS.length) {
+    const strip = SETTING === "strip";
+    const cells = (paint: (c: CanvasRenderingContext2D, x: number, y: number) => void) => {
+      const c = document.createElement("canvas");
+      c.width = c.height = 256;
+      const x = c.getContext("2d")!;
+      for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) paint(x, i * 32, j * 32);
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      return t;
+    };
+    const map = cells((c, x, y) => {
+      c.fillStyle = "#ffffff";
+      c.fillRect(x, y, 32, 32);
+      c.fillStyle = strip ? "#4b5563" : "#8a8277";
+      c.fillRect(x + 7, y + 6, 18, 20);
+    });
+    const rand = (() => {
+      let s = 7;
+      return () => (s = (s * 16807) % 2147483647) / 2147483647;
+    })();
+    const lit = strip
+      ? cells((c, x, y) => {
+          c.fillStyle = "#000000";
+          c.fillRect(x, y, 32, 32);
+          if (rand() < 0.5) return;
+          c.fillStyle = `hsl(38 90% ${55 + rand() * 30}%)`;
+          c.fillRect(x + 7, y + 6, 18, 20);
+        })
+      : null;
+    const tones = strip
+      ? ["#2b3442", "#3a404c", "#8a7a55", "#cfd3d8", "#4a5466"]
+      : ["#e8dcc4", "#d9c7a7", "#efe6d6", "#c9b79c", "#e3cfb0"];
+    const colour = new THREE.Color();
+    const boxes = BUILDINGS.map(({ x, y, fx, fy, w, d, h, tone }) => {
+      const g = new THREE.BoxGeometry(2 * d, h, 2 * w).translate(0, h / 2, 0);
+      // Faces +x, -x, +y, -y, +z, -z, four corners each: the sides tile the windows by their
+      // size; the roof takes the texture's corner, plain wall.
+      const uv = g.getAttribute("uv") as THREE.BufferAttribute;
+      const across = [2 * w, 2 * w, 0, 0, 2 * d, 2 * d];
+      for (let f = 0; f < 6; f++)
+        for (let k = 0; k < 4; k++) {
+          const n = f * 4 + k;
+          uv.setXY(
+            n,
+            (uv.getX(n) * across[f]!) / 32,
+            f === 2 || f === 3 ? 0 : (uv.getY(n) * h) / 28,
+          );
+        }
+      g.applyMatrix4(place(x, y, yaw(fx, fy), 1));
+      colour.set(tones[Math.floor(tone * tones.length)]!);
+      g.setAttribute(
+        "color",
+        new THREE.Float32BufferAttribute(
+          Array.from({ length: g.getAttribute("position").count }, () => colour.toArray()).flat(),
+          3,
+        ),
+      );
+      return g;
+    });
+    const mat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      map,
+      roughness: 0.85,
+      ...(lit && { emissive: "#ffffff", emissiveMap: lit, emissiveIntensity: 0 }),
+    });
+    if (lit) lamped.push({ m: mat, base: 0, k: 1.2 });
+    const city = new THREE.Mesh(mergeGeometries(boxes), mat);
+    for (const g of boxes) g.dispose();
+    city.castShadow = city.receiveShadow = true;
+    scene.add(city);
+  }
+
+  // Floodlights for a race at night: a pylon behind the wall every 80 m, on alternate sides,
+  // its lamp a bright box facing the track. Not where the wall's far out for the pit lane, nor
+  // in a stand or on another part of the track.
+  if (SKY_KIND) {
+    const spots: THREE.Matrix4[] = [];
+    const every = Math.max(1, Math.round(80 / (track.LENGTH / PATH.length)));
+    for (let i = 0, k = 0; i < PATH.length; i += every, k++) {
+      const side = k % 2 ? 1 : -1;
+      const gap = wallGap(i, side);
+      if (gap > RUNOFF) continue;
+      const [x, y] = offset((j) => side * (HALF[j]! + gap + 2.5))[i]!;
+      if (nearest(x, y).edge < gap + 1) continue;
+      if (STANDS.some((s) => Math.hypot(s.x - x, s.y - y) < STAND_HALF + 6)) continue;
+      const [ax, ay] = PATH[i]!;
+      spots.push(place(x, y, yaw(ax - x, ay - y), 1));
+    }
+    const pole = new THREE.Mesh(
+      new THREE.BoxGeometry(0.4, 20, 0.4).translate(0, 10, 0),
+      new THREE.MeshStandardMaterial({ color: C.chrome, roughness: 0.8 }),
+    );
+    const lampMat = new THREE.MeshStandardMaterial({
+      color: C.carbon,
+      emissive: "#fff6e0",
+      emissiveIntensity: 0,
+    });
+    lamped.push({ m: lampMat, base: 0, k: 2.5 });
+    const head = new THREE.Mesh(
+      new THREE.BoxGeometry(0.9, 1.1, 3.2).translate(0.3, 20, 0),
+      lampMat,
+    );
+    scene.add(instances(new THREE.Group().add(pole, head), spots));
+  }
+
+  // The Sphere: our own eye, drawn on a canvas round the globe (the iris in the middle, so on
+  // the sphere's +z once turned), lit from within. It watches the car the camera follows.
+  let sphere: THREE.Mesh | null = null;
+  if (SPHERE) {
+    const c = document.createElement("canvas");
+    c.width = 1024;
+    c.height = 512;
+    const e = c.getContext("2d")!;
+    const white = e.createRadialGradient(512, 256, 60, 512, 256, 560);
+    white.addColorStop(0, "#fbfbf8");
+    white.addColorStop(1, "#d8d2cc");
+    e.fillStyle = white;
+    e.fillRect(0, 0, 1024, 512);
+    // Veins from the edges in towards the iris.
+    const rand = (() => {
+      let s = 11;
+      return () => (s = (s * 16807) % 2147483647) / 2147483647;
+    })();
+    e.strokeStyle = "rgba(190, 40, 40, 0.55)";
+    e.lineCap = "round";
+    for (let n = 0; n < 34; n++) {
+      const a = rand() * Math.PI * 2;
+      const [x0, y0] = [512 + Math.cos(a) * 420, 256 + Math.sin(a) * 210];
+      const [x1, y1] = [512 + Math.cos(a) * 150, 256 + Math.sin(a) * 140];
+      e.lineWidth = 1.5 + rand() * 2.5;
+      e.beginPath();
+      e.moveTo(x0, y0);
+      e.quadraticCurveTo(
+        (x0 + x1) / 2 + (rand() - 0.5) * 80,
+        (y0 + y1) / 2 + (rand() - 0.5) * 80,
+        x1,
+        y1,
+      );
+      e.stroke();
+    }
+    const iris = e.createRadialGradient(512, 256, 30, 512, 256, 118);
+    iris.addColorStop(0, "#0d3b3f");
+    iris.addColorStop(0.45, "#1f7a74");
+    iris.addColorStop(0.85, "#3fa38a");
+    iris.addColorStop(1, "#123033");
+    e.fillStyle = iris;
+    e.beginPath();
+    e.arc(512, 256, 118, 0, Math.PI * 2);
+    e.fill();
+    e.fillStyle = "#050505";
+    e.beginPath();
+    e.arc(512, 256, 46, 0, Math.PI * 2);
+    e.fill();
+    e.fillStyle = "rgba(255, 255, 255, 0.85)";
+    e.beginPath();
+    e.ellipse(482, 222, 20, 13, -0.5, 0, Math.PI * 2);
+    e.fill();
+    const eye = new THREE.CanvasTexture(c);
+    eye.colorSpace = THREE.SRGBColorSpace;
+    const mat = new THREE.MeshStandardMaterial({
+      map: eye,
+      emissive: "#ffffff",
+      emissiveMap: eye,
+      emissiveIntensity: 0.4,
+      roughness: 0.6,
+      fog: false,
+    });
+    lamped.push({ m: mat, base: 0.4, k: 0.8 });
+    sphere = new THREE.Mesh(new THREE.SphereGeometry(SPHERE_R, 64, 32).rotateY(-Math.PI / 2), mat);
+    sphere.position.set(SPHERE[0], SPHERE_Y, SPHERE[1]);
+    sphere.lookAt(PATH[0]![0], SPHERE_Y, PATH[0]![1]);
+    scene.add(sphere);
+  }
+
   // The start gantry, a little up the road so it doesn't hide the car on the grid.
   const g = gantry!.root;
   g.scale.setScalar((HALF[6]! * 2 + 6) / gantry!.size.x);
@@ -544,7 +803,7 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
     const board = new THREE.Group();
     board.add(front, new THREE.Mesh(post, boardSide));
     board.traverse((o) => (o.castShadow = true));
-    const [x, y] = pointAt(z.detect, -PIT_SIDE * (HALF[i]! + 3));
+    const [x, y] = pointAt(z.detect, -PIT_SIDE * (HALF[i]! + BOARD_GAP));
     board.position.set(x, 0, y);
     board.rotation.y = Math.atan2(-(bx - ax), -(by - ay));
     scene.add(stripe, board);
@@ -614,7 +873,17 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
   });
   const wheels = ["wheelFrontLeft", "wheelFrontRight"].map((n) => body.getObjectByName(n));
 
-  scene.add(new THREE.HemisphereLight("#e4ebf0", "#3d5244", 1.4));
+  // Rain lights, on at night: a red bar low on the back of each car (not the Safety Car's).
+  const rainMat = new THREE.MeshBasicMaterial({ color: "#ff2b2b" });
+  for (const b of bodies) {
+    const s = car!.size;
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(s.x * 0.14, s.y * 0.12, s.z * 0.02), rainMat);
+    bar.position.set(0, s.y * 0.4, -s.z / 2);
+    b.add(bar);
+  }
+
+  const hemi = new THREE.HemisphereLight("#e4ebf0", "#3d5244", 1.4);
+  scene.add(hemi);
   const sun = new THREE.DirectionalLight("#fff1dc", 2.6);
   const SUN = new THREE.Vector3(-40, 90, 30);
   sun.castShadow = true;
@@ -622,6 +891,37 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
   Object.assign(sun.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, far: 250 });
   sun.shadow.bias = -0.0005;
   scene.add(sun, sun.target);
+
+  // The light for how far through the race the leader is (0 to 1), blended between the sky's
+  // stops; only Yas Marina's changes.
+  const stops = SKIES[SKY_KIND ?? "day"];
+  const c0 = new THREE.Color();
+  const c1 = new THREE.Color();
+  const mix = (a: string, b: string, t: number) => c0.set(a).lerp(c1.set(b), t);
+  const toward = new THREE.Vector3();
+  let shown = -1;
+  const light = (progress: number) => {
+    let k = 0;
+    while (k < stops.length - 1 && progress > stops[k + 1]![0]) k++;
+    const [p0, a] = stops[k]!;
+    const [p1, b] = stops[Math.min(k + 1, stops.length - 1)]!;
+    const t = p1 > p0 ? Math.min(1, (progress - p0) / (p1 - p0)) : 0;
+    if (Math.abs(k + t - shown) < 0.002) return;
+    shown = k + t;
+    sky.copy(mix(a.sky, b.sky, t));
+    fog.color.copy(sky);
+    hemi.color.copy(mix(a.top, b.top, t));
+    hemi.groundColor.copy(mix(a.low, b.low, t));
+    hemi.intensity = a.hemi + (b.hemi - a.hemi) * t;
+    sun.color.copy(mix(a.sun, b.sun, t));
+    sun.intensity = a.sunI + (b.sunI - a.sunI) * t;
+    SUN.set(...a.at).lerp(toward.set(...b.at), t);
+    const lamps = a.lamps + (b.lamps - a.lamps) * t;
+    for (const { m, base, k } of lamped) m.emissiveIntensity = base + k * lamps;
+    rainMat.visible = lamps > 0.5;
+  };
+  light(0);
+  const gaze = new THREE.Object3D();
 
   const camera = new THREE.PerspectiveCamera(45, 1, 1, 1600);
   const look = new THREE.Vector3();
@@ -651,8 +951,8 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
   return {
     // Every car on track, yours first (only yours in qualifying, the rest hidden), each one's
     // share of the full tow, each team's crew (0 in the garage, 1 a car in the lane, 2 a car
-    // stopped at the box), which cars are gone (out of the race, their wrecks cleared) and the
-    // Safety Car, if it's out.
+    // stopped at the box), which cars are gone (out of the race, their wrecks cleared), the
+    // Safety Car, if it's out, and how far through the race the leader is, for the light.
     frame(
       cars: Car[],
       tows: number[],
@@ -661,6 +961,7 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
       crews: number[],
       gone: boolean[] = [],
       sc: Car | null = null,
+      progress = 0,
     ) {
       let moved = false;
       crews.forEach((want, k) => {
@@ -696,8 +997,17 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
         (w.material as THREE.MeshBasicMaterial).opacity = 0.85 * tows[k]!;
       });
       for (const w of wheels) if (w) w.rotation.y = -steer * 0.4;
+      light(progress);
       sun.position.set(c.x + SUN.x, SUN.y, c.y + SUN.z);
       sun.target.position.set(c.x, 0, c.y);
+      // The eye turns to the car, gliding, and tilts no more than 5° down or up.
+      if (sphere) {
+        const far = Math.hypot(c.x - sphere.position.x, c.y - sphere.position.z);
+        const dy = Math.max(-0.09, Math.min(0.09, (RIDE - SPHERE_Y) / far)) * far;
+        gaze.position.copy(sphere.position);
+        gaze.lookAt(c.x, SPHERE_Y + dy, c.y);
+        sphere.quaternion.slerp(gaze.quaternion, flat ? 1 : 1 - Math.exp(-3 * dt));
+      }
 
       chase(c);
       if (intro < 1) {

@@ -842,6 +842,8 @@ export default function Drive() {
         crews,
         race.racers.map((r) => !!r.out && !r.wreck),
         race.sc?.car ?? null,
+        // Yas Marina's sunset follows the leader round; qualifying there is after dark.
+        quali ? 1 : Math.max(0, ...race.racers.map((r) => r.dist)) / (race.laps * LENGTH),
       );
       drawMap();
       raf = requestAnimationFrame(frame);
@@ -1579,7 +1581,20 @@ export default function Drive() {
           Rules
         </button>
       </div>
-      <p className="-mt-2 text-xs text-soft">Track data: TUMFTM racetrack-database, LGPL-3.0.</p>
+      <p className="-mt-2 text-xs text-soft">
+        {/* The smooth centrelines are the ones built from OpenStreetMap. */}
+        {def.smooth ? (
+          <>
+            Track data: ©{" "}
+            <a href="https://www.openstreetmap.org/copyright" className="underline">
+              OpenStreetMap contributors
+            </a>
+            , ODbL.
+          </>
+        ) : (
+          "Track data: TUMFTM racetrack-database, LGPL-3.0."
+        )}
+      </p>
     </main>
   );
 }
