@@ -6,6 +6,7 @@ import type { Scene } from "@/scene";
 import {
   CAP,
   CARS,
+  CHATTER,
   DISTANCES,
   GRID,
   LEVELS,
@@ -176,42 +177,68 @@ const plus = (s: number, dp = 3) => {
 };
 const lapsDown = (n: number) => `+${n} lap${n > 1 ? "s" : ""}`;
 
-// A race's classification, or qualifying's, where each row's time is its lap (0 for none).
+// A race's classification, or qualifying's, where each row's time is its lap (0 for none), and
+// the team's word on it.
 type Result = {
   quali: boolean;
   table: ReturnType<typeof results>;
   fastest: number | null;
   level: Level;
   laps: number;
+  radio: string;
 };
+// F1's points, P1 to P10, for a classified finish.
+const POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
 
-// The team's word at the flag.
-const debrief = (pos: number) =>
+// The team's word at the flag, picked once. Last, or behind your teammate, earns a jab.
+const pick = <T,>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)]!;
+const debrief = (pos: number, last: boolean) =>
   pos === 1
-    ? "P1! Get in there!"
-    : pos <= 5
-      ? `Good job, P${pos}.`
-      : `P${pos}. We'll get them next time.`;
+    ? pick(["P1! Get in there!", "You won it! What a drive!", "Race winner! Fantastic job."])
+    : pos <= 3
+      ? pick([`P${pos}, a podium! Great job.`, `Podium! P${pos}, well driven.`])
+      : pos <= 10
+        ? pick([`P${pos}, good points today.`, `P${pos}. Points in the bag.`])
+        : last
+          ? pick([
+              `P${pos}. Well, someone had to be last.`,
+              `P${pos}. Let's call it a test session.`,
+            ])
+          : pick([`P${pos}. We'll get them next time.`, `P${pos}, no points today. Next time.`]);
 // And at the end of qualifying.
 const qualiWord = (pos: number, timed: boolean) =>
   !timed
-    ? "No time. We start from the back."
+    ? pick([
+        "No time. We start from the back.",
+        "No lap time. Back of the grid it is.",
+        "No time. The back of the grid has a lovely view.",
+      ])
     : pos === 1
-      ? "Pole! What a lap."
-      : `P${pos}. Let's go racing.`;
+      ? pick(["Pole! What a lap.", "Pole position! Mega lap."])
+      : pos === 2
+        ? "P2. Front row, good lap."
+        : pos > CARS - 4
+          ? pick([
+              `P${pos}. At least the car looks nice.`,
+              `P${pos}. Plenty of cars to pass, then.`,
+            ])
+          : `P${pos}. Let's go racing.`;
 // Out of the race or disqualified, there's no position to talk about.
 const raceWord = (table: Result["table"]) => {
   const k = table.findIndex((r) => !r.id);
   const me = table[k]!;
-  return me.out
-    ? "Retired. We'll get them next time."
-    : me.dsq
-      ? "Disqualified. We had to run two compounds."
-      : debrief(k + 1);
-};
-const radio = ({ quali, table }: Result) => {
-  const k = table.findIndex((r) => !r.id);
-  return quali ? qualiWord(k + 1, !!table[k]!.best) : raceWord(table);
+  if (me.out) return pick(["Retired. We'll get them next time.", "Retired. Sorry, mate."]);
+  if (me.dsq)
+    return pick([
+      "Disqualified. We had to run two compounds.",
+      "Disqualified. Two compounds. It's in the rules, I promise.",
+    ]);
+  const runners = table.filter((r) => !r.out && !r.dsq).length;
+  const mate = table.findIndex((r) => r.id === 1);
+  const word = debrief(k + 1, k + 1 === runners);
+  return mate >= 0 && mate < k && !table[mate]!.out && k + 1 > 3
+    ? `${word} Your teammate says hi from P${mate + 1}.`
+    : word;
 };
 
 // The whole page. three.js (in scene.ts) loads on mount and draws the circuit; the race
@@ -746,15 +773,17 @@ export default function Drive() {
               dsq: false,
             }));
             nextGrid = table.map((r) => r.id);
-            const res = {
+            const k = table.findIndex((r) => !r.id);
+            const text = qualiWord(k + 1, !!table[k]!.best);
+            race.msgs.push({ kind: "radio", id: 0, text });
+            setResult({
               quali: true,
               table,
               level: race.level,
               laps: 1,
               fastest: null,
-            };
-            race.msgs.push({ kind: "radio", id: 0, text: radio(res) });
-            setResult(res);
+              radio: text,
+            });
           }
         }
         if (split) {
@@ -782,9 +811,17 @@ export default function Drive() {
         }
         if (race.done && !wasDone && !quali) {
           const table = results(race);
-          race.msgs.push({ kind: "radio", id: 0, text: raceWord(table) });
+          const text = raceWord(table);
+          race.msgs.push({ kind: "radio", id: 0, text });
           const { level, laps, fastest } = race;
-          setResult({ quali: false, table, level, laps, fastest: fastest?.id ?? null });
+          setResult({
+            quali: false,
+            table,
+            level,
+            laps,
+            fastest: fastest?.id ?? null,
+            radio: text,
+          });
         }
         if (t - board > 500) {
           board = t;
@@ -876,7 +913,8 @@ export default function Drive() {
         race.msgs.splice(k, 1);
       }
       if (t - msgAt > 3500) {
-        const m = race.msgs.shift();
+        let m = race.msgs.shift();
+        while (m?.chatter && race.t - m.at! > CHATTER) m = race.msgs.shift();
         rcEl.current!.hidden = !m;
         if (m) {
           msgAt = t;
@@ -1580,7 +1618,7 @@ export default function Drive() {
                     <span className="mr-2 text-xs font-semibold tracking-wide text-accent uppercase">
                       Radio
                     </span>
-                    {radio(result)}
+                    {result.radio}
                   </p>
                 </div>
                 <button
@@ -1601,6 +1639,7 @@ export default function Drive() {
                       <th className="py-1 text-right font-normal">Time</th>
                       {!result.quali && (
                         <>
+                          <th className="py-1 pl-3 text-right font-normal">Pts</th>
                           <th className="py-1 pl-3 text-right font-normal">Pits</th>
                           <th className="py-1 pl-3 font-normal">Tyres</th>
                           <th className="hidden py-1 pl-3 text-right font-normal md:table-cell">
@@ -1655,6 +1694,9 @@ export default function Drive() {
                           </td>
                           {!result.quali && (
                             <>
+                              <td className="py-1 pl-3 text-right">
+                                {(!r.out && !r.dsq && POINTS[k]) || ""}
+                              </td>
                               <td className="py-1 pl-3 text-right">{r.stops}</td>
                               <td className="py-1 pl-3">
                                 <span

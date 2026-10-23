@@ -29,6 +29,7 @@ import {
   tick,
   wrongWay,
   type Level,
+  type Msg,
   type Race,
   type Tyre,
 } from "./race.ts";
@@ -1036,6 +1037,27 @@ for (const { id, name } of TRACKS) {
   const mean = crashes / seeds.length;
   console.log(`${name}: ${mean} crash-outs a race`);
   assert.ok(mean <= 4, `${name}: about four crash-outs a race at most (${mean})`);
+}
+
+// Your engineer: driven round by the computer, you hear the gaps every third lap (unless that
+// lap's a personal best) as chatter, which the HUD drops if it's kept waiting, and the last lap
+// as a call that always gets through.
+{
+  const race = newRace(monza, GRID, seeded(7), "medium", "pro", 10);
+  const me = race.racers[0]!;
+  const said: Msg[] = [];
+  for (let f = 0; f < 1100 / DT && me.laps < 10; f++) {
+    tick(race, aiInput(me, race), DT);
+    said.push(...race.msgs.splice(0).filter((m) => m.kind === "radio"));
+  }
+  assert.ok(
+    said.some((m) => m.text.startsWith("Gap:") && m.chatter),
+    "the engineer calls the gaps",
+  );
+  assert.ok(
+    said.some((m) => /last lap|one more lap/i.test(m.text) && !m.chatter),
+    "and the last lap",
+  );
 }
 
 console.log("race: ok");

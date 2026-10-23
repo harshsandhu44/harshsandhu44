@@ -469,12 +469,16 @@ export type Racer = {
   blue: number;
 };
 
-// Race Control and your team radio, queued for the HUD.
+// Race Control and your team radio, queued for the HUD. Chatter goes unsaid if it's waited
+// CHATTER ms behind other messages (`at` is when it was queued).
 export type Msg = {
   kind: "limits" | "flag" | "penalty" | "fastest" | "radio" | "sc" | "out";
   id: number;
   text: string;
+  at?: number;
+  chatter?: boolean;
 };
+export const CHATTER = 4000;
 
 export type Race = {
   track: Track;
@@ -500,6 +504,8 @@ export type Race = {
   // this lap); and the Safety Car itself while it's on track, with how far it's driven.
   neutral: { kind: "sc" | "vsc"; end: number; ending: boolean } | null;
   sc: { car: Car; p: number; run: number } | null;
+  // What your engineer last said, so it's said once (see engineer).
+  eng: Engineer;
 };
 
 export function newRace(
@@ -614,6 +620,18 @@ export function newRace(
     incidents,
     neutral: null,
     sc: null,
+    eng: {
+      next: 0,
+      pos: 0,
+      seen: 0,
+      since: 0,
+      near: [],
+      back: -1,
+      slow: 0,
+      spun: false,
+      worn: 0,
+      stopped: -1,
+    },
   };
 }
 
@@ -897,6 +915,188 @@ const say = (race: Race, kind: Msg["kind"], id: number, text: string) =>
   race.msgs.push({ kind, id, text });
 const code = (race: Race, r: Racer) => driver(race, r.id).code;
 
+// Your race engineer. Most calls have a few ways of saying them, picked with Math.random so the
+// radio never touches the race's dice. Praise is straight; sarcasm is earned: track limits after
+// the first, spins, lost places, slow laps and a long time last.
+const pick = <T>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)]!;
+const radio = (race: Race, text: string, chatter = false) =>
+  race.msgs.push({ kind: "radio", id: 0, text, at: race.t, chatter });
+const LINES = {
+  box: ["Box this lap.", "Box, box.", "Box this lap, box this lap."],
+  overtake: [
+    "Within a second. Overtake ready.",
+    "Overtake's armed. Use it.",
+    "You've got Overtake for the next straight.",
+  ],
+  last: [
+    "Last lap. Bring it home.",
+    "Last lap, keep it clean.",
+    "One more lap. Everything you've got.",
+  ],
+  retire: [
+    "Sorry, we have to retire the car.",
+    "That's it, retire the car. Sorry.",
+    "Retire the car. Sorry, mate.",
+  ],
+  problem: ["We have a problem.", "We're seeing a problem on the car."],
+  unannounced: [
+    "Coming in unannounced? Fine.",
+    "Nice of you to let us know.",
+    "Surprise stop, then.",
+  ],
+  fastest: [
+    "Fastest lap of the race!",
+    "That's purple, fastest lap!",
+    "Fastest lap. Get in there!",
+  ],
+  pb: ["Personal best,", "Good lap, personal best,", "That's a PB,"],
+  stop: ["Good stop,", "Nice work from the crew,", "Clean stop,"],
+  held: [
+    (s: string) => `${s} there. Traffic in the lane, sorry.`,
+    (s: string) => `Held for traffic, ${s}. Go get it back.`,
+  ],
+  worn: ["Tyres are going off. The stop's coming.", "Rears are fading. Hang on, box soon."],
+  gained: [
+    (p: number) => `P${p}. Nice move.`,
+    (p: number) => `Up to P${p}. Keep it going.`,
+    (p: number) => `P${p}. Good job.`,
+  ],
+  lost: [
+    (c: string, p: number) => `${c} got through. P${p}.`,
+    (c: string, p: number) => `That was ${c}. Just so you know. P${p}.`,
+    (c: string, p: number) => `${c} says thanks for the space. P${p}.`,
+    (_: string, p: number) => `P${p}. The mirrors are on the car for a reason.`,
+  ],
+  // By strike: the first, the second, the black and white flag, then penalties.
+  limits: [
+    [
+      "Lap deleted. Watch the track limits.",
+      "Track limits, lap deleted. Keep it inside the lines.",
+    ],
+    [
+      "Second strike. The white lines are a suggestion we follow.",
+      "Two strikes. The track is the grey bit.",
+    ],
+    [
+      "Black and white flag. One more and it's a penalty.",
+      "That's the black and white. Last warning, I promise.",
+    ],
+    [
+      "Penalty. Was it worth it?",
+      "Another penalty. The stewards are enjoying this more than we are.",
+      "Penalty. I'll stop telling you where the lines are.",
+    ],
+  ],
+  spun: [
+    "We saw that. Get it pointed the right way.",
+    "Wrong way round. Happens. Not usually to us.",
+    "Interesting line. Let's not do it again.",
+  ],
+  slow: [
+    "Was that a cool-down lap? We're still racing.",
+    "Lap time's dropping. Everything OK, or just sightseeing?",
+    "That one was slow. The car's fine, I checked.",
+  ],
+  back: [
+    "Good news: nobody's holding you up.",
+    "Last. On the bright side, you can see everyone from there.",
+    "Still last. Think of it as a long-term project.",
+  ],
+};
+// What the engineer's said, so each call's made once: when it next looks at the order, the place
+// it last called, the place now and since when, the cars either side, the lap you went last (-1
+// when you're not, -2 once it's said so), the lap of the last slow-lap call, whether you're
+// spun, the stint the worn-tyres call was for, and when you stopped at the box (-1 when not).
+type Engineer = {
+  next: number;
+  pos: number;
+  seen: number;
+  since: number;
+  near: number[];
+  back: number;
+  slow: number;
+  spun: boolean;
+  worn: number;
+  stopped: number;
+};
+// Every tick in a race: a spin, the stop, tyres going off, and twice a second the order, for
+// places won and lost (once held for two seconds, not side by side) and a long time last. Places
+// change through the stops without a call. Chatter goes if Race Control's busy (see CHATTER).
+function engineer(race: Race) {
+  const me = race.racers.find((r) => r.id === 0);
+  const e = race.eng;
+  if (!me || me.out || me.finish !== null || race.laps < 2) return;
+  const spun = me.wrong > 0.5;
+  if (spun && !e.spun) radio(race, pick(LINES.spun), true);
+  e.spun = spun;
+  if (me.stop > 0 && e.stopped < 0) e.stopped = race.t;
+  if (me.served && e.stopped >= 0 && me.car.v > 2) {
+    const secs = ((race.t - e.stopped) / 1000).toFixed(1);
+    const corner = race.track.nextCorner(me.p);
+    radio(
+      race,
+      +secs > STOP + 1.5
+        ? pick(LINES.held)(secs)
+        : `${pick(LINES.stop)} ${secs}. Cold tyres, careful into ${corner}.`,
+    );
+    e.stopped = -1;
+  }
+  if (
+    me.life < CLIFF_AT + 0.15 &&
+    e.worn !== me.stints.length &&
+    me.stops.some((l) => l > me.laps)
+  ) {
+    e.worn = me.stints.length;
+    radio(race, pick(LINES.worn));
+  }
+
+  if (race.t < e.next) return;
+  e.next = race.t + 500;
+  const run = order(race).filter((r) => !r.out);
+  const at = run.indexOf(me);
+  const pos = at + 1;
+  e.near = [run[at - 1], run[at + 1]].filter((r) => r !== undefined).map((r) => r.id);
+  if (pos !== e.seen) [e.seen, e.since] = [pos, race.t];
+  const stopping = me.pit || (me.stints.length > 1 && me.laps === me.set);
+  if (!e.pos || stopping) e.pos = pos;
+  else if (pos !== e.pos && race.t - e.since >= 2000) {
+    if (pos < e.pos) radio(race, pick(LINES.gained)(pos), true);
+    else radio(race, pick(LINES.lost)(code(race, run[at - 1]!), pos), true);
+    e.pos = pos;
+  }
+  if (pos < run.length || run.length < 2) e.back = -1;
+  else if (e.back === -1) e.back = me.laps;
+  else if (e.back >= 0 && me.laps - e.back >= 3) {
+    e.back = -2;
+    radio(race, pick(LINES.back), true);
+  }
+}
+// At the line, one call at most: the last lap, the race's fastest lap, a personal best, a slow
+// lap, or every third lap the gaps either side.
+function lapCall(race: Race, r: Racer, lap: number, valid: boolean) {
+  if (race.laps < 2 || r.laps >= race.laps) return;
+  if (r.laps === race.laps - 1) return radio(race, pick(LINES.last));
+  if (race.fastest?.id === 0 && race.fastest.ms === lap)
+    return radio(race, `${pick(LINES.fastest)} ${fmt(lap)}.`);
+  if (valid && r.laps > 1 && r.best === lap)
+    return radio(race, `${pick(LINES.pb)} ${fmt(lap)}.`, true);
+  // Not the start, an in or out lap, or under a Safety Car or VSC.
+  const racing = r.laps > 1 && !r.pitting && r.laps - r.set > 1 && !race.neutral;
+  if (racing && valid && r.best && lap > r.best * 1.04 && r.laps - race.eng.slow >= 4) {
+    race.eng.slow = r.laps;
+    return radio(race, pick(LINES.slow), true);
+  }
+  if (r.laps % 3) return;
+  const run = order(race);
+  const k = run.indexOf(r);
+  const by = (o: Racer | undefined, where: string) =>
+    o && !o.out && o.cp >= 0 && r.cp >= 0
+      ? `${code(race, o)} ${where} ${Math.abs(gap(race, o) - gap(race, r)).toFixed(1)}`
+      : "";
+  const gaps = [by(run[k - 1], "ahead"), by(run[k + 1], "behind")].filter(Boolean);
+  if (gaps.length) radio(race, `Gap: ${gaps.join(", ")}.`, true);
+}
+
 // The first lap a car can stop at the end of: this one while the pit entry's still ahead.
 const firstChance = (race: Race, r: Racer) => {
   const s = race.track.signed(r.p);
@@ -946,7 +1146,7 @@ function nextSet(race: Race, r: Racer): Tyre {
 function retire(race: Race, r: Racer, why: string, crash = false) {
   const { HALF, LENGTH, atDist, lateral } = race.track;
   [r.out, r.wreck, r.car.v, r.puncture] = [why || "Retired", !r.pit, 0, false];
-  if (r.id === 0) say(race, "radio", 0, "Sorry, retire the car.");
+  if (r.id === 0) radio(race, pick(LINES.retire));
   say(race, "out", r.id, `${crash ? "Crash" : "Car stopped"} · ${code(race, r)} · ${why}`);
   if (!r.wreck) return;
   const on = Math.abs(lateral(r.car.x, r.car.y, r.p)) < HALF[atDist(r.p * LENGTH)]!;
@@ -990,7 +1190,7 @@ function boxCall(race: Race, r: Racer, why: string) {
   const k = r.stops.indexOf(firstChance(race, r));
   r.fit ??= (k >= 0 && r.plan[k + 1]) || nextSet(race, r);
   r.boxCall = true;
-  say(race, "radio", 0, `${why} ${TYRES[r.fit].name} ready.`);
+  radio(race, `${why} ${TYRES[r.fit].name} ready.`);
 }
 
 // One more excursion: the lap's deleted (lapTick does that), the third brings the black and
@@ -1005,6 +1205,7 @@ function strike(race: Race, r: Racer) {
     `Track limits · ${who} · ${race.track.cornerAt(r.p)} · Lap ${r.laps + 1} time deleted`,
   );
   if (r.strikes === 3) say(race, "flag", r.id, `Black and white flag · ${who} · Track limits`);
+  if (r.id === 0 && race.laps > 1) radio(race, pick(LINES.limits[Math.min(r.strikes, 4) - 1]!));
   if (r.strikes < 4) return;
   const add = r.strikes === 4 ? 5000 : 10000;
   r.penalty += add;
@@ -1024,7 +1225,7 @@ function power(race: Race, r: Racer, from: number, to: number, moved: boolean, i
       if (fwd(from, z.detect) > fwd(from, to) || fwd(from, to) > 50) return;
       if (r.laps >= 1 && race.t - race.crossed[k]! < 1000) {
         [r.ot, r.otZone, r.bonusLap] = ["ready", k, r.laps + 1];
-        if (r.id === 0) say(race, "radio", 0, "Within a second. Overtake ready.");
+        if (r.id === 0) radio(race, pick(LINES.overtake), true);
       }
       race.crossed[k] = race.t;
     });
@@ -1212,6 +1413,7 @@ function neutralise(race: Race, dt: number) {
 // Returns the player's split, if this frame made one.
 export function tick(race: Race, you: Input, dt: number): Split | null {
   race.t += dt * 1000;
+  engineer(race);
   const { LENGTH, PIT_IN, PIT_OUT, PIT_SIDE } = race.track;
   const { collide, dirAt, inPit, lateral, nearest, signed } = race.track;
   // Race distance between the checkpoints the gaps are timed at.
@@ -1238,7 +1440,7 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
       const limp = s > PIT_IN - LIMP && s < PIT_IN - 10;
       if (limp) [r.stops, r.plan] = [[r.laps + 1], [r.tyre, r.tyre]];
       if (r.id === 0)
-        say(race, "radio", 0, `We have a problem. ${limp ? "Box, box." : "Pull over."}`);
+        radio(race, `${pick(LINES.problem)} ${limp ? "Box, box." : "Pull over, pull over."}`);
     }
     const failed = r.dist >= r.failAt;
     // A computer car (or a broken-down one) heads in at the end of a lap it planned to stop on,
@@ -1247,6 +1449,9 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     if ((r.id || failed) && due >= 0 && s > PIT_IN - 200 && s < PIT_IN && !r.pitting) {
       r.pitting = true;
       r.fit = r.plan[due + 1] ?? null;
+      // The cars either side of you, boxing.
+      if (r.id && race.eng.near.includes(r.id) && r.fit)
+        radio(race, `${code(race, r)} has boxed. ${TYRES[r.fit].name}.`, true);
     }
     if (s > PIT_OUT || s < PIT_IN - 200) r.pitting = false;
 
@@ -1303,7 +1508,7 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     // Into the lane without the call: the team still has a set out.
     if (r.id === 0 && r.pit && !r.served && r.fit === null) {
       r.fit = nextSet(race, r);
-      say(race, "radio", 0, `${TYRES[r.fit].name} ready.`);
+      radio(race, `${pick(LINES.unannounced)} ${TYRES[r.fit].name} ready.`);
     }
 
     // Laps after the flag are cool-down laps and count for nothing.
@@ -1320,7 +1525,7 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
         race.fastest = { id: r.id, ms: split.lap };
         say(race, "fastest", r.id, `Fastest lap · ${driver(race, r.id).code} · ${fmt(split.lap)}`);
       }
-      if (r.id === 0 && r.laps === race.laps - 1) say(race, "radio", 0, "Last lap. Bring it home.");
+      if (r.id === 0) lapCall(race, r, split.lap, split.valid);
       const leaderDone = race.racers.some((o) => o.finish !== null);
       if (r.finish === null && (r.laps >= race.laps || leaderDone)) r.finish = race.t;
       // The team re-plans at the line (not with the car on its way to a stop), and calls you in on
@@ -1334,7 +1539,7 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
             r,
             new Set(r.stints).size < 2 && r.laps >= race.laps - 2
               ? "Box, box. We still need the second compound."
-              : "Box this lap.",
+              : pick(LINES.box),
           );
       }
     }
