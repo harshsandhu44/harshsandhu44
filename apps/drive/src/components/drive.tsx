@@ -7,10 +7,12 @@ import {
   CAP,
   CARS,
   CHATTER,
+  CORNERS,
   DISTANCES,
   GRID,
   LEVELS,
   TYRES,
+  WINGS,
   colorOf,
   driver,
   gap,
@@ -22,10 +24,13 @@ import {
   qualiDelta,
   qualiOrder,
   results,
+  sprint,
   stintLaps,
   teamPlan,
   tick,
   towShare,
+  wingGrip,
+  wingTop,
   wrongWay,
   type Level,
   type Race,
@@ -116,9 +121,19 @@ const blurb = (t: Tyre, laps: number) => {
   return `About ${n} lap${n > 1 ? "s" : ""}${t === "hard" ? ", slower" : ""}`;
 };
 const letter = (t: Tyre) => t[0]!.toUpperCase();
-// The team's plan as the grid screen shows it: "M → H, box lap 3".
+// A wing's trade against the car as tuned (3), as the grid screen shows it.
+const WING_STEPS = Array.from({ length: WINGS }, (_, k) => k + 1);
+const signed = (n: number, digits: number) => `${n < 0 ? "−" : "+"}${Math.abs(n).toFixed(digits)}`;
+const wingText = (w: number) =>
+  w === 3
+    ? "The car as tuned"
+    : `Top speed ${signed((wingTop(w) - 1) * TOP * 3.6, 0)} km/h, grip ${signed((wingGrip(w) - 1) * 100, 1)}%`;
+// A tyre's colour in the HUD: blue while cold, then green, yellow and red as it wears.
+const wearInk = (life: number, warm: number) =>
+  warm < 0.9 ? "bg-print text-paper" : life > 0.6 ? "bg-go" : life > 0.3 ? "bg-slow" : "bg-accent";
+// The team's plan as the grid screen shows it: "M → H, box lap 3", or in the sprint "M, no stop".
 const planText = ({ at, tyres }: { at: number[]; tyres: Tyre[] }) =>
-  `${tyres.map(letter).join(" → ")}, box lap ${at.join(" and ")}`;
+  `${tyres.map(letter).join(" → ")}, ${at.length ? `box lap ${at.join(" and ")}` : "no stop"}`;
 const STEPS: [Level, string, string][] = [
   ["amateur", "Amateur", "F3 grid"],
   ["intermediate", "Intermediate", "F2 grid"],
@@ -130,6 +145,7 @@ const CONTROLS: [string[], string][] = [
   [["↓", "S"], "Brake, reverse"],
   [["← →", "A D"], "Steer"],
   [["1–3"], "Tyres"],
+  [["[ ]"], "Wing"],
   [["Space"], "Overtake"],
   [["P"], "Pause"],
   [["R"], "Restart"],
@@ -143,7 +159,11 @@ const RULES: [string, string][] = [
   ],
   [
     "Tyres & pits",
-    "Softs grip most, hards last longest, and a set lasts the same share of the race at any distance, less on tracks hard on tyres like Silverstone and Spa. Grip fades slowly, then falls off a cliff in the last quarter of a set's life. A new set is cold for its first half lap. You must run two compounds, so everyone stops at least once: finish on one and you're disqualified. The team plans your race on the grid screen and calls you in, but when you box is up to you: press 1, 2 or 3 any time to pick the next set. The pit lane leaves the main straight before the line: turn in and the team drives you to your box and back out. Only your teammate can hold you up there.",
+    "Softs grip most, hards last longest, and a set lasts the same share of the race at any Grand Prix distance, less on tracks hard on tyres like Silverstone and Spa. Grip fades slowly, then falls off a cliff in the last quarter of a set's life, and all four wheels on the grass wears them faster. Each tyre wears on its own: the outside ones through the corners, the fronts on the brakes and the rears on the throttle. A new set is cold for its first half lap, shown blue. In a Grand Prix you must run two compounds, so everyone stops at least once: finish on one and you're disqualified. The sprint is one stint, as in F1: no stop needed and any compound, with softs quickest but fading before the flag. The team plans your race on the grid screen and calls you in, but when you box is up to you: press 1, 2 or 3 any time to pick the next set. The pit lane leaves the main straight before the line: turn in and the team drives you to your box and back out. Only your teammate can hold you up there.",
+  ],
+  [
+    "Wing",
+    "More rear wing is more grip in the corners and under braking, and less top speed. Each track has a quickest wing, low at Monza and high at Monaco: the team suggests it on the grid screen. Qualify and the race starts on your qualifying wing (parc fermé). In the race, [ and ] pick the wing for your next stop.",
   ],
   [
     "Safety Car & failures",
@@ -167,6 +187,8 @@ const padKey =
 const kbd = "rounded-sm bg-lamp px-1.5 py-0.5 text-xs font-semibold text-paper";
 const panel = "rounded-lg bg-ink/85 text-paper tabular-nums";
 const label = "text-sm text-soft";
+const TYRE_CELL =
+  "w-8 rounded-sm py-0.5 text-center text-[11px] leading-none font-semibold text-ink tabular-nums";
 const sector = "rounded-sm bg-lamp px-1.5 py-0.5 text-sm text-soft md:px-2 md:text-[15px]";
 const secs = (ms: number) => (ms / 1000).toFixed(3);
 // A gap in seconds as F1 shows it: seconds under a minute, then minutes too.
@@ -194,17 +216,40 @@ const POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
 const pick = <T,>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)]!;
 const debrief = (pos: number, last: boolean) =>
   pos === 1
-    ? pick(["P1! Get in there!", "You won it! What a drive!", "Race winner! Fantastic job."])
+    ? pick([
+        "P1! Get in there!",
+        "You won it! What a drive!",
+        "Race winner! Fantastic job.",
+        "That's a win! Absolutely mega.",
+        "P1. Put it on the fridge.",
+      ])
     : pos <= 3
-      ? pick([`P${pos}, a podium! Great job.`, `Podium! P${pos}, well driven.`])
+      ? pick([
+          `P${pos}, a podium! Great job.`,
+          `Podium! P${pos}, well driven.`,
+          `P${pos}. Champagne time.`,
+          `P${pos} and on the podium. Lovely stuff.`,
+        ])
       : pos <= 10
-        ? pick([`P${pos}, good points today.`, `P${pos}. Points in the bag.`])
+        ? pick([
+            `P${pos}, good points today.`,
+            `P${pos}. Points in the bag.`,
+            `P${pos}. Solid, we'll take those points.`,
+            `P${pos}, in the points. Good work.`,
+          ])
         : last
           ? pick([
               `P${pos}. Well, someone had to be last.`,
               `P${pos}. Let's call it a test session.`,
+              `P${pos}. At least nobody overtook you at the end.`,
+              `P${pos}. We'll look at the data. All of it.`,
             ])
-          : pick([`P${pos}. We'll get them next time.`, `P${pos}, no points today. Next time.`]);
+          : pick([
+              `P${pos}. We'll get them next time.`,
+              `P${pos}, no points today. Next time.`,
+              `P${pos}. Not our day.`,
+              `P${pos}. Something to build on. Somehow.`,
+            ]);
 // And at the end of qualifying.
 const qualiWord = (pos: number, timed: boolean) =>
   !timed
@@ -212,32 +257,63 @@ const qualiWord = (pos: number, timed: boolean) =>
         "No time. We start from the back.",
         "No lap time. Back of the grid it is.",
         "No time. The back of the grid has a lovely view.",
+        "No lap. Plenty of overtaking to do, then.",
       ])
     : pos === 1
-      ? pick(["Pole! What a lap.", "Pole position! Mega lap."])
+      ? pick([
+          "Pole! What a lap.",
+          "Pole position! Mega lap.",
+          "P1 in qualifying! Pole's ours.",
+          "Pole. That lap was something else.",
+        ])
       : pos === 2
-        ? "P2. Front row, good lap."
+        ? pick([
+            "P2. Front row, good lap.",
+            "Front row! P2.",
+            "P2. So close to pole.",
+            "P2, front row. Great lap.",
+          ])
         : pos > CARS - 4
           ? pick([
               `P${pos}. At least the car looks nice.`,
               `P${pos}. Plenty of cars to pass, then.`,
+              `P${pos}. The race is what counts.`,
+              `P${pos}. Long race ahead. Good.`,
             ])
-          : `P${pos}. Let's go racing.`;
+          : pick([
+              `P${pos}. Let's go racing.`,
+              `P${pos}. Good base for the race.`,
+              `P${pos}. We can work with that.`,
+              `P${pos}. Race pace is what matters.`,
+            ]);
 // Out of the race or disqualified, there's no position to talk about.
 const raceWord = (table: Result["table"]) => {
   const k = table.findIndex((r) => !r.id);
   const me = table[k]!;
-  if (me.out) return pick(["Retired. We'll get them next time.", "Retired. Sorry, mate."]);
+  if (me.out)
+    return pick([
+      "Retired. We'll get them next time.",
+      "Retired. Sorry, mate.",
+      "Retired. Not how we wanted it to end.",
+      "DNF. We'll find out what happened.",
+    ]);
   if (me.dsq)
     return pick([
       "Disqualified. We had to run two compounds.",
       "Disqualified. Two compounds. It's in the rules, I promise.",
+      "Disqualified. One compound isn't a strategy.",
+      "Disqualified. We did mention the second compound.",
     ]);
   const runners = table.filter((r) => !r.out && !r.dsq).length;
   const mate = table.findIndex((r) => r.id === 1);
   const word = debrief(k + 1, k + 1 === runners);
   return mate >= 0 && mate < k && !table[mate]!.out && k + 1 > 3
-    ? `${word} Your teammate says hi from P${mate + 1}.`
+    ? `${word} ${pick([
+        `Your teammate says hi from P${mate + 1}.`,
+        `Your teammate was P${mate + 1}. Just saying.`,
+        `Same car, P${mate + 1} for your teammate. Interesting.`,
+        `Your teammate made P${mate + 1}. We'll compare notes.`,
+      ])}`
     : word;
 };
 
@@ -263,6 +339,15 @@ export default function Drive() {
   const { box2, outline } = SHAPES.get(trackId)!;
   const built = getTrack(trackId);
   const [tyre, setTyre] = useState<Tyre>("medium");
+  // The wing for the next session: the team's suggestion each time the grid screen comes up, or
+  // once you've qualified, your qualifying wing (parc fermé).
+  const [wing, setWing] = useState(built.WING);
+  const wingRef = useRef(built.WING);
+  const qualiWing = useRef(built.WING);
+  const pickWing = (w: number) => {
+    wingRef.current = w;
+    setWing(w);
+  };
   const [level, setLevel] = useState<Level>(() => {
     const l: string = read(LEVEL, "intermediate");
     return l in LEVELS ? (l as Level) : "intermediate";
@@ -291,6 +376,10 @@ export default function Drive() {
   const abandon = useRef<() => void>(() => {});
   const quit = useRef<() => void>(() => {});
   const fit = useRef<(t: Tyre) => void>(() => {});
+  const fitWing = useRef<(by: number) => void>(() => {});
+  const wingNext = useRef<HTMLSpanElement>(null);
+  const wingEl = useRef<HTMLSpanElement>(null);
+  const tyreEls = useRef<HTMLSpanElement[]>([]);
   const fitWrap = useRef<HTMLDivElement>(null);
   const fitLabel = useRef<HTMLSpanElement>(null);
   const fitEls = useRef<HTMLButtonElement[]>([]);
@@ -333,7 +422,6 @@ export default function Drive() {
   const thrEl = useRef<SVGPathElement>(null);
   const brkEl = useRef<SVGPathElement>(null);
   const revEls = useRef<HTMLSpanElement[]>([]);
-  const tyreEl = useRef<HTMLSpanElement>(null);
   const tyreText = useRef<HTMLSpanElement>(null);
   const limiterEl = useRef<HTMLSpanElement>(null);
   const straightEl = useRef<HTMLSpanElement>(null);
@@ -448,6 +536,7 @@ export default function Drive() {
           write(TOWER, mode);
           return drawBoard();
         }
+        if (e.key === "[" || e.key === "]") return fitWing.current(e.key === "]" ? 1 : -1);
         if (l === "m") {
           const k = (mapSizeRef.current + 1) % MAPS.length;
           mapSizeRef.current = k;
@@ -618,6 +707,7 @@ export default function Drive() {
       scene?.paint(LEVELS[race.level].colors);
       phase = "grid";
       setGrid(true);
+      pickWing(lineupRef.current === GRID ? track.WING : qualiWing.current);
       pause = 200 + Math.random() * 2800;
       for (const i of [0, 1, 2]) paintSector(i, "", "");
       mine = [0, 0, 0];
@@ -666,13 +756,16 @@ export default function Drive() {
     // stray key doesn't throw one away. Not once the classification's up.
     restart.current = () => {
       if (phase === "grid" || (quali ? quali.every((q) => q.done) : race.done)) return;
+      const w = wingRef.current;
       if (quali) {
         start();
+        pickWing(w);
         return qualify.current();
       }
       if (!paused) return;
       const t = race.racers[0]!.stints[0]!;
       start();
+      pickWing(w);
       go.current(t);
     };
     // A new level or distance is a new race on the same grid.
@@ -692,12 +785,15 @@ export default function Drive() {
       const me = race.racers[0]!;
       const plan = teamPlan(race.laps, track, t);
       [me.tyre, me.stints, me.stops, me.plan] = [t, [t], plan.at, plan.tyres];
+      [me.wing, me.nextWing] = [wingRef.current, wingRef.current];
       drawBoard();
       launch();
     };
     qualify.current = () => {
       quali = newQuali(track, levelRef.current);
       race = quali[0]!;
+      qualiWing.current = wingRef.current;
+      [race.racers[0]!.wing, race.racers[0]!.nextWing] = [wingRef.current, wingRef.current];
       towerEl.current!.hidden = true;
       nearEl.current!.textContent = "";
       lapName.current!.textContent = "Quali";
@@ -708,6 +804,18 @@ export default function Drive() {
     fit.current = (t) => {
       const me = race.racers[0]!;
       if (!quali && me.finish === null && !me.out && !(me.pit && me.served)) me.fit = t;
+    };
+    // The wing: on the grid screen for the session (not once qualified), in a race for your next
+    // stop, as the set is.
+    fitWing.current = (by) => {
+      const clamp = (w: number) => Math.max(1, Math.min(WINGS, w + by));
+      if (phase === "grid") {
+        if (lineupRef.current === GRID) pickWing(clamp(wingRef.current));
+        return;
+      }
+      const me = race.racers[0]!;
+      if (!quali && me.finish === null && !me.out && !(me.pit && me.served))
+        me.nextWing = clamp(me.nextWing);
     };
 
     let raf = 0;
@@ -874,17 +982,23 @@ export default function Drive() {
           el.classList.toggle("bg-lamp", k >= lit);
         });
       }
-      const tyre = tyreEl.current!;
-      tyre.style.transform = `scaleX(${me.life})`;
-      tyre.classList.toggle("bg-go", me.life > 0.6);
-      tyre.classList.toggle("bg-slow", me.life <= 0.6 && me.life > 0.3);
-      tyre.classList.toggle("bg-accent", me.life <= 0.3);
+      tyreEls.current.forEach((el, k) => {
+        const w = me.wear[k]!;
+        const text = String(Math.round(w * 100));
+        if (el.textContent !== text) el.textContent = text;
+        const cls = `${TYRE_CELL} ${wearInk(w, me.warm)}`;
+        if (el.className !== cls) el.className = cls;
+      });
       tyreText.current!.textContent = `${Math.round(me.life * 100)}%`;
       const name = tyreName.current!;
       if (name.textContent !== letter(me.tyre)) {
         name.textContent = letter(me.tyre);
-        name.className = `w-3 font-semibold ${TYRE_INK[me.tyre]}`;
+        name.className = `font-semibold ${TYRE_INK[me.tyre]}`;
       }
+      wingEl.current!.textContent = `W${me.wing}`;
+      const nextWing = wingNext.current!;
+      nextWing.textContent = `W${me.nextWing}`;
+      nextWing.classList.toggle("text-accent", me.nextWing !== me.wing);
       // The next set: on track to pick ahead, in the lane what's going on.
       const fitting =
         phase === "racing" && !quali && me.finish === null && !me.out && !(me.pit && me.served);
@@ -1319,19 +1433,41 @@ export default function Drive() {
                 </span>
               </div>
             </div>
-            <div className="mt-2 grid grid-cols-[auto_auto_1fr_auto] items-center gap-x-2 gap-y-1.5 text-xs text-soft">
-              Tyres
-              <span ref={tyreName} className="w-3 font-semibold text-slow">
-                M
-              </span>
-              <span className="h-1 rounded-full bg-lamp">
-                <span ref={tyreEl} className="block h-full origin-left rounded-full bg-go" />
-              </span>
-              <span ref={tyreText} className="w-12 text-right text-paper">
-                100%
-              </span>
+            {/* Each tyre's life as the car carries them, front at the top: blue while cold. */}
+            <div className="mt-2 flex items-center gap-3 text-xs text-soft">
+              <div className="relative grid grid-cols-2 gap-x-3 gap-y-1" aria-hidden>
+                <span className="absolute inset-y-1 left-1/2 w-px -translate-x-1/2 bg-paper/15" />
+                {CORNERS.map((c, k) => (
+                  <span
+                    key={c}
+                    ref={(el) => {
+                      if (el) tyreEls.current[k] = el;
+                    }}
+                    className={`${TYRE_CELL} bg-go`}
+                  >
+                    100
+                  </span>
+                ))}
+              </div>
+              <div className="ml-auto flex flex-col items-end gap-1">
+                <span className="flex items-baseline gap-1.5">
+                  <span ref={tyreName} className="font-semibold text-slow">
+                    M
+                  </span>
+                  <span ref={wingEl} className="text-paper">
+                    W3
+                  </span>
+                </span>
+                <span>
+                  Tyres{" "}
+                  <span ref={tyreText} className="text-paper">
+                    100%
+                  </span>
+                </span>
+              </div>
+            </div>
+            <div className="mt-2 grid grid-cols-[auto_1fr_auto] items-center gap-x-2 text-xs text-soft">
               Battery
-              <span />
               <span className="h-1 rounded-full bg-lamp">
                 <span ref={batEl} className="block h-full origin-left rounded-full bg-paper" />
               </span>
@@ -1339,29 +1475,49 @@ export default function Drive() {
                 4.0 MJ
               </span>
             </div>
-            <div
-              ref={fitWrap}
-              hidden
-              className="pointer-events-auto mt-2 flex items-center gap-1.5"
-            >
-              <span ref={fitLabel} className="mr-auto text-xs whitespace-nowrap text-soft">
-                Next set
-              </span>
-              {COMPOUNDS.map((t, i) => (
+            <div ref={fitWrap} hidden className="pointer-events-auto mt-2 flex flex-col gap-1.5">
+              <div className="flex items-center gap-1.5">
+                <span ref={fitLabel} className="mr-auto text-xs whitespace-nowrap text-soft">
+                  Next set
+                </span>
+                {COMPOUNDS.map((t, i) => (
+                  <button
+                    key={t}
+                    ref={(el) => {
+                      if (el) fitEls.current[i] = el;
+                    }}
+                    type="button"
+                    aria-label={TYRES[t].name}
+                    aria-pressed="false"
+                    onClick={() => fit.current(t)}
+                    className={`h-8 w-9 rounded-sm text-sm font-semibold ring-1 ring-paper/25 ${TYRE_INK[t]}`}
+                  >
+                    {letter(t)}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="mr-auto text-xs whitespace-nowrap text-soft">Next wing</span>
                 <button
-                  key={t}
-                  ref={(el) => {
-                    if (el) fitEls.current[i] = el;
-                  }}
                   type="button"
-                  aria-label={TYRES[t].name}
-                  aria-pressed="false"
-                  onClick={() => fit.current(t)}
-                  className={`h-8 w-9 rounded-sm text-sm font-semibold ring-1 ring-paper/25 ${TYRE_INK[t]}`}
+                  aria-label="Less wing"
+                  onClick={() => fitWing.current(-1)}
+                  className="h-8 w-9 rounded-sm text-sm font-semibold ring-1 ring-paper/25"
                 >
-                  {letter(t)}
+                  −
                 </button>
-              ))}
+                <span ref={wingNext} className="w-9 text-center text-sm font-semibold">
+                  W3
+                </span>
+                <button
+                  type="button"
+                  aria-label="More wing"
+                  onClick={() => fitWing.current(1)}
+                  className="h-8 w-9 rounded-sm text-sm font-semibold ring-1 ring-paper/25"
+                >
+                  +
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1495,11 +1651,9 @@ export default function Drive() {
                     className={`min-h-11 rounded-md px-1 text-sm ring-1 active:scale-[.98] ${dist === k ? "bg-lamp font-semibold ring-paper" : "ring-paper/25"}`}
                   >
                     <span className="block">{d.name}</span>
-                    {d.share ? (
-                      <span className="block text-xs font-normal text-soft">
-                        {lapsOf(d, built)} laps
-                      </span>
-                    ) : null}
+                    <span className="block text-xs font-normal text-soft">
+                      {lapsOf(d, built)} laps
+                    </span>
                   </button>
                 ))}
               </div>
@@ -1523,7 +1677,29 @@ export default function Drive() {
                   </button>
                 ))}
               </div>
+              <div role="radiogroup" aria-label="Rear wing" className="mt-2 grid grid-cols-5 gap-2">
+                {WING_STEPS.map((w) => (
+                  <button
+                    key={w}
+                    type="button"
+                    role="radio"
+                    aria-checked={wing === w}
+                    disabled={qualified && wing !== w}
+                    onClick={() => pickWing(w)}
+                    className={`min-h-11 rounded-md px-1 text-sm ring-1 active:scale-[.98] disabled:opacity-40 ${wing === w ? "bg-lamp font-semibold ring-paper" : "ring-paper/25"}`}
+                  >
+                    <span className="block">Wing {w}</span>
+                    {w === built.WING ? (
+                      <span className="block text-xs font-normal text-soft">Team</span>
+                    ) : null}
+                  </button>
+                ))}
+              </div>
               <p className={`${label} mt-2`}>
+                {qualified ? "Parc fermé: your qualifying wing. " : ""}
+                <span className="text-paper">{wingText(wing)}</span>
+              </p>
+              <p className={`${label} mt-1`}>
                 Team plan{" "}
                 <span className="text-paper">{planText(teamPlan(laps, built, tyre))}</span>
               </p>
@@ -1547,7 +1723,7 @@ export default function Drive() {
                 </button>
               </div>
               <p className="mt-2 text-xs text-soft pointer-coarse:hidden">
-                1, 2 or 3 to pick, Enter to line up.
+                1, 2 or 3 to pick tyres, [ and ] the wing, Enter to line up.
               </p>
             </div>
           </div>
@@ -1595,8 +1771,13 @@ export default function Drive() {
                 className="text-xs font-semibold tracking-wide text-soft uppercase motion-safe:animate-rowin"
                 style={{ animationDelay: "0.9s" }}
               >
-                {def.name} · {result.quali ? "Qualifying" : `${result.laps} laps`} ·{" "}
-                {LEVELS[result.level].series} grid
+                {def.name} ·{" "}
+                {result.quali
+                  ? "Qualifying"
+                  : sprint(result.laps)
+                    ? "Sprint"
+                    : `${result.laps} laps`}{" "}
+                · {LEVELS[result.level].series} grid
               </p>
               <div
                 className="mt-1 flex flex-wrap items-end justify-between gap-x-6 gap-y-3 motion-safe:animate-rowin"

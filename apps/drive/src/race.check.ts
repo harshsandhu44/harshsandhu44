@@ -27,6 +27,7 @@ import {
   qualiOrder,
   results,
   tick,
+  WINGS,
   wrongWay,
   type Level,
   type Msg,
@@ -157,8 +158,9 @@ assert.ok(lapAt(0) > fresh + 5000, `worn tyres are slower (${fmt(fresh)} vs ${fm
   const [cold, warm] = [half(0), half(1)];
   assert.ok(cold - warm > 200, `cold tyres cost time (${(cold - warm).toFixed(0)} ms)`);
 }
-// A set lasts its share of the race to the cliff, at any distance, faster on harder tracks: life
-// lost per lap on a medium, alone, over its first two laps.
+// A set lasts its share of the race to the cliff, at any Grand Prix distance (the sprint's wears
+// as a 10-lap race's), faster on harder tracks. Life lost per lap on a medium, alone, over its
+// first two laps.
 for (const laps of [SPRINT, FULL]) {
   const race = newRace(monza, GRID, seeded(7), "medium", "pro", laps);
   race.racers = race.racers.filter((r) => r.id === 10);
@@ -173,19 +175,58 @@ for (const laps of [SPRINT, FULL]) {
   const lap = (1 - r.life) / ((r.dist + 10 + 8 * GRID.indexOf(10)) / LENGTH);
   const want = 0.75 / stintLaps("medium", laps, monza);
   assert.ok(
-    Math.abs(lap / want - 1) < 0.15,
+    Math.abs(lap / want - 1) < 0.05,
     `${laps} laps: a medium wears to plan (${lap.toFixed(3)})`,
   );
 }
+assert.equal(stintLaps("medium", SPRINT, monza), stintLaps("medium", 10, monza), "sprint wear");
 assert.ok(
   stintLaps("medium", 10, getTrack("silverstone")) < stintLaps("medium", 10, monza),
   "Silverstone is harder on tyres than Monza",
 );
-// Every computer car's plan stops at least once and runs two compounds, each stint at least two
-// laps (so no stop on the first or last lap) and never past the end of a set's life.
+// Each tyre wears on its own, the outside ones through the corners: Monza and Silverstone, run
+// clockwise, eat the left tyres. Over three laps on a medium, alone.
+for (const t of [monza, getTrack("silverstone")]) {
+  const race = solo(10, (r) => ([r.tyre, r.stops] = ["medium", []]), "pro", t);
+  race.slips = false;
+  nonStop(race, 900, () => race.racers[0]!.laps >= 3);
+  const [fl, fr, rl, rr] = race.racers[0]!.wear.map((w) => 1 - w) as number[];
+  assert.ok(fl! > fr! && rl! > rr!, `${t.name}: the left tyres wear most`);
+}
+// The quickest wing on each track is the one it lists, wing 3 is the car as tuned, and the
+// wrong end costs time: a clean lap at your grip on the racing line, each wing in turn. Low at
+// Monza, high at Monaco, and up to about a second a lap.
+const cleanLap = (track: Track, wing = track.WING) => {
+  const race = solo(2, (r) => ([r.tyre, r.stops, r.wing] = ["medium", [], wing]), "pro", track);
+  race.racers[0]!.pace = 1 / edgeOf(race);
+  race.slips = false;
+  nonStop(race, 600, () => race.racers[0]!.laps >= 3);
+  return race.racers[0]!.best;
+};
+for (const def of TRACKS) {
+  const t = getTrack(def.id);
+  const laps = Array.from({ length: WINGS }, (_, k) => cleanLap(t, k + 1));
+  const best = Math.min(...laps);
+  assert.ok(
+    laps[t.WING - 1]! - best < 60,
+    `${def.name}: wing ${t.WING} is the quickest (${laps.map((l) => l - laps[2]!).map(Math.round)})`,
+  );
+  const worst = Math.max(laps[0]!, laps.at(-1)!) - best;
+  assert.ok(worst > 100 && worst < 1500, `${def.name}: the wrong end costs ${worst.toFixed(0)} ms`);
+}
+assert.ok(monza.WING < 3 && getTrack("monaco").WING > 3, "low wing at Monza, high at Monaco");
+
+// Every computer car's plan in a Grand Prix stops at least once and runs two compounds, each
+// stint at least two laps (so no stop on the first or last lap) and never past the end of a set's
+// life. In the sprint nobody plans a stop, on a set that lasts to the flag.
 for (const laps of DISTANCES.map((d) => lapsOf(d, monza)))
   for (const seed of [1, 2, 3])
     for (const r of newRace(monza, GRID, seeded(seed), "medium", "pro", laps).racers.slice(1)) {
+      if (laps === SPRINT) {
+        assert.ok(!r.stops.length && r.plan.length === 1, "the sprint is one stint");
+        assert.ok(stintLaps(r.plan[0]!, laps, monza) / 0.75 >= laps, `on ${r.plan[0]}s that last`);
+        continue;
+      }
       const ends = [...r.stops, laps];
       assert.equal(r.plan.length, ends.length, `${laps} laps: a set per stint`);
       assert.ok(r.stops.length >= 1 && new Set(r.plan).size > 1, `${laps} laps: two compounds`);
@@ -626,6 +667,8 @@ legends(leg, pro, "Monza");
 // Pro's pole on the tracks you've set a clean qualifying lap at: your lap at Monza (1:20.567) and
 // Silverstone (1:29.634); 1% off it at Austin (1:34.119), Las Vegas (1:27.666), Yas Marina
 // (1:25.238), Monaco (1:07.879) and Lusail (1:24.975), so it's within reach of more than you.
+// Those laps were on the car as tuned (wing 3): on the track's wing you'd be quicker by as much
+// as a clean lap is, so pole is too.
 const POLE: Record<string, number> = {
   monza: 80_500,
   silverstone: 89_600,
@@ -640,13 +683,7 @@ const POLE: Record<string, number> = {
 // you've set a lap (POLE) that's the measure instead, as the stand-in can be far off you: at
 // Silverstone you're 3 s up on a pole as close to it as Monza's. The lower levels drive nearer the centreline, which costs more on twisty tracks (Silverstone and
 // Interlagos most), so they may be easier than at Monza but never harder.
-const clean = (track: Track) => {
-  const race = solo(2, (r) => ([r.tyre, r.stops] = ["medium", []]), "pro", track);
-  race.racers[0]!.pace = 1 / edgeOf(race);
-  race.slips = false;
-  nonStop(race, 600, () => race.racers[0]!.laps >= 3);
-  return race.racers[0]!.best;
-};
+const clean = (track: Track) => cleanLap(track);
 const proGap = pro.front / clean(monza);
 for (const def of TRACKS.slice(1)) {
   const t = getTrack(def.id);
@@ -747,7 +784,7 @@ for (const def of TRACKS) {
   );
 }
 
-// The longest race: everyone finishes, on two compounds and no more than three stops, the team
+// The longest race: everyone takes the flag, on two compounds and no more than three stops, the team
 // re-planning as it goes, and never runs a set down to nothing.
 {
   const laps = FULL;
@@ -760,8 +797,8 @@ for (const def of TRACKS) {
     return race.racers.every((r) => r.finish !== null);
   });
   assert.ok(
-    race.racers.every((r) => r.finish !== null && r.laps === laps),
-    `${laps} laps: everyone finishes`,
+    race.racers.every((r) => r.finish !== null && r.laps >= laps - 1),
+    `${laps} laps: everyone takes the flag, a lap down at most`,
   );
   assert.ok(
     race.racers.every((r) => new Set(r.stints).size > 1 && r.stints.length <= 4),
@@ -841,33 +878,41 @@ for (const { id, name } of TRACKS) {
   else assert.equal(order.at(-1)!.id, 0, `${name}: no time starts last`);
   const pole = order[0]!.best;
   if (POLE[id]) {
-    const want = fmt(POLE[id]);
-    assert.ok(Math.abs(pole - POLE[id]) < 500, `${name}: pro pole about ${want} (${fmt(pole)})`);
+    const t = getTrack(id);
+    const ms = (POLE[id] * cleanLap(t)) / cleanLap(t, 3);
+    const want = fmt(ms);
+    assert.ok(Math.abs(pole - ms) < 500, `${name}: pro pole about ${want} (${fmt(pole)})`);
     console.log(`${name} quali: pole ${fmt(pole)}`);
   }
 }
 
-// Finishing on a single compound is a disqualification, classified last.
-{
-  const race = newRace(monza, GRID, seeded(7));
+// Finishing a Grand Prix on a single compound is a disqualification, classified last; in the
+// sprint it's allowed.
+for (const laps of [10, SPRINT]) {
+  const race = newRace(monza, GRID, seeded(7), "medium", "pro", laps);
   race.racers = race.racers.filter((r) => r.id === 10 || r.id === 11);
   const [a, b] = race.racers as [Race["racers"][number], Race["racers"][number]];
   [a.finish, a.laps, a.stints, b.finish, b.laps, b.stints] = [
     1,
-    LAPS,
+    laps,
     ["medium"],
     2,
-    LAPS,
+    laps,
     ["medium", "hard"],
   ];
   const table = results(race);
   assert.deepEqual(
     table.map((r) => [r.id, r.dsq]),
-    [
-      [11, false],
-      [10, true],
-    ],
-    "one compound is a DSQ",
+    laps === SPRINT
+      ? [
+          [10, false],
+          [11, false],
+        ]
+      : [
+          [11, false],
+          [10, true],
+        ],
+    laps === SPRINT ? "one compound is fine in the sprint" : "one compound is a DSQ",
   );
 }
 
@@ -1051,13 +1096,30 @@ for (const { id, name } of TRACKS) {
     said.push(...race.msgs.splice(0).filter((m) => m.kind === "radio"));
   }
   assert.ok(
-    said.some((m) => m.text.startsWith("Gap:") && m.chatter),
+    said.some((m) => /ahead \d+\.\d|behind \d+\.\d/.test(m.text) && m.chatter),
     "the engineer calls the gaps",
   );
   assert.ok(
     said.some((m) => /last lap|one more lap/i.test(m.text) && !m.chatter),
     "and the last lap",
   );
+}
+
+// The wing you pick for your stop goes on there: driven round and in by the computer.
+{
+  const race = newRace(monza, GRID, seeded(7), "medium", "pro", 10);
+  const me = race.racers[0]!;
+  const plan = teamPlan(10, monza, "medium");
+  [me.stops, me.plan, me.nextWing] = [plan.at, plan.tyres, 5];
+  for (let f = 0; f < 1100 / DT && me.stints.length < 2; f++) {
+    // The computer drives you in on the lap the team calls, as it would itself.
+    const s = signed(me.p);
+    if (me.stops.includes(me.laps + 1) && s > monza.PIT_IN - 200 && s < monza.PIT_IN)
+      me.pitting = true;
+    tick(race, aiInput(me, race), DT);
+  }
+  assert.equal(me.stints.length, 2, "you stop");
+  assert.equal(me.wing, 5, "and the wing for the stop goes on there");
 }
 
 console.log("race: ok");

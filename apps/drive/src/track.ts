@@ -32,6 +32,9 @@ export type TrackDef = {
   stop: number;
   // How hard the track is on tyres, 1 for an average one: they wear this much faster.
   wear: number;
+  // The rear wing (race.ts WINGS) quickest round here, 1 (least) to 5 (most), measured in
+  // race.check.ts: the team's suggestion and what the computer's strategists aim for.
+  wing: number;
   // Pro's extra grip here, if the shared one (race.ts EDGE) leaves pro easier or harder than at
   // Monza; race.check.ts says which.
   proEdge?: number;
@@ -112,9 +115,10 @@ const GRIP = 24;
 export const brakeAt = (v: number) => 15 + DOWNFORCE * v * v;
 export const gripAt = (v: number) => GRIP + DOWNFORCE * v * v;
 
-// g is what's left of the tyres' grip (1 new) and scales cornering and braking. Returns whether
-// the steering asked for more than the grip gave: the car is sliding, which wears the tyres.
-// `top` is the speed drag allows, higher with the 2026 power on.
+// g is what's left of the tyres' grip (1 new) and scales cornering and braking. Returns the turn
+// the steering asked for as a share of what the grip gives, positive turning right: over 1 in
+// either direction the car is sliding. `top` is the speed drag allows, higher with the 2026 power
+// on.
 export function step(car: Car, input: Input, dt: number, grass: boolean, g = 1, top = TOP) {
   const v = car.v;
   const drag = v > 0 ? ACCEL / (grass ? GRASS_TOP : top) ** 2 : REVERSE / REVERSE_TOP ** 2;
@@ -134,18 +138,18 @@ export function step(car: Car, input: Input, dt: number, grass: boolean, g = 1, 
   car.h += Math.max(-cap, Math.min(cap, turn)) * dt;
   car.x += Math.cos(car.h) * car.v * dt;
   car.y += Math.sin(car.h) * car.v * dt;
-  return Math.abs(turn) > cap;
+  return turn / cap;
 }
 
 // Shown in the HUD.
 export const gear = (v: number) =>
   v < -0.5 ? "R" : Math.min(8, Math.max(1, 1 + Math.floor((v / TOP) * 8)));
 
-// Profiles every 0.05 of grip from MOST (softs, and a legend's extra grip) down to 0.55 (fully
-// worn), blended between. Downforce means the fast corners lose more than √grip would say, so
-// it's worth the ~20k sums at load.
-const MOST = 1.5;
-const STEPS = 20;
+// Profiles every 0.05 of grip from MOST (softs, a legend's extra grip and the most wing) down to
+// 0.55 (fully worn), blended between. Downforce means the fast corners lose more than √grip would
+// say, so it's worth the ~20k sums at load.
+const MOST = 1.6;
+const STEPS = 22;
 const grips = (k: number) => MOST - k * 0.05;
 // The racing line keeps this far from the tarmac edge.
 const LINE_MARGIN = 1.6;
@@ -629,6 +633,7 @@ export function buildTrack(def: TrackDef) {
     GRIP_POWER: def.grip,
     STOP_LAPS: def.stop,
     WEAR: def.wear,
+    WING: def.wing,
     LEGENDS_EDGE: def.legendsEdge,
     RUNOFF: RUN,
     SETTING: def.setting,
