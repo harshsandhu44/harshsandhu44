@@ -20,11 +20,11 @@ import {
   type Track,
 } from "./track.ts";
 
-// Race distances to pick from, as the F1 games have them: five laps, or a share of the Grand
-// Prix's laps. The tyres and the paces are tuned on the shortest.
+// Race distances to pick from, as the F1 games have them: a five-lap sprint, or a share of the
+// Grand Prix's laps. The paces are tuned on the shortest.
 export const SPRINT = 5;
 export const DISTANCES = [
-  { name: "5 laps", share: 0 },
+  { name: "Sprint", share: 0 },
   { name: "25%", share: 0.25 },
   { name: "35%", share: 0.35 },
   { name: "50%", share: 0.5 },
@@ -56,7 +56,7 @@ export type Level = "amateur" | "intermediate" | "pro" | "legends";
 // ponytail: tuned in race.check.ts so pro's pole at Monza is about 1:20.5, a clean qualifying
 // lap from the player.
 const EDGE = 1.33;
-const LEGEND_EDGE = 1.4;
+const LEGEND_EDGE = 1.38;
 // How far under its limit (m/s) a legend has to be to pull out and pass.
 const PASS = 15;
 // A computer car's form, drawn fresh each lap: up to this share either side of its pace and top
@@ -89,11 +89,12 @@ const aim = (car: Car, [x, y]: [number, number]) => {
 export const edgeOf = ({ level: lv, track }: Race) =>
   (lv === "pro" ? track.PRO_EDGE : lv === "legends" ? track.LEGENDS_EDGE : undefined) ??
   LEVELS[lv].edge;
-// A car's grip on its tyres: a computer car's scaled by its edge. Close behind another car its
+// A car's grip on its tyres and wing: a computer car's scaled by its edge. Close behind another car its
 // dirty air takes some of that, and so do cold tyres and damage; on a puncture it has little.
 export const carGrip = (race: Race, r: Racer) => {
   const g =
     grip(r.life, r.tyre) *
+    wingGrip(r.wing) *
     (r.id ? edgeOf(race) : 1) *
     (1 - r.dirty) *
     (1 - COLD * (1 - r.warm)) *
@@ -172,7 +173,7 @@ export const LEVELS: Record<Level, ReturnType<typeof level>> = {
     "F1",
     1,
     [0.98, 0.93],
-    0.02,
+    0.015,
     EDGE,
     ["PER", "Sergio Pérez", 85, 81],
     [
@@ -228,37 +229,74 @@ const gridAt = (slot: number) => -10 - 8 * slot;
 // Tyres, like a Grand Prix squeezed into the distance: life runs from 1 (new) to 0, grip falls
 // away gently as a set wears and then off a cliff under CLIFF_AT, and a compound reaches the cliff
 // after a share of the race whatever its length (on a track of average wear; track.WEAR scales
-// it). Only all four wheels on the grass wears them faster; sliding and a wheel or two off cost
-// nothing extra. A set fresh from the pits is cold, short of COLD of its grip until it has warmed
+// it). The sprint is one stint, so its sets wear as in a SPRINT_WEAR-lap race: softs fade before
+// the flag, mediums just make it and hards last. All four wheels on the grass wear GRASS of the
+// set a metre on top. Each tyre wears on its own: the outside ones through a corner, the fronts
+// under braking and the rears on the throttle, the same on average, so a set's life (and grip) is
+// the four's average. A set fresh from the pits is cold, short of COLD of its grip until it has warmed
 // up over a share of a lap, softs quickest. ponytail: tuned in race.check.ts to F1's gaps, a soft
 // about 0.8 s a lap quicker than a medium at Monza and a hard 0.5 s slower; these are the knobs.
 const DEG = 0.1;
 const CLIFF = 0.3;
-const CLIFF_AT = 0.25;
+export const CLIFF_AT = 0.25;
 const GRASS = 1 / 2000;
 const COLD = 0.1;
+const SPRINT_WEAR = 10;
+// ponytail: qualifying's lap wears as the shortest race did when pole was tuned (race.check.ts
+// POLE), a soft losing about two fifths of its life.
+const QUALI_WEAR = 4.25;
+const LOAD = 0.5;
+const FRONT = 0.2;
+const BRAKING = 0.3;
+const TRACTION = 0.1;
+// Front-left, front-right, rear-left, rear-right.
+export const CORNERS = ["front-left", "front-right", "rear-left", "rear-right"];
 export type Tyre = "soft" | "medium" | "hard";
 export const TYRES: Record<Tyre, { grip: number; last: number; warm: number; name: string }> = {
-  soft: { grip: 1.04, last: 0.35, warm: 0.3, name: "Softs" },
-  medium: { grip: 1, last: 0.55, warm: 0.5, name: "Mediums" },
-  hard: { grip: 0.975, last: 0.8, warm: 0.7, name: "Hards" },
+  soft: { grip: 1.04, last: 0.41, warm: 0.3, name: "Softs" },
+  medium: { grip: 1, last: 0.65, warm: 0.5, name: "Mediums" },
+  hard: { grip: 0.975, last: 0.94, warm: 0.7, name: "Hards" },
 };
 export const grip = (life: number, tyre: Tyre) =>
   TYRES[tyre].grip * (1 - DEG * (1 - life) - CLIFF * Math.max(0, 1 - life / CLIFF_AT) ** 2);
-// Laps a set lasts to the cliff, in a race of `laps`. Qualifying's one lap wears like the
-// shortest race.
+// Laps a set lasts to the cliff, in a race of `laps` (qualifying's is one).
 export const stintLaps = (t: Tyre, laps: number, track: Track) =>
-  (TYRES[t].last * Math.max(laps, SPRINT)) / track.WEAR;
+  (TYRES[t].last * Math.max(laps, laps > 1 ? SPRINT_WEAR : QUALI_WEAR)) / track.WEAR;
+// The sprint's rules, as F1's: no stop needed and one compound allowed.
+export const sprint = (laps: number) => laps <= SPRINT;
 const lapWear = (t: Tyre, laps: number, track: Track) => (1 - CLIFF_AT) / stintLaps(t, laps, track);
 const COMPOUNDS: Tyre[] = ["soft", "medium", "hard"];
+
+// The rear wing, 1 to WINGS, 3 the car as tuned: each step up trades about 4 km/h of top speed
+// (drag) for WING_GRIP more grip (downforce), and flattening it gains less each step (the rest of
+// the car still drags), so each track has a quickest wing between: low at Monza, high at Monaco.
+// ponytail: downforce as plain grip, so the corner profiles serve every wing; real downforce
+// counts most in the fast corners. Tuned in race.check.ts so the wrong end costs up to about a
+// second a lap. The computer's strategists
+// aim for the track's quickest (track.WING), straying up to STRAY steps by level, by a fixed hash
+// of driver and track: the dice are untouched, and a driver runs the same wing in qualifying and
+// the race.
+export const WINGS = 5;
+const WING_TOP = 0.0154;
+const WING_DRAG = 0.0028;
+const WING_GRIP = 0.0063;
+export const wingTop = (w: number) => 1 - WING_TOP * (w - 3) - WING_DRAG * (w - 3) ** 2;
+export const wingGrip = (w: number) => 1 + WING_GRIP * (w - 3);
+const STRAY: Record<Level, number> = { amateur: 2, intermediate: 1.5, pro: 1, legends: 0.4 };
+const aiWing = (track: Track, lv: Level, id: number) => {
+  const x = Math.sin(id * 12.9898 + track.LENGTH * 78.233) * 43758.5453;
+  const w = Math.round(track.WING + STRAY[lv] * (2 * (x - Math.floor(x)) - 1));
+  return Math.max(1, Math.min(WINGS, w));
+};
 
 // The strategist: every way to run the laps left with up to two more stops (three in the race),
 // each stint at least two laps, scored in fresh-medium laps: a lap at its mid-lap grip, slowing as
 // grip ^ -GRIP_POWER, plus the track's cost of a stop. A set is never run to within IN_HAND of the
-// end of its life, and only plans that run two compounds over the race count, as the rules have it. From the start (no `now`) every set is new; mid-race the car
-// is on `now.tyre` at `now.life` after `now.from` laps, can stop at the end of any lap from
-// `now.first`, and a stop then costs `now.cheap` of one (under a Safety Car or VSC). Each plan is
-// the laps it stops at the end of and the set for each stint from here; `visit` sees each.
+// end of its life, and only plans that run two compounds over the race count, as the rules have it (the sprint
+// plans one stint, on any compound). From the start (no `now`) every set is new
+// ; mid-race the car is on `now.tyre` at `now.life` after `now.from` laps, can stop at the end of
+// any lap from `now.first`, and a stop then costs `now.cheap` of one (under a Safety Car or VSC). Each
+// plan is the laps it stops at the end of and the set for each stint from here; `visit` sees each.
 // ponytail: an estimate from the tyre model, not raced out; race.check.ts races the picks. Past
 // 25 laps a stop is only weighed every few laps (and at the first chance, and where one's already
 // planned), so a long race's search stays the size of a 25-lap one.
@@ -276,25 +314,26 @@ type Now = {
 function walkPlans(laps: number, track: Track, now: Now | null, visit: (p: Plan) => void) {
   const { GRIP_POWER, STOP_LAPS } = track;
   const run = (t: Tyre, life: number, n: number) => {
-    if (n && life - lapWear(t, laps, track) * n < IN_HAND) return Infinity;
+    const per = lapWear(t, laps, track);
+    if (n && life - per * n < IN_HAND) return Infinity;
     let sum = 0;
-    for (let k = 0; k < n; k++)
-      sum += grip(Math.max(0, life - lapWear(t, laps, track) * (k + 0.5)), t) ** -GRIP_POWER;
+    for (let k = 0; k < n; k++) sum += grip(Math.max(0, life - per * (k + 0.5)), t) ** -GRIP_POWER;
     return sum;
   };
   const fresh = Object.fromEntries(
     COMPOUNDS.map((t) => [t, [...Array(laps + 1).keys()].map((n) => run(t, 1, n))]),
   ) as Record<Tyre, number[]>;
   const used = now?.used ?? [];
-  const more = Math.min(2, 3 - Math.max(0, used.length - 1));
+  // The sprint plans no stop and needs no second compound.
+  const more = sprint(laps) ? 0 : Math.min(2, 3 - Math.max(0, used.length - 1));
+  const legal = (sets: Tyre[]) => sprint(laps) || new Set([...used, ...sets]).size > 1;
   const every = Math.ceil(laps / 25);
   const weigh = (n: number) => n % every === 0 || n === now?.first || !!now?.keep.includes(n);
   // New sets from the end of lap `done`, after `at` stops so far.
   const walk = (done: number, at: number[], tyres: Tyre[], cost: number) => {
     for (const t of COMPOUNDS) {
       const all = [...tyres, t];
-      if (new Set([...used, ...all]).size > 1)
-        visit({ at, tyres: all, cost: cost + fresh[t][laps - done]! });
+      if (legal(all)) visit({ at, tyres: all, cost: cost + fresh[t][laps - done]! });
       if (at.length < more)
         for (let n = 2; n <= laps - done - 2; n++)
           if (weigh(done + n))
@@ -303,8 +342,7 @@ function walkPlans(laps: number, track: Track, now: Now | null, visit: (p: Plan)
   };
   if (!now) return walk(0, [], [], 0);
   const { from, first, tyre, life, cheap } = now;
-  if (new Set([...used, tyre]).size > 1)
-    visit({ at: [], tyres: [tyre], cost: run(tyre, life, laps - from) });
+  if (legal([tyre])) visit({ at: [], tyres: [tyre], cost: run(tyre, life, laps - from) });
   for (let end = Math.max(first, from); more > 0 && end <= laps - 2; end++) {
     if (!weigh(end)) continue;
     const stop = STOP_LAPS * (end === first ? cheap : 1);
@@ -451,6 +489,11 @@ export type Racer = {
   through: boolean;
   // How far the set on the car has warmed up, 0 (cold) to 1.
   warm: number;
+  // Each tyre's life, in CORNERS' order: `life` is their average.
+  wear: number[];
+  // The rear wing on the car, and the one going on at the next stop.
+  wing: number;
+  nextWing: number;
   // Incidents (see race.incidents): why the car's out of the race (null while it's running) and
   // whether its wreck is still out there; how far into the race (m) its mechanical failure comes
   // (Infinity for none) and what fails; lasting damage, a share off its grip and top speed; and a
@@ -531,7 +574,8 @@ export function newRace(
     return (drivers[id]![k] - lo) / (hi - lo || 1);
   };
   const racers = [...Array(CARS).keys()].map((id): Racer => {
-    // Too short a race for a stop (qualifying), and you, plan nothing here.
+    // Too short a race for a stop (qualifying), and you, plan nothing here. You run the car as
+    // tuned until the grid screen sets your wing.
     const strat = (id && close[Math.floor(rand() * close.length)]) || { at: [], tyres: [tyre] };
     const s = grid.indexOf(id);
     const m = gridAt(s);
@@ -584,6 +628,9 @@ export function newRace(
       boxCall: false,
       through: false,
       warm: 1,
+      wear: [1, 1, 1, 1],
+      wing: id ? aiWing(track, lv, id) : 3,
+      nextWing: id ? aiWing(track, lv, id) : 3,
       out: null,
       wreck: false,
       failAt: Infinity,
@@ -886,7 +933,7 @@ function pitStop(race: Race, r: Racer, dt: number) {
       [r.life, r.served, r.boxCall, r.warm, r.puncture] = [1, true, false, 0, false];
       [r.tyre, r.fit] = [r.fit ?? nextSet(race, r), null];
       r.stints.push(r.tyre);
-      r.set = r.laps;
+      [r.set, r.wear, r.wing] = [r.laps, [1, 1, 1, 1], r.nextWing];
     }
     return;
   }
@@ -915,92 +962,189 @@ const say = (race: Race, kind: Msg["kind"], id: number, text: string) =>
   race.msgs.push({ kind, id, text });
 const code = (race: Race, r: Racer) => driver(race, r.id).code;
 
-// Your race engineer. Most calls have a few ways of saying them, picked with Math.random so the
+// Your race engineer. Every call has a few ways of saying it, picked with Math.random so the
 // radio never touches the race's dice. Praise is straight; sarcasm is earned: track limits after
 // the first, spins, lost places, slow laps and a long time last.
 const pick = <T>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)]!;
 const radio = (race: Race, text: string, chatter = false) =>
   race.msgs.push({ kind: "radio", id: 0, text, at: race.t, chatter });
+const cap = (s: string) => `${s[0]!.toUpperCase()}${s.slice(1)}`;
 const LINES = {
-  box: ["Box this lap.", "Box, box.", "Box this lap, box this lap."],
+  box: [
+    "Box this lap.",
+    "Box, box.",
+    "Box this lap, box this lap.",
+    "In this lap. Crew's ready.",
+    "Box, box. Confirm.",
+  ],
+  // Why you're called in, before the set the crew has out (see boxCall).
+  neutral: [
+    (k: string) => `${k}. Box, box.`,
+    (k: string) => `${k} out. Box this lap.`,
+    (k: string) => `${k}, cheap stop. Box, box.`,
+    (k: string) => `Box under the ${k}. Box, box.`,
+  ],
+  puncture: [
+    "Puncture. Box, box.",
+    "You've got a puncture. Bring it in.",
+    "Puncture! Easy on it, box this lap.",
+    "Tyre's gone. Nurse it back to us.",
+  ],
+  cliff: [
+    "Box, box.",
+    "Tyres are gone. Box this lap.",
+    "That's the cliff. Box, box.",
+    "Nothing left on those. Box this lap.",
+  ],
+  compound: [
+    "Box, box. We still need the second compound.",
+    "Box this lap, we need the other compound.",
+    "Box, box. Two compounds, remember?",
+    "Box. The rules say two compounds, and so do I.",
+  ],
   overtake: [
     "Within a second. Overtake ready.",
     "Overtake's armed. Use it.",
     "You've got Overtake for the next straight.",
+    "Overtake available. Go get the place.",
+    "Overtake's yours. Send it.",
   ],
   last: [
     "Last lap. Bring it home.",
     "Last lap, keep it clean.",
     "One more lap. Everything you've got.",
+    "Last lap. No heroics, no mistakes.",
+    "Last lap. Make it count.",
   ],
   retire: [
     "Sorry, we have to retire the car.",
     "That's it, retire the car. Sorry.",
     "Retire the car. Sorry, mate.",
+    "Bring it in and park it. We're done today.",
   ],
-  problem: ["We have a problem.", "We're seeing a problem on the car."],
+  problem: [
+    "We have a problem.",
+    "We're seeing a problem on the car.",
+    "Problem on the car, problem on the car.",
+    "Something's failed. Sorry.",
+  ],
+  // After the problem: the box if it's close, else off the track.
+  limp: ["Box, box.", "Bring it in.", "Get it back to the pits.", "Limp it in, we're waiting."],
+  pullOver: [
+    "Pull over, pull over.",
+    "Stop the car, stop the car.",
+    "Find somewhere safe and pull over.",
+    "Park it, somewhere safe.",
+  ],
   unannounced: [
     "Coming in unannounced? Fine.",
     "Nice of you to let us know.",
     "Surprise stop, then.",
+    "Oh, you're pitting. Great. Love that for us.",
   ],
   fastest: [
     "Fastest lap of the race!",
     "That's purple, fastest lap!",
     "Fastest lap. Get in there!",
+    "Purple lap! Nobody's been quicker.",
   ],
-  pb: ["Personal best,", "Good lap, personal best,", "That's a PB,"],
-  stop: ["Good stop,", "Nice work from the crew,", "Clean stop,"],
+  pb: ["Personal best,", "Good lap, personal best,", "That's a PB,", "Quickest yet,", "Nice lap,"],
+  stop: [
+    "Good stop,",
+    "Nice work from the crew,",
+    "Clean stop,",
+    "Great stop from the boys,",
+    "Smooth stop,",
+  ],
   held: [
     (s: string) => `${s} there. Traffic in the lane, sorry.`,
     (s: string) => `Held for traffic, ${s}. Go get it back.`,
+    (s: string) => `${s}. Had to hold you for a car coming through.`,
+    (s: string) => `${s}, unsafe release otherwise. Sorry.`,
   ],
-  worn: ["Tyres are going off. The stop's coming.", "Rears are fading. Hang on, box soon."],
+  // Tyres near the cliff with the stop to come, and in the sprint, with only the flag to come.
+  worn: [
+    (t: string) => `${cap(t)}'s going off. The stop's coming.`,
+    (t: string) => `The ${t} is fading. Hang on, box soon.`,
+    (t: string) => `Tyres are going, ${t} worst. Not long now.`,
+    (t: string) => `${cap(t)}'s nearly done. Stop's coming.`,
+  ],
+  nurse: [
+    (t: string) => `${cap(t)}'s going. Nurse it to the flag.`,
+    (t: string) => `The ${t} is fading. Hang on, nearly there.`,
+    (t: string) => `Tyres are going off, ${t} worst. Manage it to the end.`,
+    (t: string) => `${cap(t)}'s done, but so is the race nearly. Bring it home.`,
+  ],
   gained: [
     (p: number) => `P${p}. Nice move.`,
     (p: number) => `Up to P${p}. Keep it going.`,
     (p: number) => `P${p}. Good job.`,
+    (p: number) => `P${p}! Lovely move.`,
+    (p: number) => `That's P${p}. Next one.`,
   ],
   lost: [
     (c: string, p: number) => `${c} got through. P${p}.`,
     (c: string, p: number) => `That was ${c}. Just so you know. P${p}.`,
     (c: string, p: number) => `${c} says thanks for the space. P${p}.`,
     (_: string, p: number) => `P${p}. The mirrors are on the car for a reason.`,
+    (c: string, p: number) => `${c}'s by. P${p}. Get that one back.`,
   ],
   // By strike: the first, the second, the black and white flag, then penalties.
   limits: [
     [
       "Lap deleted. Watch the track limits.",
       "Track limits, lap deleted. Keep it inside the lines.",
+      "That's a strike. Lap deleted.",
+      "Lap time deleted. Mind the white lines.",
     ],
     [
       "Second strike. The white lines are a suggestion we follow.",
       "Two strikes. The track is the grey bit.",
+      "Strike two. Let's not collect the set.",
+      "Second one. The stewards are counting, so am I.",
     ],
     [
       "Black and white flag. One more and it's a penalty.",
       "That's the black and white. Last warning, I promise.",
+      "Black and white. Next one costs us time.",
+      "Third strike, black and white flag. Please.",
     ],
     [
       "Penalty. Was it worth it?",
       "Another penalty. The stewards are enjoying this more than we are.",
       "Penalty. I'll stop telling you where the lines are.",
+      "Penalty. At this point it's a lifestyle.",
     ],
   ],
   spun: [
     "We saw that. Get it pointed the right way.",
     "Wrong way round. Happens. Not usually to us.",
     "Interesting line. Let's not do it again.",
+    "Facing the wrong way. Bold strategy.",
   ],
   slow: [
     "Was that a cool-down lap? We're still racing.",
     "Lap time's dropping. Everything OK, or just sightseeing?",
     "That one was slow. The car's fine, I checked.",
+    "Slow lap. Are we saving the tyres or the scenery?",
   ],
   back: [
     "Good news: nobody's holding you up.",
     "Last. On the bright side, you can see everyone from there.",
     "Still last. Think of it as a long-term project.",
+    "Last. Plenty of cars to pass, at least.",
+  ],
+  rival: [
+    (c: string, t: string) => `${c} has boxed. ${t}.`,
+    (c: string, t: string) => `${c}'s in. Going to ${t.toLowerCase()}.`,
+    (c: string, t: string) => `${c} is pitting, ${t.toLowerCase()} going on.`,
+    (c: string, t: string) => `Box for ${c}. ${t}.`,
+  ],
+  gaps: [
+    (g: string) => `Gap: ${g}.`,
+    (g: string) => `Gaps: ${g}.`,
+    (g: string) => `Here's the picture: ${g}.`,
+    (g: string) => `${g}. Keep at it.`,
   ],
 };
 // What the engineer's said, so each call's made once: when it next looks at the order, the place
@@ -1044,10 +1188,10 @@ function engineer(race: Race) {
   if (
     me.life < CLIFF_AT + 0.15 &&
     e.worn !== me.stints.length &&
-    me.stops.some((l) => l > me.laps)
+    (sprint(race.laps) || me.stops.some((l) => l > me.laps))
   ) {
     e.worn = me.stints.length;
-    radio(race, pick(LINES.worn));
+    radio(race, pick(sprint(race.laps) ? LINES.nurse : LINES.worn)(worst(me)));
   }
 
   if (race.t < e.next) return;
@@ -1094,9 +1238,11 @@ function lapCall(race: Race, r: Racer, lap: number, valid: boolean) {
       ? `${code(race, o)} ${where} ${Math.abs(gap(race, o) - gap(race, r)).toFixed(1)}`
       : "";
   const gaps = [by(run[k - 1], "ahead"), by(run[k + 1], "behind")].filter(Boolean);
-  if (gaps.length) radio(race, `Gap: ${gaps.join(", ")}.`, true);
+  if (gaps.length) radio(race, pick(LINES.gaps)(gaps.join(", ")), true);
 }
 
+// The tyre that's worn most.
+const worst = (r: Racer) => CORNERS[r.wear.indexOf(Math.min(...r.wear))]!;
 // The first lap a car can stop at the end of: this one while the pit entry's still ahead.
 const firstChance = (race: Race, r: Racer) => {
   const s = race.track.signed(r.p);
@@ -1132,8 +1278,9 @@ function replan(race: Race, r: Racer, cheap = 1) {
   return r.stops.includes(first);
 }
 // The set for a stop now: the next in the best plan that stops here, or this late in the race,
-// a compound the car hasn't run yet.
+// a compound the car hasn't run yet. In the sprint, the quickest set to the flag.
 function nextSet(race: Race, r: Racer): Tyre {
+  if (sprint(race.laps)) return strategies(race.laps - r.laps, race.track)[0]?.tyres[0] ?? "soft";
   let best: Plan | null = null;
   walkPlans(race.laps, race.track, nowOf(race, r, r.laps, 1), (p) => {
     if (p.at[0] === r.laps && (!best || p.cost < best.cost)) best = p;
@@ -1182,7 +1329,7 @@ function deploy(race: Race, kind: "sc" | "vsc") {
   for (const r of rs) {
     const busy = r.dist >= r.failAt || r.puncture || r.pitting;
     if (busy || !replan(race, r, kind === "sc" ? SC_STOP : VSC_STOP)) continue;
-    if (r.id === 0) boxCall(race, r, `${kind === "sc" ? "Safety Car" : "VSC"}. Box, box.`);
+    if (r.id === 0) boxCall(race, r, pick(LINES.neutral)(kind === "sc" ? "Safety Car" : "VSC"));
   }
 }
 // The radio calls you in, with the set the team has out (yours if you've picked one).
@@ -1319,7 +1466,7 @@ function puncture(race: Race, r: Racer) {
     return;
   }
   [r.stops, r.plan] = [[firstChance(race, r)], [r.tyre, nextSet(race, r)]];
-  if (r.id === 0) boxCall(race, r, "Puncture. Box, box.");
+  if (r.id === 0) boxCall(race, r, pick(LINES.puncture));
 }
 // Covering the undercut: a rival within about two seconds that has just stopped brings a car in
 // this lap, if its own stop's within three laps anyway. ponytail: "two seconds" is 150 m either
@@ -1409,6 +1556,24 @@ function neutralise(race: Race, dt: number) {
   }
 }
 
+// A frame's wear over `ds` m (see TYRES): `turn` is what the steering asked of the grip (step),
+// turning right with the left tyres on the outside, and `edge` how far past the tarmac the car is.
+function wearTyres(race: Race, r: Racer, input: Input, turn: number, edge: number, ds: number) {
+  const base = (lapWear(r.tyre, race.laps, race.track) / race.track.LENGTH) * ds;
+  const u = Math.min(1, Math.abs(turn));
+  const pedal = (input.brake ? BRAKING : 0) - (input.gas ? TRACTION : 0);
+  const grass = allFourOff(edge) ? GRASS * ds : 0;
+  let lost = 0;
+  r.wear = r.wear.map((w, k) => {
+    const [front, left] = [k < 2 ? 1 : -1, k % 2 === 0];
+    const load = 1 + (left === turn > 0 ? LOAD : -LOAD) * u + front * (FRONT * u + pedal);
+    const d = base * load + grass;
+    lost += d / 4;
+    return Math.max(0, w - d);
+  });
+  r.life = Math.max(0, r.life - lost);
+}
+
 // One frame for every car. `you` is the player's input, or null to hold them (before the lights).
 // Returns the player's split, if this frame made one.
 export function tick(race: Race, you: Input, dt: number): Split | null {
@@ -1440,7 +1605,7 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
       const limp = s > PIT_IN - LIMP && s < PIT_IN - 10;
       if (limp) [r.stops, r.plan] = [[r.laps + 1], [r.tyre, r.tyre]];
       if (r.id === 0)
-        radio(race, `${pick(LINES.problem)} ${limp ? "Box, box." : "Pull over, pull over."}`);
+        radio(race, `${pick(LINES.problem)} ${pick(limp ? LINES.limp : LINES.pullOver)}`);
     }
     const failed = r.dist >= r.failAt;
     // A computer car (or a broken-down one) heads in at the end of a lap it planned to stop on,
@@ -1451,7 +1616,7 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
       r.fit = r.plan[due + 1] ?? null;
       // The cars either side of you, boxing.
       if (r.id && race.eng.near.includes(r.id) && r.fit)
-        radio(race, `${code(race, r)} has boxed. ${TYRES[r.fit].name}.`, true);
+        radio(race, pick(LINES.rival)(code(race, r), TYRES[r.fit].name), true);
     }
     if (s > PIT_OUT || s < PIT_IN - 200) r.pitting = false;
 
@@ -1473,7 +1638,14 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
       power(race, r, from, p * LENGTH, moved, input) + battery(race, r, input, dt) + r.tow;
     const g = carGrip(race, r);
     const v0 = car.v;
-    step(car, input, dt, onGrass(edge), g, top * (1 - r.damage) * r.form);
+    const turn = step(
+      car,
+      input,
+      dt,
+      onGrass(edge),
+      g,
+      top * (1 - r.damage) * r.form * wingTop(r.wing),
+    );
     // Held to a Safety Car, the VSC or a blue flag, braking down to it; limping, slowing gently so
     // nobody runs into the back of it.
     if (car.v > r.cap) car.v = Math.max(0, r.cap, Math.min(car.v, v0 - brakeAt(v0) * g * dt));
@@ -1488,8 +1660,7 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     if (failed && !r.out && !r.pit && car.v < 0.5) retire(race, r, r.fault);
     if (r.out) continue;
     const v = Math.abs(car.v);
-    const wear = lapWear(r.tyre, race.laps, race.track) / LENGTH + (allFourOff(edge) ? GRASS : 0);
-    r.life = Math.max(0, r.life - dt * v * wear);
+    wearTyres(race, r, input, turn, edge, dt * v);
     r.warm = Math.min(1, r.warm + (dt * v) / (TYRES[r.tyre].warm * LENGTH));
     if (race.incidents && r.life <= 0 && r.finish === null && race.rand() < 0.05 * dt)
       puncture(race, r);
@@ -1503,8 +1674,10 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     r.off = off;
     // On a set near the cliff with no stop planned, the team calls you in anyway.
     const planned = r.stops.some((n) => n > r.laps);
-    if (r.id === 0 && r.life < CLIFF_AT + 0.05 && !r.boxCall && !planned && r.finish === null)
-      boxCall(race, r, "Box, box.");
+    // Not in the sprint: the set's to last to the flag.
+    const cliff = r.life < CLIFF_AT + 0.05 && !sprint(race.laps);
+    if (r.id === 0 && cliff && !r.boxCall && !planned && r.finish === null)
+      boxCall(race, r, pick(LINES.cliff));
     // Into the lane without the call: the team still has a set out.
     if (r.id === 0 && r.pit && !r.served && r.fit === null) {
       r.fit = nextSet(race, r);
@@ -1538,7 +1711,7 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
             race,
             r,
             new Set(r.stints).size < 2 && r.laps >= race.laps - 2
-              ? "Box, box. We still need the second compound."
+              ? pick(LINES.compound)
               : pick(LINES.box),
           );
       }
@@ -1605,7 +1778,7 @@ export function results(race: Race) {
       const time = run + r.penalty;
       const down = race.laps - r.laps;
       const { id, best, penalty, stints, out } = r;
-      const dsq = r.finish !== null && new Set(stints).size < 2;
+      const dsq = r.finish !== null && !sprint(race.laps) && new Set(stints).size < 2;
       return { id, time, down, best, penalty, stints, stops: stints.length - 1, out, dsq };
     })
     .sort((a, b) => +a.dsq - +b.dsq || +!!a.out - +!!b.out || a.down - b.down || a.time - b.time);
