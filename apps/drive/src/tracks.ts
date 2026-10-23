@@ -31,6 +31,7 @@ export const TRACKS: TrackDef[] = [
     id: "monza",
     name: "Monza",
     length: 5793,
+    laps: 53,
     data: MONZA_DATA,
     corners: [
       { name: "Rettifilo", turnIn: 590, at: 665, boards: true },
@@ -58,6 +59,7 @@ export const TRACKS: TrackDef[] = [
     id: "spa",
     name: "Spa",
     length: 7004,
+    laps: 44,
     data: SPA_DATA,
     corners: [
       { name: "La Source", turnIn: 330, at: 365, boards: true },
@@ -93,6 +95,7 @@ export const TRACKS: TrackDef[] = [
     id: "silverstone",
     name: "Silverstone",
     length: 5891,
+    laps: 52,
     data: SILVERSTONE_DATA,
     corners: [
       { name: "Abbey", turnIn: 275, at: 295, boards: false },
@@ -131,6 +134,7 @@ export const TRACKS: TrackDef[] = [
     id: "interlagos",
     name: "Interlagos",
     length: 4309,
+    laps: 71,
     data: INTERLAGOS_DATA,
     corners: [
       { name: "Senna S", turnIn: 280, at: 464, boards: true },
@@ -164,6 +168,7 @@ export const TRACKS: TrackDef[] = [
     id: "redbullring",
     name: "Red Bull Ring",
     length: 4318,
+    laps: 71,
     data: REDBULLRING_DATA,
     // Only Turns 1 and 9 keep their names; the rest are sponsors' and change.
     corners: [
@@ -198,6 +203,7 @@ export const TRACKS: TrackDef[] = [
     id: "austin",
     name: "Austin",
     length: 5513,
+    laps: 56,
     data: AUSTIN_DATA,
     // Numbered, as at COTA.
     corners: [
@@ -242,6 +248,7 @@ export const TRACKS: TrackDef[] = [
     id: "lasvegas",
     name: "Las Vegas",
     length: 6201,
+    laps: 50,
     data: VEGAS_DATA,
     // Numbered, as on the Strip; the kinks between go unnamed.
     corners: [
@@ -282,6 +289,7 @@ export const TRACKS: TrackDef[] = [
     id: "yasmarina",
     name: "Yas Marina",
     length: 5281,
+    laps: 58,
     data: YAS_DATA,
     // Numbered, as at Yas Marina since its 2021 rework.
     corners: [
@@ -323,6 +331,7 @@ export const TRACKS: TrackDef[] = [
     id: "monaco",
     name: "Monaco",
     length: 3337,
+    laps: 78,
     data: MONACO_DATA,
     corners: [
       { name: "Sainte Dévote", turnIn: 190, at: 210, boards: true },
@@ -358,6 +367,7 @@ export const TRACKS: TrackDef[] = [
     id: "lusail",
     name: "Lusail",
     length: 5419,
+    laps: 57,
     data: LUSAIL_DATA,
     // Numbered, as at Lusail; Turn 11's a flat-out kink.
     corners: [
