@@ -44,6 +44,12 @@ const LEVEL = "monza-level";
 // The race distance, as an index into DISTANCES. The v1 key held a lap count: 5, 10, 15 or 20.
 const DIST = "drive-distance";
 const LAPS = "monza-laps";
+// The tower's gap column and the map's size, as indices into MODES and MAPS.
+const TOWER = "drive-tower";
+const MAP = "drive-map";
+const MODES = ["Interval", "Leader", "Tyres"] as const;
+// Small and medium are the 600 m round you; large is the whole circuit.
+const MAPS = ["size-28", "size-28 md:size-40", "size-40 md:size-60"];
 const DASH = "-:--.---";
 const KEYS: Record<string, "up" | "down" | "left" | "right" | "ot"> = {
   ArrowUp: "up",
@@ -89,7 +95,13 @@ const write = (key: string, value: unknown) => {
   }
 };
 
-const zero = { transform: "scaleX(0)" };
+// The rev strip's lights, F1's way: green, then red, then purple at the top of the gear.
+const REVS = 15;
+const REV_INK = (k: number) => (k < 5 ? "bg-go" : k < 10 ? "bg-accent" : "bg-fl");
+// Throttle and brake as two arcs round the gear, filling from the bottom (svg units, r 80 about
+// (100, 96)): throttle 165° to 262° on the left, brake 15° to 278° on the right.
+const THR_ARC = "M22.73 116.71A80 80 0 0 1 88.87 16.78";
+const BRK_ARC = "M177.27 116.71A80 80 0 0 0 111.13 16.78";
 // Pirelli's colours: red softs, yellow mediums, white hards. In key order, 1 to 3.
 const COMPOUNDS: Tyre[] = ["soft", "medium", "hard"];
 const TYRE_INK: Record<Tyre, string> = {
@@ -119,6 +131,9 @@ const CONTROLS: [string[], string][] = [
   [["1–3"], "Tyres"],
   [["Space"], "Overtake"],
   [["P"], "Pause"],
+  [["R"], "Restart"],
+  [["T"], "Timing"],
+  [["M"], "Map"],
 ];
 const RULES: [string, string][] = [
   [
@@ -257,12 +272,19 @@ export default function Drive() {
   const tyreName = useRef<HTMLSpanElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const map = useRef<HTMLCanvasElement>(null);
+  const [mapSize, setMapSize] = useState(() => {
+    const k: number = read(MAP, 1);
+    return MAPS[k] ? k : 1;
+  });
+  const mapSizeRef = useRef(mapSize);
+  const restart = useRef<() => void>(() => {});
   const lapName = useRef<HTMLSpanElement>(null);
   const lapEl = useRef<HTMLSpanElement>(null);
   const posEl = useRef<HTMLSpanElement>(null);
   const timeEl = useRef<HTMLSpanElement>(null);
   const lastEl = useRef<HTMLSpanElement>(null);
   const bestEl = useRef<HTMLSpanElement>(null);
+  const fastEl = useRef<HTMLSpanElement>(null);
   const sectorEls = useRef<HTMLSpanElement[]>([]);
   const nearEl = useRef<HTMLDivElement>(null);
   const waitEl = useRef<HTMLDivElement>(null);
@@ -275,15 +297,15 @@ export default function Drive() {
   const togglePause = useRef<() => void>(() => {});
   const towerEl = useRef<HTMLDivElement>(null);
   const towerEls = useRef<HTMLDivElement[]>([]);
-  const modeEl = useRef<HTMLDivElement>(null);
   const lampEls = useRef<HTMLSpanElement[]>([]);
   const lightsEl = useRef<HTMLDivElement>(null);
   const bannerEl = useRef<HTMLDivElement>(null);
   const speedEl = useRef<HTMLSpanElement>(null);
   const nextEl = useRef<HTMLSpanElement>(null);
   const gearEl = useRef<HTMLSpanElement>(null);
-  const thrEl = useRef<HTMLSpanElement>(null);
-  const brkEl = useRef<HTMLSpanElement>(null);
+  const thrEl = useRef<SVGPathElement>(null);
+  const brkEl = useRef<SVGPathElement>(null);
+  const revEls = useRef<HTMLSpanElement[]>([]);
   const tyreEl = useRef<HTMLSpanElement>(null);
   const tyreText = useRef<HTMLSpanElement>(null);
   const limiterEl = useRef<HTMLSpanElement>(null);
@@ -339,7 +361,7 @@ export default function Drive() {
     const flat = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const track = getTrack(trackId);
     const { LENGTH, ZONES, atDist, dirAt, limitAt, nextCorner } = track;
-    const { box, outline } = SHAPES.get(trackId)!;
+    const { box, box2, outline } = SHAPES.get(trackId)!;
     const road = new Path2D(outline);
 
     let record: number = read(BEST(trackId), 0);
@@ -362,6 +384,9 @@ export default function Drive() {
     let brk = 0;
     let board = 0;
     let msgAt = -Infinity;
+    let mode: number = read(TOWER, 0);
+    if (!MODES[mode]) mode = 0;
+    let revs = -1;
     let skipping = false;
     let paused = false;
     const still = { gas: false, brake: false, steer: 0 };
@@ -388,7 +413,20 @@ export default function Drive() {
     window.addEventListener(
       "keydown",
       (e) => {
-        if (e.key.toLowerCase() === "p") return togglePause.current();
+        const l = e.key.toLowerCase();
+        if (l === "p") return togglePause.current();
+        if (l === "r") return restart.current();
+        if (l === "t") {
+          mode = (mode + 1) % MODES.length;
+          write(TOWER, mode);
+          return drawBoard();
+        }
+        if (l === "m") {
+          const k = (mapSizeRef.current + 1) % MAPS.length;
+          mapSizeRef.current = k;
+          setMapSize(k);
+          return write(MAP, k);
+        }
         const pick = COMPOUNDS[+e.key - 1];
         if (pick && phase === "grid") setTyre(pick);
         else if (pick) fit.current(pick);
@@ -403,18 +441,23 @@ export default function Drive() {
     window.addEventListener("keyup", (e) => keys.delete(key(e) ?? ""), on);
     window.addEventListener("blur", () => keys.clear(), on);
 
-    // Minimap: about 600 m round you, heading up. The road in one pale stroke, a dot per car in
-    // its colour, and yours in the accent with a ring, on top.
+    // Minimap: about 600 m round you, heading up, or at the large size the whole circuit the way
+    // the loading screen draws it. The road in one pale stroke, a dot per car in its colour, and
+    // yours in the accent with a ring, on top.
     const drawMap = () => {
       const w = mv.clientWidth;
-      const s = w / 600;
+      const whole = mapSizeRef.current === MAPS.length - 1;
+      const s = whole ? (w - 16) / Math.max(box2.w, box2.h) : w / 600;
       const me = race.racers[0]!;
       mctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
       mctx.clearRect(0, 0, w, w);
       mctx.translate(w / 2, w / 2);
       mctx.scale(s, s);
-      mctx.rotate(-dirAt(me.p) - Math.PI / 2);
-      mctx.translate(box.x - me.car.x, box.y - me.car.y);
+      if (whole) mctx.translate(-box2.w / 2, -box2.h / 2);
+      else {
+        mctx.rotate(-dirAt(me.p) - Math.PI / 2);
+        mctx.translate(box.x - me.car.x, box.y - me.car.y);
+      }
       mctx.lineWidth = Math.max(14, 3 / s);
       mctx.lineJoin = "round";
       mctx.strokeStyle = C.chrome;
@@ -450,21 +493,32 @@ export default function Drive() {
       mctx.stroke();
     };
 
-    // The tower and the phone's gaps, twice a second rather than every frame. The tower shows as
-    // many rows as fit above the speed panel: the top n, or once you're out of them the top n - 3
-    // and the cars either side of you.
+    // The fastest lap so far: the race's, or in qualifying the whole field's.
+    const showFastest = () => {
+      const f = quali
+        ? quali.reduce<Race["fastest"]>(
+            (a, q) => (q.fastest && (!a || q.fastest.ms < a.ms) ? q.fastest : a),
+            null,
+          )
+        : race.fastest;
+      const text = f ? `${driver(race, f.id).code} ${fmt(f.ms)}` : DASH;
+      if (fastEl.current!.textContent !== text) fastEl.current!.textContent = text;
+    };
+
+    // The tower and the phone's gaps, twice a second rather than every frame. The tower runs down
+    // the stage, above the touch controls: every car if they fit, else the top n, or once you're
+    // out of them the top n - 3 and the cars either side of you. T switches its gap column: to
+    // the car ahead, to the leader, or each car's tyres and laps on them.
     const drawBoard = () => {
       const run = order(race);
       const me = race.racers[0]!;
       const at = run.indexOf(me);
       const first = towerEls.current[0]!;
-      const room = gearEl.current!.parentElement!.getBoundingClientRect().top - 8;
+      const pads = matchMedia("(pointer: coarse)").matches ? 88 : 8;
+      const room = cv.getBoundingClientRect().bottom - pads;
       const n = Math.max(3, Math.floor((room - first.getBoundingClientRect().top) / 20));
       const cut = at > n - 2;
-      // Every 5 s the tower moves on: gaps to the leader, to the car ahead, then each car's tyres
-      // and laps on them.
-      const mode = (["Leader", "Interval", "Tyres"] as const)[Math.floor(race.t / 5000) % 3]!;
-      modeEl.current!.textContent = mode;
+      const m = MODES[mode]!;
       posEl.current!.textContent = `P${at + 1}`;
       // Laps down: by distance while running (to the leader's, which stops at the flag), and by
       // laps once in.
@@ -473,14 +527,15 @@ export default function Drive() {
         const row = towerEls.current[k]!;
         row.hidden = cut ? k >= n - 3 && Math.abs(k - at) > 1 : k >= n;
         row.classList.toggle("border-t", cut && k === at - 1);
-        const [sw, code, fl, pen, right] = row.children as unknown as HTMLElement[];
+        const [num, sw, code, fl, pen, right] = row.children as unknown as HTMLElement[];
+        num!.textContent = String(k + 1);
         const [tyre, g] = right!.children as unknown as HTMLElement[];
         sw!.style.background = paintOf(r.id);
         code!.textContent = driver(race, r.id).code;
         fl!.hidden = race.fastest?.id !== r.id;
         pen!.hidden = !r.penalty;
         pen!.textContent = `+${r.penalty / 1000}s`;
-        tyre!.hidden = mode !== "Tyres" || !!r.out;
+        tyre!.hidden = m !== "Tyres" || !!r.out;
         tyre!.textContent = letter(r.tyre);
         tyre!.className = `font-semibold ${TYRE_INK[r.tyre]}`;
         row.classList.toggle("opacity-50", !!r.out);
@@ -488,13 +543,13 @@ export default function Drive() {
         // Order is by distance and gaps by checkpoint, so a car just out of the pits can time in
         // ahead of the car it's behind; floor the interval at 0.
         const behind = () =>
-          Math.max(0, gap(race, r) - (mode === "Interval" ? gap(race, run[k - 1]!) : 0));
+          Math.max(0, gap(race, r) - (m === "Interval" ? gap(race, run[k - 1]!) : 0));
         g!.textContent = r.out
           ? "OUT"
-          : mode === "Tyres"
+          : m === "Tyres"
             ? String(r.laps - r.set)
             : !k
-              ? "Leader"
+              ? m
               : down > 0
                 ? lapsDown(down).toUpperCase()
                 : r.cp < 0
@@ -541,6 +596,7 @@ export default function Drive() {
       mine = [0, 0, 0];
       lastEl.current!.textContent = DASH;
       bestEl.current!.textContent = DASH;
+      fastEl.current!.textContent = DASH;
       lightsEl.current!.hidden = false;
       rcEl.current!.hidden = true;
       msgAt = -Infinity;
@@ -578,6 +634,19 @@ export default function Drive() {
       setLineup(g);
       setResult(null);
       start();
+    };
+    // Straight back to the lights: a new quali lap any time, a race only from the pause screen so a
+    // stray key doesn't throw one away. Not once the classification's up.
+    restart.current = () => {
+      if (phase === "grid" || (quali ? quali.every((q) => q.done) : race.done)) return;
+      if (quali) {
+        start();
+        return qualify.current();
+      }
+      if (!paused) return;
+      const t = race.racers[0]!.stints[0]!;
+      start();
+      go.current(t);
     };
     // A new level or distance is a new race on the same grid.
     regrid.current = () => {
@@ -621,6 +690,7 @@ export default function Drive() {
       mv.width = mv.clientWidth * devicePixelRatio;
       mv.height = mv.clientHeight * devicePixelRatio;
     });
+    ro.observe(mv);
 
     const frame = (t: number) => {
       const dt = Math.min((t - last) / 1000, 1 / 30);
@@ -720,6 +790,7 @@ export default function Drive() {
           board = t;
           if (quali) showDelta();
           else drawBoard();
+          showFastest();
         }
         // The classification waits for the whole field to take the flag, or retire.
         const waiting = !quali && (me.finish !== null || !!me.out) && !race.done;
@@ -752,9 +823,20 @@ export default function Drive() {
       speedEl.current!.classList.toggle("text-accent", limit < TOP && car.v > limit + 2);
       const next = nextCorner(me.p);
       if (nextEl.current!.textContent !== next) nextEl.current!.textContent = next;
-      gearEl.current!.textContent = String(gear(car.v));
-      thrEl.current!.style.transform = `scaleX(${thr})`;
-      brkEl.current!.style.transform = `scaleX(${brk})`;
+      const g = gear(car.v);
+      gearEl.current!.textContent = String(g);
+      thrEl.current!.style.strokeDashoffset = String(1 - thr);
+      brkEl.current!.style.strokeDashoffset = String(1 - brk);
+      // The rev strip fills through each gear.
+      const lit =
+        g === "R" ? 0 : Math.round(REVS * Math.min(1, Math.max(0, (car.v / TOP) * 8 - (g - 1))));
+      if (lit !== revs) {
+        revs = lit;
+        revEls.current.forEach((el, k) => {
+          el.classList.toggle(REV_INK(k), k < lit);
+          el.classList.toggle("bg-lamp", k >= lit);
+        });
+      }
       const tyre = tyreEl.current!;
       tyre.style.transform = `scaleX(${me.life})`;
       tyre.classList.toggle("bg-go", me.life > 0.6);
@@ -974,6 +1056,13 @@ export default function Drive() {
                 </span>
               </span>
             </div>
+            <div className="mt-1 flex items-center gap-1.5 text-sm md:text-[15px]">
+              <span aria-hidden className="size-2 shrink-0 rounded-full bg-fl" />
+              <span className="text-soft">Fastest</span>
+              <span ref={fastEl} className="text-paper">
+                {DASH}
+              </span>
+            </div>
             <div className="mt-1 text-sm text-soft md:text-[15px]">
               Next{" "}
               <span ref={nextEl} className="text-paper">
@@ -984,21 +1073,16 @@ export default function Drive() {
             <div ref={limitsEl} hidden className="mt-1 text-sm text-soft md:text-[15px]" />
           </div>
 
-          <div ref={towerEl} className={`${panel} hidden w-48 py-1.5 text-sm md:block`}>
-            <div
-              ref={modeEl}
-              className="px-3 pb-0.5 text-right text-xs font-semibold tracking-wide text-soft uppercase"
-            >
-              Leader
-            </div>
+          <div ref={towerEl} className={`${panel} hidden w-52 py-1.5 text-sm md:block`}>
             {Array.from({ length: CARS }, (_, k) => (
               <div
                 key={k}
                 ref={(el) => {
                   if (el) towerEls.current[k] = el;
                 }}
-                className="flex items-center gap-2 border-paper/25 px-3 leading-5 whitespace-nowrap"
+                className="flex items-center gap-2 border-paper/25 pr-3 pl-2 leading-5 whitespace-nowrap"
               >
+                <span className="w-5 shrink-0 text-right text-xs text-soft" />
                 <span className="h-3 w-1 shrink-0 rounded-full ring-1 ring-paper/25" />
                 <span className="shrink-0 font-semibold" />
                 <span hidden title="Fastest lap" className="size-2 shrink-0 rounded-full bg-fl" />
@@ -1084,8 +1168,17 @@ export default function Drive() {
         >
           <div>
             <p className="disp text-xl leading-none whitespace-nowrap">Paused</p>
-            <p className={`${label} mt-1 whitespace-nowrap pointer-coarse:hidden`}>P to resume</p>
+            <p className={`${label} mt-1 whitespace-nowrap pointer-coarse:hidden`}>
+              P to resume, R to restart
+            </p>
           </div>
+          <button
+            type="button"
+            onClick={() => restart.current()}
+            className="min-h-11 rounded-md px-4 font-semibold ring-1 ring-paper/25 active:scale-[.98]"
+          >
+            Restart
+          </button>
           <button
             ref={abandonEl}
             type="button"
@@ -1116,65 +1209,95 @@ export default function Drive() {
         <div
           className={`${panel} pointer-events-none absolute top-2 right-2 p-2 transition-opacity duration-300 md:top-3 md:right-3 md:p-3 ${shown}`}
         >
-          <canvas ref={map} className="block size-28 md:size-40" />
+          <canvas ref={map} className={`block ${MAPS[mapSize]}`} />
         </div>
 
+        {/* The car, F1 TV's onboard way: the status pills over a slab with the rev strip, the gear
+            between throttle (left) and brake (right) arcs, the speed, then tyres and battery. */}
         <div
-          className={`${panel} pointer-events-none absolute bottom-2 left-2 flex items-center gap-3 p-2.5 transition-opacity duration-300 pointer-coarse:bottom-20 md:bottom-3 md:left-3 md:gap-4 md:p-3.5 md:pointer-coarse:bottom-21 ${shown}`}
+          className={`pointer-events-none absolute right-2 bottom-2 flex flex-col items-end gap-1.5 transition-opacity duration-300 pointer-coarse:bottom-20 md:right-3 md:bottom-3 md:pointer-coarse:bottom-21 ${shown}`}
         >
-          <span
-            ref={gearEl}
-            className="disp grid size-11 place-items-center rounded-md bg-paper text-[26px] text-ink md:size-13 md:text-[32px]"
-          >
-            1
-          </span>
-          <div className="w-28 md:w-36">
-            <div className="flex items-baseline gap-1.5">
-              <span ref={speedEl} className="disp text-[22px] leading-none md:text-[26px]">
-                0
-              </span>
-              <span className={label}>km/h</span>
-              <span
-                ref={limiterEl}
-                hidden
-                className="ml-auto rounded-sm bg-slow px-1 text-xs font-semibold text-ink"
-              >
-                PIT
-              </span>
+          <div className="flex h-5 items-center gap-1 text-xs font-semibold tracking-wide uppercase">
+            <span ref={limiterEl} hidden className="rounded-sm bg-slow px-1.5 py-0.5 text-ink">
+              Pit
+            </span>
+            <span ref={straightEl} hidden className="rounded-sm bg-go px-1.5 py-0.5 text-ink">
+              Straight
+            </span>
+            <span ref={otEl} hidden className="rounded-sm px-1.5 py-0.5 text-paper">
+              Overtake
+            </span>
+            <span ref={scEl} hidden className="rounded-sm bg-slow px-1.5 py-0.5 text-ink">
+              SC
+            </span>
+            <span ref={blueEl} hidden className="rounded-sm bg-print px-1.5 py-0.5 text-paper">
+              Blue flag
+            </span>
+          </div>
+          <div className={`${panel} w-44 p-2.5 md:w-60 md:p-3.5`}>
+            <div className="flex gap-0.5" aria-hidden>
+              {Array.from({ length: REVS }, (_, k) => (
+                <span
+                  key={k}
+                  ref={(el) => {
+                    if (el) revEls.current[k] = el;
+                  }}
+                  className="h-1.5 flex-1 rounded-[1px] bg-lamp"
+                />
+              ))}
             </div>
-            <div className="mt-1 flex h-5 items-center gap-1 text-xs font-semibold">
-              <span ref={straightEl} hidden className="rounded-sm bg-go px-1 text-ink">
-                Straight
-              </span>
-              <span ref={otEl} hidden className="rounded-sm px-1 text-paper">
-                Overtake
-              </span>
-              <span ref={scEl} hidden className="rounded-sm bg-slow px-1 text-ink">
-                SC
-              </span>
-              <span ref={blueEl} hidden className="rounded-sm bg-print px-1 text-paper">
-                Blue flag
-              </span>
+            <div className="relative mt-1.5">
+              <svg viewBox="0 10 200 112" className="block w-full" aria-hidden>
+                <g fill="none" strokeWidth="7">
+                  <path d={THR_ARC} className="stroke-paper/15" />
+                  <path d={BRK_ARC} className="stroke-paper/15" />
+                  <path
+                    ref={thrEl}
+                    d={THR_ARC}
+                    pathLength={1}
+                    strokeDasharray="1 2"
+                    strokeDashoffset={1}
+                    className="stroke-go"
+                  />
+                  <path
+                    ref={brkEl}
+                    d={BRK_ARC}
+                    pathLength={1}
+                    strokeDasharray="1 2"
+                    strokeDashoffset={1}
+                    className="stroke-accent"
+                  />
+                </g>
+              </svg>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pt-2">
+                <span ref={gearEl} className="disp text-[48px] leading-none md:text-[56px]">
+                  1
+                </span>
+                <span className="mt-1 flex items-baseline gap-1">
+                  <span ref={speedEl} className="disp text-[20px] leading-none md:text-[22px]">
+                    0
+                  </span>
+                  <span className="text-xs text-soft">km/h</span>
+                </span>
+              </div>
             </div>
-            <span ref={thrEl} className="mt-2 block h-1.5 origin-left bg-go" style={zero} />
-            <span ref={brkEl} className="mt-1 block h-1.5 origin-left bg-accent" style={zero} />
-            <div className="mt-1.5 grid grid-cols-[auto_auto_1fr_auto] items-center gap-x-2 gap-y-1 text-xs text-soft">
+            <div className="mt-2 grid grid-cols-[auto_auto_1fr_auto] items-center gap-x-2 gap-y-1.5 text-xs text-soft">
               Tyres
               <span ref={tyreName} className="w-3 font-semibold text-slow">
                 M
               </span>
-              <span className="h-1.5 bg-lamp">
-                <span ref={tyreEl} className="block h-full origin-left bg-go" />
+              <span className="h-1 rounded-full bg-lamp">
+                <span ref={tyreEl} className="block h-full origin-left rounded-full bg-go" />
               </span>
-              <span ref={tyreText} className="w-8 text-right text-paper">
+              <span ref={tyreText} className="w-12 text-right text-paper">
                 100%
               </span>
               Battery
               <span />
-              <span className="h-1.5 bg-lamp">
-                <span ref={batEl} className="block h-full origin-left bg-paper" />
+              <span className="h-1 rounded-full bg-lamp">
+                <span ref={batEl} className="block h-full origin-left rounded-full bg-paper" />
               </span>
-              <span ref={batText} className="text-right whitespace-nowrap text-paper">
+              <span ref={batText} className="w-12 text-right whitespace-nowrap text-paper">
                 4.0 MJ
               </span>
             </div>
