@@ -11,6 +11,8 @@ export type TrackDef = {
   name: string;
   // The real lap length, for the check.
   length: number;
+  // The Grand Prix's laps, for the race distances that are a share of it.
+  laps: number;
   data: [number, number, number, number][];
   // Where the car turns in, and the last apex. `boards` puts 150/100/50 m boards before turn-in.
   corners: { name: string; turnIn: number; at: number; boards: boolean }[];
@@ -622,6 +624,7 @@ export function buildTrack(def: TrackDef) {
   return {
     id: def.id,
     name: def.name,
+    LAPS: def.laps,
     PRO_EDGE: def.proEdge,
     GRIP_POWER: def.grip,
     STOP_LAPS: def.stop,
@@ -648,6 +651,7 @@ export function buildTrack(def: TrackDef) {
     signed,
     PIT_SIDE,
     PIT_IN,
+    PIT_FROM,
     PIT_OUT,
     pitOffset,
     working,

@@ -6,6 +6,8 @@ import { TRACKS, getTrack } from "./tracks.ts";
 import {
   CARS,
   DISTANCES,
+  SPRINT,
+  lapsOf,
   LEVELS,
   PIT_V,
   edgeOf,
@@ -17,7 +19,7 @@ import {
   strategies,
   gridSlot,
   teamPlan,
-  GRID,
+  GRID as START,
   aiInput,
   newQuali,
   newRace,
@@ -33,7 +35,19 @@ import {
 
 // The checks below race the shortest distance, the one the paces are tuned on, at Monza, the
 // track they're tuned at. The pit lane and whole races then run on every track.
-const LAPS = DISTANCES[0]!;
+const LAPS = SPRINT;
+// The distances are a share of each Grand Prix, as in the F1 games.
+assert.deepEqual(
+  DISTANCES.map((d) => lapsOf(d, getTrack("monaco"))),
+  [5, 20, 27, 39, 78],
+  "Monaco's distances",
+);
+const FULL = lapsOf(DISTANCES.at(-1)!, getTrack("monza"));
+// Without qualifying you start at the back. The checks line the field up as it was tuned, with
+// you P10: one race's result swings about 0.7% with the order (and the seed), more than the
+// level checks allow.
+assert.equal(START.at(-1), 0, "no qualifying, you start last");
+const GRID = [...START.slice(0, 9), 0, ...START.slice(9, -1)];
 const monza = getTrack("monza");
 const { BOXES, HALF, LENGTH, PIT_OUT, RACING, atDist, dirAt, inPit, lateral, nearest } = monza;
 const { pitOffset, pointAt, signed } = monza;
@@ -144,7 +158,7 @@ assert.ok(lapAt(0) > fresh + 5000, `worn tyres are slower (${fmt(fresh)} vs ${fm
 }
 // A set lasts its share of the race to the cliff, at any distance, faster on harder tracks: life
 // lost per lap on a medium, alone, over its first two laps.
-for (const laps of [DISTANCES[0]!, DISTANCES.at(-1)!]) {
+for (const laps of [SPRINT, FULL]) {
   const race = newRace(monza, GRID, seeded(7), "medium", "pro", laps);
   race.racers = race.racers.filter((r) => r.id === 10);
   const r = race.racers[0]!;
@@ -168,7 +182,7 @@ assert.ok(
 );
 // Every computer car's plan stops at least once and runs two compounds, each stint at least two
 // laps (so no stop on the first or last lap) and never past the end of a set's life.
-for (const laps of DISTANCES)
+for (const laps of DISTANCES.map((d) => lapsOf(d, monza)))
   for (const seed of [1, 2, 3])
     for (const r of newRace(monza, GRID, seeded(seed), "medium", "pro", laps).racers.slice(1)) {
       const ends = [...r.stops, laps];
@@ -208,11 +222,17 @@ const pitStop = (track: Track) => {
   let stopped = 0;
   let after = 0;
   let off = Infinity;
+  // How far before the pit entry it starts slowing for the limiter, off full speed.
+  let braked = 0;
+  let v = 0;
   run(race, 400, () => {
+    const s = track.signed(r.p);
+    if (r.pitting && !braked && s < track.PIT_IN && r.car.v < v - 0.01) braked = track.PIT_IN - s;
+    v = r.car.v;
     if (r.pit) fastest = Math.max(fastest, r.car.v);
     if (r.stop > 0) {
       stopped += DT;
-      off = Math.min(off, Math.abs(track.signed(r.p) - box.s));
+      off = Math.min(off, Math.hypot(r.car.x - box.x, r.car.y - box.y));
     } else if (stopped && !after) after = r.life;
     return r.laps >= 2;
   });
@@ -221,6 +241,7 @@ const pitStop = (track: Track) => {
     at(`stops for ${STOP} s (${stopped.toFixed(2)})`),
   );
   assert.ok(off < 1.5, at(`at its box (${off.toFixed(2)} m off)`));
+  assert.ok(braked < 300, at(`brakes for the lane late (${braked.toFixed(0)} m out)`));
   assert.ok(
     fastest > PIT_V - 1 && fastest < PIT_V + 3,
     at(`limited in the lane (${(fastest * 3.6).toFixed(0)} km/h)`),
@@ -728,7 +749,8 @@ for (const def of TRACKS) {
 // The longest race: everyone finishes, on two compounds and no more than three stops, the team
 // re-planning as it goes, and never runs a set down to nothing.
 {
-  const laps = DISTANCES.at(-1)!;
+  const laps = FULL;
+  const t0 = performance.now();
   const race = newRace(monza, GRID, seeded(3), "medium", "pro", laps);
   race.racers = race.racers.filter((r) => r.id !== 0);
   let worn = 1;
@@ -745,7 +767,9 @@ for (const def of TRACKS) {
     `${laps} laps: two compounds, three stops at most`,
   );
   assert.ok(worn > 0.05, `${laps} laps: no set runs out (${worn.toFixed(2)} left at worst)`);
-  console.log(`${laps} laps: won in ${fmt(results(race)[0]!.time)}`);
+  console.log(
+    `${laps} laps: won in ${fmt(results(race)[0]!.time)}, raced in ${((performance.now() - t0) / 1000).toFixed(0)} s`,
+  );
 }
 
 // A car that never gets to the flag doesn't hold the classification up: the race is done three

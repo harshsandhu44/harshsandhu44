@@ -14,6 +14,7 @@ import {
   driver,
   gap,
   grip,
+  lapsOf,
   newQuali,
   newRace,
   order,
@@ -40,6 +41,8 @@ const BEST = (id: string) => `${id}-best-v2`;
 const TRACK = "drive-track";
 const SOUND = "monza-sound";
 const LEVEL = "monza-level";
+// The race distance, as an index into DISTANCES. The v1 key held a lap count: 5, 10, 15 or 20.
+const DIST = "drive-distance";
 const LAPS = "monza-laps";
 const DASH = "-:--.---";
 const KEYS: Record<string, "up" | "down" | "left" | "right" | "ot"> = {
@@ -120,7 +123,7 @@ const CONTROLS: [string[], string][] = [
 const RULES: [string, string][] = [
   [
     "Start",
-    "You start tenth, or qualify for your slot: one flying lap on softs from a rolling start, and the grid lines up by lap time. Track limits, the pit lane or abandoning the lap leaves you without a time, at the back. Go when the lights go out. Amateur races the F3 grid, intermediate F2 and pro F1: on the racing line, with the fewest mistakes and a little more grip than your car. Legends is the world champions: no mistakes, and a perfect race only just keeps up.",
+    "You start at the back, or qualify for your slot: one flying lap on softs from a rolling start, and the grid lines up by lap time. Track limits, the pit lane or abandoning the lap leaves you without a time, still at the back. Go when the lights go out. Amateur races the F3 grid, intermediate F2 and pro F1: on the racing line, with the fewest mistakes and a little more grip than your car. Legends is the world champions: no mistakes, and a perfect race only just keeps up.",
   ],
   [
     "Tyres & pits",
@@ -222,11 +225,13 @@ export default function Drive() {
     const l: string = read(LEVEL, "intermediate");
     return l in LEVELS ? (l as Level) : "intermediate";
   });
-  const [laps, setLaps] = useState(() => {
-    const n: number = read(LAPS, DISTANCES[0]!);
-    return DISTANCES.includes(n) ? n : DISTANCES[0]!;
+  const [dist, setDist] = useState(() => {
+    const old: Record<number, number> = { 10: 1, 15: 1, 20: 2 };
+    const k: number = read(DIST, old[read(LAPS, 5)] ?? 0);
+    return DISTANCES[k] ? k : 0;
   });
-  // The grid for the next race, as driver ids front to back: GRID (you P10) until you qualify,
+  const laps = lapsOf(DISTANCES[dist]!, built);
+  // The grid for the next race, as driver ids front to back: GRID (you last) until you qualify,
   // and back to it after the race or on a new track, field or distance.
   const [lineup, setLineup] = useState(GRID);
   const lineupRef = useRef(GRID);
@@ -237,7 +242,7 @@ export default function Drive() {
     setLineup(GRID);
   };
   const levelRef = useRef(level);
-  const lapsRef = useRef(laps);
+  const distRef = useRef(dist);
   const regrid = useRef<() => void>(() => {});
   const go = useRef<(t: Tyre) => void>(() => {});
   const qualify = useRef<() => void>(() => {});
@@ -521,7 +526,7 @@ export default function Drive() {
         Math.random,
         "medium",
         levelRef.current,
-        lapsRef.current,
+        lapsOf(DISTANCES[distRef.current]!, track),
         true,
       );
       quali = null;
@@ -565,7 +570,7 @@ export default function Drive() {
     };
     // Out of a race to the grid screen, on the same grid: a slot you qualified for is kept.
     quit.current = start;
-    // Out of qualifying onto its grid; out of a race, back to P10.
+    // Out of qualifying onto its grid; out of a race, back to the back.
     again.current = () => {
       const g = nextGrid ?? GRID;
       nextGrid = null;
@@ -675,7 +680,7 @@ export default function Drive() {
               quali: true,
               table,
               level: race.level,
-              laps: lapsRef.current,
+              laps: 1,
               fastest: null,
             };
             race.msgs.push({ kind: "radio", id: 0, text: radio(res) });
@@ -1308,23 +1313,32 @@ export default function Drive() {
                   </button>
                 ))}
               </div>
-              <div role="radiogroup" aria-label="Laps" className="mt-2 grid grid-cols-4 gap-2">
-                {DISTANCES.map((n) => (
+              <div
+                role="radiogroup"
+                aria-label="Race distance"
+                className="mt-2 grid grid-cols-5 gap-2"
+              >
+                {DISTANCES.map((d, k) => (
                   <button
-                    key={n}
+                    key={d.name}
                     type="button"
                     role="radio"
-                    aria-checked={laps === n}
+                    aria-checked={dist === k}
                     onClick={() => {
-                      setLaps(n);
-                      write(LAPS, n);
+                      setDist(k);
+                      write(DIST, k);
                       unqualify();
-                      lapsRef.current = n;
+                      distRef.current = k;
                       regrid.current();
                     }}
-                    className={`min-h-11 rounded-md text-sm ring-1 active:scale-[.98] ${laps === n ? "bg-lamp font-semibold ring-paper" : "ring-paper/25"}`}
+                    className={`min-h-11 rounded-md px-1 text-sm ring-1 active:scale-[.98] ${dist === k ? "bg-lamp font-semibold ring-paper" : "ring-paper/25"}`}
                   >
-                    {n} laps
+                    <span className="block">{d.name}</span>
+                    {d.share ? (
+                      <span className="block text-xs font-normal text-soft">
+                        {lapsOf(d, built)} laps
+                      </span>
+                    ) : null}
                   </button>
                 ))}
               </div>

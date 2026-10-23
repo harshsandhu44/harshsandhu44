@@ -20,8 +20,18 @@ import {
   type Track,
 } from "./track.ts";
 
-// Race distances to pick from; the tyres and the paces are tuned on the shortest.
-export const DISTANCES = [5, 10, 15, 20];
+// Race distances to pick from, as the F1 games have them: five laps, or a share of the Grand
+// Prix's laps. The tyres and the paces are tuned on the shortest.
+export const SPRINT = 5;
+export const DISTANCES = [
+  { name: "5 laps", share: 0 },
+  { name: "25%", share: 0.25 },
+  { name: "35%", share: 0.35 },
+  { name: "50%", share: 0.5 },
+  { name: "100%", share: 1 },
+];
+export const lapsOf = ({ share }: (typeof DISTANCES)[number], track: Track) =>
+  share ? Math.max(SPRINT, Math.round(share * track.LAPS)) : SPRINT;
 
 // Difficulty is mostly the other drivers: a level sets how far from the centreline (0) to the
 // racing line (1) the computer drives, the share of its grip its quickest and slowest drivers
@@ -205,10 +215,10 @@ export const driver = (race: Race, id: number) => LEVELS[race.level].drivers[id]
 // A car's colour: its team's, or "" for yours.
 export const colorOf = (race: Race, id: number) => LEVELS[race.level].colors[id >> 1]!;
 
-// The grid without qualifying, as driver ids front to back: the computer in roster order, your
-// teammate last, and you P10.
+// The grid without qualifying, as driver ids front to back: the computer in roster order, then
+// your teammate, and you at the back.
 const AI = [...Array(CARS).keys()].slice(2).concat(1);
-export const GRID = [...AI.slice(0, 9), 0, ...AI.slice(9)];
+export const GRID = [...AI, 0];
 
 // Your hero reaction time picks the slot: up to 0.250 s is pole, then one back per 30 ms. The hero
 // times from the press to the painted lights-out, so these are real reactions.
@@ -238,7 +248,7 @@ export const grip = (life: number, tyre: Tyre) =>
 // Laps a set lasts to the cliff, in a race of `laps`. Qualifying's one lap wears like the
 // shortest race.
 export const stintLaps = (t: Tyre, laps: number, track: Track) =>
-  (TYRES[t].last * Math.max(laps, DISTANCES[0]!)) / track.WEAR;
+  (TYRES[t].last * Math.max(laps, SPRINT)) / track.WEAR;
 const lapWear = (t: Tyre, laps: number, track: Track) => (1 - CLIFF_AT) / stintLaps(t, laps, track);
 const COMPOUNDS: Tyre[] = ["soft", "medium", "hard"];
 
@@ -249,10 +259,20 @@ const COMPOUNDS: Tyre[] = ["soft", "medium", "hard"];
 // is on `now.tyre` at `now.life` after `now.from` laps, can stop at the end of any lap from
 // `now.first`, and a stop then costs `now.cheap` of one (under a Safety Car or VSC). Each plan is
 // the laps it stops at the end of and the set for each stint from here; `visit` sees each.
-// ponytail: an estimate from the tyre model, not raced out; race.check.ts races the picks.
+// ponytail: an estimate from the tyre model, not raced out; race.check.ts races the picks. Past
+// 25 laps a stop is only weighed every few laps (and at the first chance, and where one's already
+// planned), so a long race's search stays the size of a 25-lap one.
 const IN_HAND = 0.05;
 type Plan = { at: number[]; tyres: Tyre[]; cost: number };
-type Now = { from: number; first: number; tyre: Tyre; life: number; used: Tyre[]; cheap: number };
+type Now = {
+  from: number;
+  first: number;
+  tyre: Tyre;
+  life: number;
+  used: Tyre[];
+  cheap: number;
+  keep: number[];
+};
 function walkPlans(laps: number, track: Track, now: Now | null, visit: (p: Plan) => void) {
   const { GRIP_POWER, STOP_LAPS } = track;
   const run = (t: Tyre, life: number, n: number) => {
@@ -267,6 +287,8 @@ function walkPlans(laps: number, track: Track, now: Now | null, visit: (p: Plan)
   ) as Record<Tyre, number[]>;
   const used = now?.used ?? [];
   const more = Math.min(2, 3 - Math.max(0, used.length - 1));
+  const every = Math.ceil(laps / 25);
+  const weigh = (n: number) => n % every === 0 || n === now?.first || !!now?.keep.includes(n);
   // New sets from the end of lap `done`, after `at` stops so far.
   const walk = (done: number, at: number[], tyres: Tyre[], cost: number) => {
     for (const t of COMPOUNDS) {
@@ -275,7 +297,8 @@ function walkPlans(laps: number, track: Track, now: Now | null, visit: (p: Plan)
         visit({ at, tyres: all, cost: cost + fresh[t][laps - done]! });
       if (at.length < more)
         for (let n = 2; n <= laps - done - 2; n++)
-          walk(done + n, [...at, done + n], all, cost + fresh[t][n]! + STOP_LAPS);
+          if (weigh(done + n))
+            walk(done + n, [...at, done + n], all, cost + fresh[t][n]! + STOP_LAPS);
     }
   };
   if (!now) return walk(0, [], [], 0);
@@ -283,6 +306,7 @@ function walkPlans(laps: number, track: Track, now: Now | null, visit: (p: Plan)
   if (new Set([...used, tyre]).size > 1)
     visit({ at: [], tyres: [tyre], cost: run(tyre, life, laps - from) });
   for (let end = Math.max(first, from); more > 0 && end <= laps - 2; end++) {
+    if (!weigh(end)) continue;
     const stop = STOP_LAPS * (end === first ? cheap : 1);
     walk(end, [end], [tyre], run(tyre, life, end - from) + stop);
   }
@@ -484,7 +508,7 @@ export function newRace(
   rand = Math.random,
   tyre: Tyre = "medium",
   lv: Level = "intermediate",
-  laps = DISTANCES[0]!,
+  laps = SPRINT,
   incidents = false,
 ): Race {
   // Computer paces spread across the level's range by pace rating, and mistakes around its rate
@@ -598,7 +622,7 @@ export function newRace(
 // lap follows the pit lane, turning into its box and back out.
 export function aiInput(r: Racer, race: Race): Input {
   const { car } = r;
-  const { BOXES, CORNERS, HALF, LENGTH, PIT_IN, PIT_SIDE, RACING } = race.track;
+  const { BOXES, CORNERS, HALF, LENGTH, PIT_FROM, PIT_IN, PIT_SIDE, RACING } = race.track;
   const { ahead: fwd, atDist, lateral, limitAt, pitOffset, pointAt, signed } = race.track;
   if (race.t < r.launch) return { gas: false, brake: false, steer: 0 };
   const s = signed(r.p);
@@ -675,17 +699,25 @@ export function aiInput(r: Racer, race: Race): Input {
   const lat = (l: number) => Math.max(-room, Math.min(room, base + l));
   let to: number;
   if (r.pitting) {
-    // Into the lane: slow for the limiter, and stop short of anyone in the way rather than go
-    // through them. Along the boxes, turn into the working lane for its own box and back out
-    // after the stop.
-    want = Math.min(want, Math.sqrt(PIT_V ** 2 + 2 * 8 * Math.max(0, PIT_IN + 40 - s)));
+    // Into the lane: brake for the limiter as late as for a corner, and stop short of anyone in
+    // the way rather than go through them. Along the boxes, turn into the working lane for its
+    // own box and back out after the stop.
+    const brake = g * brakeAt(PIT_V);
+    want = Math.min(want, Math.sqrt(PIT_V ** 2 + 2 * brake * Math.max(0, PIT_IN + 40 - s)));
     const block = ahead(mine, 0);
     if (block && block.car.v < car.v)
       want = Math.min(want, block.car.v + Math.sqrt(16 * Math.max(0, block.dist - r.dist - 7)));
+    // And for its box from the way in: a first box can be only metres past where the lane's out.
     const box = BOXES[r.id >> 1]!.s;
-    // In once past the box before, so a car waiting for its teammate's stop is out of the fast
-    // lane; out within 6 m.
-    const k = r.through ? 0 : r.served ? 1 - (s - box) / 6 : (s - box + 21) / 10;
+    if (!r.served && !r.through && Math.abs(box - s) < 60)
+      want = Math.min(want, Math.sqrt(2 * BOX_BRAKE * Math.max(0, toBox(BOXES[r.id >> 1]!, car))));
+    // In once the point it aims at is past the box before, so it's straight by the box and a car
+    // waiting for its teammate's stop is out of the fast lane; out within 6 m.
+    const k = r.through
+      ? 0
+      : r.served
+        ? 1 - (s - box) / 6
+        : (Math.max(s + look - m, PIT_FROM) - box + 21) / 10;
     to = pitOffset(i) + PIT_SIDE * WORK * Math.max(0, Math.min(1, k));
     // No unsafe release: at the box until nothing's coming down the fast lane from 20 m back.
     const fast = (o: Racer) => Math.abs(lateral(o.car.x, o.car.y, o.p) - pitOffset(i)) < 2.5;
@@ -819,11 +851,16 @@ export function qualiDelta([mine, ...rest]: Race[]) {
   return null;
 }
 
+// How far a car is short of a box, down the box's heading: exact at the box, where the lane can
+// be far enough out on a bend that the distance round the lap is off by a metre or two.
+const toBox = (b: Track["BOXES"][number], car: Car) =>
+  (b.x - car.x) * Math.cos(b.h) + (b.y - car.y) * Math.sin(b.h);
 // The limiter in the lane and the stop at the box, for any car. Teammates share a box, so one
-// that gets there second waits 8 m short of it until the first has gone (a double stack).
+// that gets there second waits 8 m short of it until the first has gone (a double stack). A car
+// that rolls a little past its marks still stops there.
 function pitStop(race: Race, r: Racer, dt: number) {
   const { car } = r;
-  const { BOXES, signed } = race.track;
+  const { BOXES } = race.track;
   if (r.stop > 0) {
     car.v = 0;
     r.stop -= dt;
@@ -840,17 +877,17 @@ function pitStop(race: Race, r: Racer, dt: number) {
     return;
   }
   if (car.v > PIT_V) car.v = Math.max(PIT_V, car.v - 40 * dt);
-  const box = BOXES[r.id >> 1]!.s;
-  const d = box - signed(r.p);
-  if (r.served || r.through || d < 0 || d > 30) return;
+  const box = BOXES[r.id >> 1]!;
+  const d = toBox(box, car);
+  if (r.served || r.through || d < -2 || d > 30) return;
   const mate = race.racers.find((o) => o.id === (r.id ^ 1) && !o.out);
-  const md = mate && box - signed(mate.p);
+  const md = mate && toBox(box, mate.car);
   const wait = mate?.pit && !mate.served && (mate.stop > 0 || (md! >= 0 && md! < d));
   const to = wait ? d - 8 : d;
   car.v = Math.min(car.v, Math.sqrt(2 * BOX_BRAKE * Math.max(0, to)));
-  if (to < 1) car.v = 0;
+  if (to < 0.25) car.v = 0;
   // A car that limped in broken down retires here.
-  if (!wait && d < 1) {
+  if (!wait && d < 0.25) {
     if (r.dist >= r.failAt) retire(race, r, r.fault);
     else r.stop = STOP;
   }
@@ -872,6 +909,7 @@ const nowOf = (race: Race, r: Racer, first: number, cheap: number) => ({
   life: r.life,
   used: r.stints,
   cheap,
+  keep: r.stops,
 });
 // The team re-plans the race from where the car is, a stop at the first chance costing `cheap`
 // of one: the best plan, if it beats the one the car's on by more than the level's margin
