@@ -603,14 +603,19 @@ export function aiInput(r: Racer, race: Race): Input {
   if (race.t < r.launch) return { gas: false, brake: false, steer: 0 };
   const s = signed(r.p);
   // Broken down, and not limping to the box: coast off the tarmac on the nearer side (away from
-  // the pit wall along the pit straight) and stop there.
+  // the pit wall along the pit straight) and stop there, short of a close wall.
   if (r.dist >= r.failAt && !r.pitting && !r.stops.includes(r.laps + 1)) {
-    const { PIT_OUT } = race.track;
+    const { PIT_OUT, RUNOFF } = race.track;
     const now = lateral(car.x, car.y, r.p);
     const side = s > PIT_IN - 50 && s < PIT_OUT + 50 ? -PIT_SIDE : Math.sign(now) || 1;
+    const off = Math.min(6, RUNOFF - 1.5);
     const far = r.p * LENGTH + 10 + car.v * 0.25;
-    const steer = aim(car, pointAt(far, side * (HALF[atDist(far)]! + 6)));
-    return { gas: false, brake: Math.abs(now) > HALF[atDist(r.p * LENGTH)]! + 2, steer };
+    const steer = aim(car, pointAt(far, side * (HALF[atDist(far)]! + off)));
+    return {
+      gas: false,
+      brake: Math.abs(now) > HALF[atDist(r.p * LENGTH)]! + Math.min(2, off - 1),
+      steer,
+    };
   }
   const look = r.p * LENGTH + 10 + Math.abs(car.v) * 0.25;
   const i = atDist(look);

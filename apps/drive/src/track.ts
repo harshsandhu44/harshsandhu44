@@ -35,6 +35,16 @@ export type TrackDef = {
   proEdge?: number;
   // And legends', against theirs (race.ts LEGEND_EDGE).
   legendsEdge?: number;
+  // How far beyond the tarmac the walls stand, if not RUNOFF: close on a street circuit.
+  runoff?: number;
+  // What's beyond the walls, if not the park: Monaco's stone blocks, the Strip's towers or sand.
+  setting?: "riviera" | "strip" | "desert";
+  // Raced at night under floodlights, or from sunset into the night (scene.ts).
+  sky?: "night" | "sunset";
+  // The Sphere's centre, in track (x, y), where it's the Las Vegas Strip.
+  sphere?: [number, number];
+  // The centreline's smooth (built from OpenStreetMap, not TUMFTM's), for the corner limits.
+  smooth?: boolean;
 };
 
 // Unit normal at each point of a closed line, averaged over the segments either side. It points
@@ -138,14 +148,15 @@ const grips = (k: number) => MOST - k * 0.05;
 // The racing line keeps this far from the tarmac edge.
 const LINE_MARGIN = 1.6;
 
-// Everything beside the track. Walls stand RUNOFF beyond the tarmac on both sides.
+// Everything beside the track. Walls stand RUNOFF beyond the tarmac on both sides, unless the
+// circuit sets its own.
 export const RUNOFF = 20;
 const WALL_HALF_THICK = 0.45;
 export const STAND_HALF = 11;
 // The car collides as a circle. ponytail: a 5.5 m car as a circle overlaps a little at the nose
 // and tail; use two circles if it looks wrong.
 const CAR_R = 1.6;
-// Kerbs and the tree-free zones go on corners tighter than this radius.
+// Kerbs go on corners tighter than this radius.
 export const KERB_R = 250;
 export const PIT_HALF = 3.5;
 // Along the flat of the lane the boxes sit in a working lane WORK further out than the fast
@@ -267,8 +278,21 @@ export function buildTrack(def: TrackDef) {
   // The fastest the car can be at each point and still make every corner ahead under full
   // braking: the corner speed where grip matches v²/R, then braking distances worked back from
   // each corner. Curvature over a short window, so the chicanes keep their bite, and the tightest
-  // within 15 m either side, so the limit never promises more than the apex allows.
-  const SHARP = curvature(2, PATH, LENGTH).map(Math.abs);
+  // within 15 m either side, so the limit never promises more than the apex allows. On a smooth
+  // centreline, the tighter of that and the circle (as for the racing line, below): the short
+  // window understates a steady bend by a quarter (its turn spans one segment fewer than it
+  // divides by), which TUMFTM's wiggles happen to make up for, and alone it ran a car on the limit
+  // off through Lusail's long corners.
+  const circle = (a: Pt, b: Pt, c: Pt) => {
+    const cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    const l = Math.hypot(b[0] - a[0], b[1] - a[1]) * Math.hypot(c[0] - b[0], c[1] - b[1]);
+    return Math.abs((2 * cross) / (l * Math.hypot(a[0] - c[0], a[1] - c[1])));
+  };
+  const SHARP = curvature(2, PATH, LENGTH).map((k, i) =>
+    def.smooth
+      ? Math.max(Math.abs(k), circle(PATH[(i - 4 + N) % N]!, PATH[i]!, PATH[(i + 4) % N]!))
+      : Math.abs(k),
+  );
   // The profile for tyres with grip g (1 new): grip and braking both scale with it. Along the
   // centreline unless given another line's curvature and distances.
   const profile = (g: number, sharp = SHARP, cum = CUM) => {
@@ -317,11 +341,6 @@ export function buildTrack(def: TrackDef) {
   // the ones 20 m either side. ponytail: the short window alone smooths the centreline's wiggles
   // away and promised more speed through Monza's Lesmo 1 than the car has the grip for; 20 m is
   // the span that keeps every level clean at full pace in race.check.ts.
-  const circle = (a: Pt, b: Pt, c: Pt) => {
-    const cross = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
-    const l = Math.hypot(b[0] - a[0], b[1] - a[1]) * Math.hypot(c[0] - b[0], c[1] - b[1]);
-    return Math.abs((2 * cross) / (l * Math.hypot(a[0] - c[0], a[1] - c[1])));
-  };
   const LINE_SHARP = LINE.map((p, i) =>
     Math.max(Math.abs(LINE_CURVE[i]!), circle(LINE[(i - 4 + N) % N]!, p, LINE[(i + 4) % N]!)),
   );
@@ -410,12 +429,14 @@ export function buildTrack(def: TrackDef) {
   const ZONES = def.zones;
   const inZone = (m: number, z: (typeof ZONES)[number]) => ahead(z.from, m) < ahead(z.from, z.to);
 
-  // Distance boards on the outside of each braking zone, facing the oncoming car.
+  // Distance boards on the outside of each braking zone, facing the oncoming car, in front of the
+  // wall where it's close.
+  const BOARD_GAP = Math.min(3, (def.runoff ?? RUNOFF) - 1);
   const BOARDS = CORNERS.filter((c) => c.boards).flatMap((c) =>
     [150, 100, 50].map((m) => {
       const i = atDist(c.turnIn - m);
       const side = -Math.sign(CURVE[atDist(c.turnIn + 20)]!) || -1;
-      const [x, y] = offset((j) => side * (HALF[j]! + 3))[i]!;
+      const [x, y] = offset((j) => side * (HALF[j]! + BOARD_GAP))[i]!;
       const [ax, ay] = PATH[i]!;
       const [bx, by] = PATH[(i + 1) % N]!;
       return { x, y, h: Math.atan2(by - ay, bx - ax), m };
@@ -438,14 +459,24 @@ export function buildTrack(def: TrackDef) {
       return Math.abs(dx * fx + dy * fy) < lim && Math.abs(dy * fx - dx * fy) < lim;
     });
 
+  // How far beyond the tarmac the wall stands at point i on `side` (1 right, -1 left): the
+  // circuit's runoff, but never nearer than 3 m outside the pit lane while it's beside the track.
+  const RUN = def.runoff ?? RUNOFF;
+  const wallGap = (i: number, side: number) => {
+    if (side !== PIT_SIDE) return RUN;
+    const lane = PIT_SIDE * (pitOffset(i) + working(i)) + PIT_HALF - HALF[i]!;
+    return Math.max(RUN, lane + 3);
+  };
   // One wall per path segment, dropped wherever the offset line folds back towards the track on
   // the inside of a corner, and where a grandstand stands in for it.
   const WALLS = [1, -1].flatMap((side): [number, number, number, number][] => {
-    const pts = offset((i) => side * (HALF[i]! + RUNOFF));
+    const pts = offset((i) => side * (HALF[i]! + wallGap(i, side)));
     return pts.flatMap(([ax, ay], i) => {
       const [bx, by] = pts[(i + 1) % N]!;
       const [mx, my] = [(ax + bx) / 2, (ay + by) / 2];
-      return nearest(mx, my).edge < RUNOFF - 1 || inStand(mx, my, 1) ? [] : [[ax, ay, bx, by]];
+      return nearest(mx, my).edge < wallGap(i, side) - 1 || inStand(mx, my, 1)
+        ? []
+        : [[ax, ay, bx, by]];
     });
   });
   // The pit wall, between the track and the flat of the lane, starting a little after the lane
@@ -477,23 +508,6 @@ export function buildTrack(def: TrackDef) {
     const s = scale + rand() * 3;
     TREES.push({ x, y, big, s, rot: rand() * Math.PI * 2, r: (big ? 0.12 : 0.09) * s });
   };
-  // Inside the barriers: a loose row along the straights, kept off the kerbs and gravel (no tight
-  // corner within 40 m), clear of the pit lane and the stands, with at least 8 m of grass to the
-  // tarmac and 5 m to the barrier so a car scraping the wall doesn't snag on them.
-  const tight = (i: number) => {
-    for (let k = -8; k <= 8; k++) if (Math.abs(CURVE[(i + k + N) % N]!) > 1 / KERB_R) return true;
-    return false;
-  };
-  for (let i = 12; i < N - 6; i += 3)
-    for (const side of [1, -1]) {
-      const s = signed(CUM[i]! / LENGTH);
-      const lane = side === PIT_SIDE && s > PIT_IN - 40 && s < PIT_OUT + 40;
-      if (rand() < 0.45 || tight(i) || lane) continue;
-      const d = HALF[i]! + 8 + rand() * (RUNOFF - 14);
-      const [x, y] = offset(side * d)[i]!;
-      if (nearest(x, y).dist < d - 1 || inStand(x, y, 4)) continue;
-      plant(x, y, 5);
-    }
   // Behind the barriers. A rough distance against every fourth segment is plenty this far out and
   // keeps load time down. ponytail: ~25k candidates × 350 segments at load (tens of ms).
   const rough = (x: number, y: number) => {
@@ -508,12 +522,58 @@ export function buildTrack(def: TrackDef) {
     }
     return best;
   };
-  for (let n = 0; n < 25000 && TREES.length < 2200; n++) {
-    const x = BOX.x0 - 150 + rand() * (BOX.x1 - BOX.x0 + 300);
-    const y = BOX.y0 - 150 + rand() * (BOX.y1 - BOX.y0 + 300);
-    const dist = rough(x, y);
-    if (dist < 6.5 + RUNOFF + 10 || (dist > 140 && rand() < 0.85) || inStand(x, y, 4)) continue;
+  // Whether something r across at (x, y) is `margin` clear of the wall and the stands. Near the
+  // track against the real nearest point, as the wall's gap varies; 6 m clears the garages, which
+  // reach 5.5 m past the wall behind the lane. And clear of the lane and its garages (a band 12 m
+  // either side of a line 8 m out from the fast lane) where another part of the track is nearer,
+  // as at Monaco, where the harbour runs behind the pits.
+  const LANE: Pt[] = [];
+  for (let i = atDist(PIT_IN); i !== atDist(PIT_OUT); i = (i + 1) % N)
+    LANE.push(pointAt(CUM[i]!, pitOffset(i) + PIT_SIDE * 8));
+  const clear = (x: number, y: number, r: number, margin: number) => {
+    if (rough(x, y) > 150) return !inStand(x, y, 4 + r);
+    if (LANE.some(([lx, ly]) => Math.hypot(lx - x, ly - y) < 12 + r + 2)) return false;
+    const { p, edge } = nearest(x, y);
+    const side = Math.sign(lateral(x, y, p)) || 1;
+    return edge - r > wallGap(atDist(p * LENGTH), side) + margin && !inStand(x, y, 4 + r);
+  };
+  const anyX = () => BOX.x0 - 150 + rand() * (BOX.x1 - BOX.x0 + 300);
+  const anyY = () => BOX.y0 - 150 + rand() * (BOX.y1 - BOX.y0 + 300);
+  // The park, or a few desert palms' worth of it. None on a street circuit: buildings instead.
+  const most = def.setting === "desert" ? 250 : def.setting ? 0 : 2200;
+  for (let n = 0; n < 25000 && TREES.length < most; n++) {
+    const [x, y] = [anyX(), anyY()];
+    if ((rough(x, y) > 140 && rand() < 0.85) || !clear(x, y, 1, 10)) continue;
     plant(x, y, 7);
+  }
+  // The city: blocks behind the walls facing the track, thickest near it, none overlapping,
+  // clear of the Sphere. w is half the frontage and d half the depth; `tone` picks the colour.
+  // Monaco's are low and pale, the Strip's towers tall.
+  const BUILDINGS: {
+    x: number;
+    y: number;
+    fx: number;
+    fy: number;
+    w: number;
+    d: number;
+    h: number;
+    tone: number;
+  }[] = [];
+  const strip = def.setting === "strip";
+  const blocks = def.setting === "riviera" ? 700 : strip ? 320 : 0;
+  for (let n = 0; n < 25000 && BUILDINGS.length < blocks; n++) {
+    const [x, y] = [anyX(), anyY()];
+    const [w, d] = strip ? [10 + rand() * 10, 10 + rand() * 8] : [6 + rand() * 6, 6 + rand() * 4];
+    const r = Math.hypot(w, d);
+    const h = strip ? 24 + rand() ** 2 * 110 : 10 + rand() * 24;
+    if (rough(x, y) > 140 && rand() < 0.85) continue;
+    if (def.sphere && Math.hypot(x - def.sphere[0], y - def.sphere[1]) < 85 + r) continue;
+    if (BUILDINGS.some((b) => Math.hypot(b.x - x, b.y - y) < r + Math.hypot(b.w, b.d) + 2))
+      continue;
+    if (!clear(x, y, r, 6)) continue;
+    const [px, py] = pointAt(nearest(x, y).p * LENGTH, 0);
+    const l = Math.hypot(px - x, py - y);
+    BUILDINGS.push({ x, y, fx: (px - x) / l, fy: (py - y) / l, w, d, h, tone: rand() });
   }
 
   // Only the walls and trees in the car's cell, the ones close enough to check.
@@ -526,6 +586,15 @@ export function buildTrack(def: TrackDef) {
     TREES.length,
     (i) => [TREES[i]!.x, TREES[i]!.y, TREES[i]!.x, TREES[i]!.y],
     6,
+  );
+  const buildingsAt = grid(
+    BUILDINGS.length,
+    (i) => {
+      const { x, y, w, d } = BUILDINGS[i]!;
+      const r = Math.hypot(w, d);
+      return [x - r, y - r, x + r, y + r];
+    },
+    CAR_R,
   );
   function collide(car: Car) {
     for (const i of wallsAt(car.x, car.y)) {
@@ -543,18 +612,10 @@ export function buildTrack(def: TrackDef) {
       const t = TREES[i]!;
       if (Math.abs(car.x - t.x) < 6 && Math.abs(car.y - t.y) < 6) touch(car, t.x, t.y, t.r);
     }
-    for (const { x, y, fx, fy } of STANDS) {
-      const dx = car.x - x;
-      const dy = car.y - y;
-      const a = dx * fx + dy * fy;
-      const b = dy * fx - dx * fy;
-      const ca = Math.max(-STAND_HALF, Math.min(STAND_HALF, a));
-      const cb = Math.max(-STAND_HALF, Math.min(STAND_HALF, b));
-      if (ca !== a || cb !== b) touch(car, x + fx * ca - fy * cb, y + fy * ca + fx * cb, 0);
-      // Centre inside the stand: out through the nearest face.
-      else if (STAND_HALF - Math.abs(a) < STAND_HALF - Math.abs(b))
-        hit(car, fx * Math.sign(a), fy * Math.sign(a), STAND_HALF - Math.abs(a) + CAR_R);
-      else hit(car, -fy * Math.sign(b), fx * Math.sign(b), STAND_HALF - Math.abs(b) + CAR_R);
+    for (const { x, y, fx, fy } of STANDS) boxOut(car, x, y, fx, fy, STAND_HALF, STAND_HALF);
+    for (const i of buildingsAt(car.x, car.y)) {
+      const { x, y, fx, fy, w, d } = BUILDINGS[i]!;
+      boxOut(car, x, y, fx, fy, d, w);
     }
   }
 
@@ -566,6 +627,10 @@ export function buildTrack(def: TrackDef) {
     STOP_LAPS: def.stop,
     WEAR: def.wear,
     LEGENDS_EDGE: def.legendsEdge,
+    RUNOFF: RUN,
+    SETTING: def.setting,
+    SKY: def.sky,
+    SPHERE: def.sphere,
     PATH,
     HALF,
     CUM,
@@ -594,12 +659,15 @@ export function buildTrack(def: TrackDef) {
     cornerAt,
     ZONES,
     inZone,
+    BOARD_GAP,
     BOARDS,
     STANDS,
+    wallGap,
     WALLS,
     BOX,
     MID,
     TREES,
+    BUILDINGS,
     collide,
   };
 }
@@ -634,6 +702,20 @@ function touch(car: Car, px: number, py: number, r: number) {
   const dy = car.y - py;
   const d = Math.hypot(dx, dy);
   if (d < CAR_R + r && d > 1e-6) hit(car, dx / d, dy / d, CAR_R + r - d);
+}
+// Against a box centred on (x, y) facing (fx, fy), a deep that way and b wide across it.
+function boxOut(car: Car, x: number, y: number, fx: number, fy: number, a: number, b: number) {
+  const dx = car.x - x;
+  const dy = car.y - y;
+  const u = dx * fx + dy * fy;
+  const v = dy * fx - dx * fy;
+  const cu = Math.max(-a, Math.min(a, u));
+  const cv = Math.max(-b, Math.min(b, v));
+  if (cu !== u || cv !== v) touch(car, x + fx * cu - fy * cv, y + fy * cu + fx * cv, 0);
+  // Centre inside the box: out through the nearest face.
+  else if (a - Math.abs(u) < b - Math.abs(v))
+    hit(car, fx * Math.sign(u), fy * Math.sign(u), a - Math.abs(u) + CAR_R);
+  else hit(car, -fy * Math.sign(v), fx * Math.sign(v), b - Math.abs(v) + CAR_R);
 }
 // Car against car. Each is a rectangle, the car's length by its width over the wheels, so a nose
 // can't tuck in between another's front and rear wheels. Separating axes: the overlap on each
