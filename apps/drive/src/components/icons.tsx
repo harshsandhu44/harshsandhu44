@@ -40,6 +40,18 @@ export const Flag = ({ className }: P) => (
     <path d="M3.5 2h9l-2 3 2 3h-9z" fill="currentColor" />
   </Icon>
 );
+// The chequered flag, for a car that's finished.
+export const Chequered = ({ className }: P) => (
+  <Icon className={className}>
+    <path d="M3.5 15V1.5" />
+    <path d="M3.5 2h9v6h-9z" />
+    <path
+      d="M3.5 2h3v2h-3zM9.5 2h3v2h-3zM6.5 4h3v2h-3zM3.5 6h3v2h-3zM9.5 6h3v2h-3z"
+      fill="currentColor"
+      stroke="none"
+    />
+  </Icon>
+);
 // Black and white, for track limits' flag.
 export const Warned = ({ className }: P) => (
   <Icon className={className}>

@@ -1878,6 +1878,10 @@ export const wrongWay = (r: Racer) => r.wrong > 1;
 
 // Running order: finishers by time with penalties added, then everyone else by distance, and
 // the cars out of the race last.
+// Once the flag's out, by laps first, as the classification has it, so a lapped car taking the
+// flag just behind the winner doesn't pass one with a penalty: a car still running finishes on
+// the lap it's on.
+const flagLaps = (r: Racer) => (r.finish !== null ? r.laps : r.laps + 1);
 export const order = (race: Race) =>
   race.racers
     .slice()
@@ -1885,14 +1889,21 @@ export const order = (race: Race) =>
       (a, b) =>
         +!!a.out - +!!b.out ||
         (a.finish !== null || b.finish !== null
-          ? (a.finish ?? Infinity) + a.penalty - ((b.finish ?? Infinity) + b.penalty)
+          ? flagLaps(b) - flagLaps(a) ||
+            (a.finish ?? Infinity) + a.penalty - ((b.finish ?? Infinity) + b.penalty)
           : b.dist - a.dist),
     );
-// Seconds behind the leader, from when each passed the same checkpoint; once in, from the flag
-// with penalties added, as the classification will have it.
+// Seconds behind the leader, from when each passed the same checkpoint; once in, from the
+// winner's flag with penalties added, as the classification will have it.
 export const gap = (race: Race, r: Racer) => {
   if (r.finish === null) return r.cp < 0 ? 0 : (r.cpT - race.cps[r.cp]!) / 1000;
-  const lead = Math.min(...race.racers.map((o) => (o.finish ?? Infinity) + o.penalty));
+  // From the quickest on the lead lap: a lapped car's time says nothing.
+  const most = Math.max(...race.racers.map((o) => (o.finish !== null ? o.laps : 0)));
+  const lead = Math.min(
+    ...race.racers.map((o) =>
+      o.finish !== null && o.laps === most ? o.finish + o.penalty : Infinity,
+    ),
+  );
   return (r.finish + r.penalty - lead) / 1000;
 };
 

@@ -913,7 +913,7 @@ for (const def of TRACKS) {
 {
   const race = newRace(monza, GRID, seeded(7));
   const [a, b] = [race.racers[1]!, race.racers[2]!];
-  [a.finish, a.penalty, b.finish] = [100_000, 5000, 103_000];
+  [a.finish, a.penalty, b.finish, a.laps, b.laps] = [100_000, 5000, 103_000, race.laps, race.laps];
   assert.deepEqual(order(race).slice(0, 2), [b, a], "the tower orders finishers with penalties");
   assert.deepEqual([gap(race, b), gap(race, a)], [0, 2], "and gaps them with penalties");
 }
@@ -1243,6 +1243,25 @@ for (const { id, name } of TRACKS) {
   }
   assert.ok(Math.abs(off()) < 0.5, `back on the line: ${off().toFixed(2)} m off`);
   assert.ok(most <= 0.3, "never more than a gentle pull");
+}
+
+// At the flag the tower goes by laps first: a lapped car taking the flag inside the winner's
+// 5 s penalty, and one still on the lead lap's last lap, stay where they are.
+{
+  const race = newRace(monza, GRID, seeded(1), "medium", "pro", 10);
+  const [win, lapped, last] = race.racers;
+  Object.assign(win!, { laps: 10, finish: 1000, penalty: 5000 });
+  Object.assign(lapped!, { laps: 9, finish: 2000, penalty: 0 });
+  Object.assign(last!, { laps: 9, finish: null, dist: 9.5 * LENGTH });
+  for (const r of race.racers.slice(3)) Object.assign(r, { laps: 8, dist: 8.5 * LENGTH });
+  assert.deepEqual(
+    order(race)
+      .slice(0, 3)
+      .map((r) => r.id),
+    [win!.id, last!.id, lapped!.id],
+    "the winner, the lead lap, then the lapped",
+  );
+  assert.equal(gap(race, win!), 0, "and the winner's gap is from the winner");
 }
 
 console.log("race: ok");
