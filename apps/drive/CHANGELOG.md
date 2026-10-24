@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.6.0...drive-v1.6.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **drive:** tower orders the flag by laps first, and flags finishers ([#64](https://github.com/harshsandhu44/harshsandhu44/issues/64)) ([130e2bf](https://github.com/harshsandhu44/harshsandhu44/commit/130e2bf67b3f94555a550cf611b9ae0541b1e8aa))
+
 ## [1.6.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.5.0...drive-v1.6.0) (2026-10-24)
 
 
