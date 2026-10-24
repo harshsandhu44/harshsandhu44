@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.3.1...drive-v1.4.0) (2026-10-24)
+
+
+### Features
+
+* **drive:** settings with racing line, braking point and steering assist ([#58](https://github.com/harshsandhu44/harshsandhu44/issues/58)) ([489304c](https://github.com/harshsandhu44/harshsandhu44/commit/489304c4942e12e6c3ff3c170c347d312a0b3067))
+
 ## [1.3.1](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.3.0...drive-v1.3.1) (2026-10-24)
 
 
