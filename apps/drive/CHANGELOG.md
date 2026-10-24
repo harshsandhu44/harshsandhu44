@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.4.0...drive-v1.5.0) (2026-10-24)
+
+
+### Features
+
+* **drive:** V8 engine, crowd, pit lane, tyres and radio sound, with a mix ([#60](https://github.com/harshsandhu44/harshsandhu44/issues/60)) ([25a1060](https://github.com/harshsandhu44/harshsandhu44/commit/25a106005d045d121121060e6c0a883ee9660370))
+
 ## [1.4.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.3.1...drive-v1.4.0) (2026-10-24)
 
 
