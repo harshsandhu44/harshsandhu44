@@ -108,7 +108,7 @@ const behind = (v: number, gap: number, g: number) => {
   return d > 0 ? Math.sqrt(v ** 2 + 1.6 * g * brakeAt(v) * d) : v + d;
 };
 // Steering for a car to head at (x, y).
-const aim = (car: Car, [x, y]: [number, number]) => {
+export const aim = (car: Car, [x, y]: [number, number]) => {
   let diff = Math.atan2(y - car.y, x - car.x) - car.h;
   diff = Math.atan2(Math.sin(diff), Math.cos(diff));
   return Math.max(-1, Math.min(1, diff * 4));

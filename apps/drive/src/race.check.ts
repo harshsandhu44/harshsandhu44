@@ -37,6 +37,7 @@ import {
   type Race,
   type Tyre,
 } from "./race.ts";
+import { BRAKE, GO, SOON, assist, guide } from "./assist.ts";
 
 // The checks below race the shortest distance, the one the paces are tuned on, at Monza, the
 // track they're tuned at. The pit lane and whole races then run on every track.
@@ -1202,6 +1203,46 @@ for (const { id, name } of TRACKS) {
   assert.equal(me.wing, 5, "and the wing for the stop goes on there");
   // Out of the lane where it merges, the team doesn't take you for coming in again.
   assert.ok(!after.some((t) => t.endsWith("ready.")), `no second stop called: ${after}`);
+}
+
+// The racing line's braking point for Rettifilo, from the line at Monza: earlier the faster you
+// come, red only once it's close, and gone once you're slow enough for it.
+{
+  const shade = new Uint8Array(monza.PATH.length);
+  const apex = atDist(monza.CORNERS[0]!.at);
+  const at = (v: number, m = 100) => [guide(monza, 1, v, m, "full", shade), shade[apex]] as const;
+  const [fast, far] = at(100);
+  const [slow] = at(85);
+  assert.ok(fast! > 150 && fast! < 450, `braking from 360 km/h ${fast?.toFixed(0)} m ahead`);
+  assert.ok(slow! > fast!, "later from slower");
+  assert.equal(far, SOON, "the corner's yellow from far off");
+  assert.equal(at(100, 100 + fast! - 20)[1], BRAKE, "and red at its braking point");
+  assert.equal(at(15, 600)[1], GO, "and green once you're slow enough");
+  guide(monza, 1, 100, 100, "corners", shade);
+  assert.ok(shade.includes(0) && shade[apex], "on corners, only the corners show");
+}
+
+// The steering assist brings a car 3 m off the line on Monza's back straight back to it, gently,
+// and leaves it alone when you steer.
+{
+  const race = newQuali(monza, "pro", seeded(3))[0]!;
+  const me = race.racers[0]!;
+  const m = 2750;
+  const i = atDist(m);
+  const [x, y] = pointAt(m, RACING[i]! + 3);
+  Object.assign(me.car, { x, y, h: dirAt(m / LENGTH), v: 80 });
+  [me.p, me.dist, me.launch] = [nearest(x, y).p, m, 0];
+  const off = () => lateral(me.car.x, me.car.y, me.p) - RACING[atDist(me.p * LENGTH)]!;
+  const you = { gas: true, brake: false, steer: 0 };
+  assert.equal(assist(race, me, { ...you, steer: 1 }).steer, 1, "your steering wins");
+  let most = 0;
+  for (let t = 0; t < 4; t += DT) {
+    const input = assist(race, me, you);
+    most = Math.max(most, Math.abs(input.steer));
+    tick(race, input, DT);
+  }
+  assert.ok(Math.abs(off()) < 0.5, `back on the line: ${off().toFixed(2)} m off`);
+  assert.ok(most <= 0.3, "never more than a gentle pull");
 }
 
 console.log("race: ok");
