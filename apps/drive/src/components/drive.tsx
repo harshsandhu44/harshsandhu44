@@ -511,16 +511,19 @@ export default function Drive() {
     const p = pad.current;
     p.touch = matchMedia("(pointer: coarse)").matches;
 
-    // F1's colours: purple the quickest anyone's been this race, green your own best, yellow slower.
-    const paintSector = (i: number, text: string, cls: "fl" | "pb" | "slow" | "") => {
+    // F1's colours: purple the quickest anyone's been this race, green your own best, yellow slower,
+    // red on a lap past the track limits.
+    const paintSector = (i: number, text: string, cls: "fl" | "pb" | "slow" | "bad" | "") => {
       const el = sectorEls.current[i]!;
       el.lastChild!.textContent = text;
       el.classList.toggle("bg-fl", cls === "fl");
       el.classList.toggle("bg-go", cls === "pb");
       el.classList.toggle("bg-slow", cls === "slow");
+      el.classList.toggle("bg-accent", cls === "bad");
       el.classList.toggle("bg-lamp", cls === "");
       el.classList.toggle("text-soft", cls === "");
-      el.classList.toggle("text-ink", cls !== "");
+      el.classList.toggle("text-paper", cls === "bad");
+      el.classList.toggle("text-ink", cls !== "" && cls !== "bad");
     };
 
     const ac = new AbortController();
@@ -907,12 +910,15 @@ export default function Drive() {
             ? Math.min(...quali.map((q) => q.sectors[s] || Infinity))
             : race.sectors[s]!;
           const fl = split.valid && split.ms <= best;
-          paintSector(s, secs(split.ms), fl ? "fl" : pb ? "pb" : "slow");
+          paintSector(s, secs(split.ms), !split.valid ? "bad" : fl ? "fl" : pb ? "pb" : "slow");
         }
+        // Off the track: the sector you're in goes red there and then, and so does the rest of the lap.
+        const k = me.lap.marks.length;
+        if (me.lap.invalid && !sectorEls.current[k]!.classList.contains("bg-accent"))
+          paintSector(k, "", "bad");
         if (split?.lap) {
           const l = lastEl.current!;
           l.textContent = fmt(split.lap);
-          l.classList.toggle("line-through", !split.valid);
           l.classList.toggle("text-accent", !split.valid);
           if (me.best) bestEl.current!.textContent = fmt(me.best);
           if (split.valid && (!record || split.lap < record)) {
