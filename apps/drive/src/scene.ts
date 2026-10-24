@@ -8,7 +8,10 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { CARS, type Livery } from "@/race";
 import { KERB_R, PIT_HALF, STAND_HALF, WORK, type Car, type Track } from "@/track";
 
-export type Colors = Record<"accent" | "carbon" | "paper" | "chrome" | "ink" | "pit", string>;
+export type Colors = Record<
+  "accent" | "carbon" | "paper" | "chrome" | "ink" | "pit" | "slow",
+  string
+>;
 
 const SKY = "#c9d2d6";
 // Mowing stripes: grass in the park, paving round a street circuit, sand in the desert.
@@ -240,7 +243,8 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
   const { BOARDS, BOXES, BOX, CURVE, HALF, MID, PATH, PIT_SIDE, STANDS, TREES, WALLS, ZONES } =
     track;
   const { BOARD_GAP, BUILDINGS, RUNOFF, SETTING, SKY: SKY_KIND, SPHERE } = track;
-  const { atDist, nearest, offset, pitOffset, pointAt, wallGap, working } = track;
+  const { atDist, dirAt, nearest, offset, pitOffset, pointAt, wallGap, working } = track;
+  const { LENGTH, RACING } = track;
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.domElement.className = "block size-full";
   host.append(renderer.domElement);
@@ -316,6 +320,44 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
       { color: TARMAC, roughness: 0.9 },
     ),
   );
+  // The racing line (assist.ts): a ribbon a little narrower than a tyre is wide apart, its colour
+  // and opacity set a point at a time, and the braking point as a red bar across it.
+  const N = PATH.length;
+  const lineSides = [-0.4, 0.4].map((k) => offset((i) => RACING[i]! + k));
+  const linePos = new Float32Array(N * 6);
+  for (let i = 0; i < N; i++)
+    for (const [k, [x, z]] of lineSides.map((side) => side[i]!).entries())
+      linePos.set([x, 0.035, z], i * 6 + k * 3);
+  const lineGeo = new THREE.BufferGeometry();
+  lineGeo.setAttribute("position", new THREE.BufferAttribute(linePos, 3));
+  const lineCol = new THREE.BufferAttribute(new Float32Array(N * 8), 4);
+  lineGeo.setAttribute("color", lineCol);
+  lineGeo.setIndex(
+    Array.from({ length: N }, (_, i) => {
+      const j = (i + 1) % N;
+      return [2 * i, 2 * i + 1, 2 * j, 2 * i + 1, 2 * j + 1, 2 * j];
+    }).flat(),
+  );
+  const racingLine = new THREE.Mesh(
+    lineGeo,
+    new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false }),
+  );
+  racingLine.visible = false;
+  // By assist.ts's shades: hidden, flat out, slowing for one soon, brake now.
+  const SHADES = [null, "#2bd46b", C.slow, C.accent].map((c) => c && new THREE.Color(c).toArray());
+  const brakeBar = new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 4).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({
+      color: C.accent,
+      transparent: true,
+      opacity: 0.9,
+      depthWrite: false,
+    }),
+  );
+  brakeBar.position.y = 0.04;
+  brakeBar.visible = false;
+  scene.add(racingLine, brakeBar);
+
   // White edge lines where there is no kerb, kerbs just inside the edge on corners.
   const line = { color: C.paper };
   scene.add(
@@ -1078,6 +1120,28 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
       if (flat) camera.up.set(0, 0, -1);
       camera.lookAt(look);
       renderer.render(scene, camera);
+    },
+    // The racing line's shades, one a point (null hides it), and the braking point, metres round
+    // the lap (null for none).
+    guide(shades: Uint8Array | null, brake: number | null) {
+      racingLine.visible = !!shades;
+      if (shades) {
+        const a = lineCol.array as Float32Array;
+        shades.forEach((k, i) => {
+          const c = SHADES[k];
+          for (const v of [0, 4]) {
+            if (c) a.set(c, i * 8 + v);
+            a[i * 8 + v + 3] = c ? 0.8 : 0;
+          }
+        });
+        lineCol.needsUpdate = true;
+      }
+      brakeBar.visible = brake !== null;
+      if (brake === null) return;
+      const [x, z] = pointAt(brake, RACING[atDist(brake)]!);
+      const h = dirAt(brake / LENGTH);
+      brakeBar.position.set(x, 0.04, z);
+      brakeBar.rotation.y = yaw(Math.cos(h), Math.sin(h));
     },
     resize(w: number, h: number) {
       renderer.setSize(w, h, false);

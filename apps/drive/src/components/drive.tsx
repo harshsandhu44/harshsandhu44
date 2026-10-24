@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { assist, guide, type Line } from "@/assist";
 import { createEngine, type Engine } from "@/engine";
 import type { Scene } from "@/scene";
 import {
@@ -13,6 +14,7 @@ import {
   LEVELS,
   TYRES,
   WINGS,
+  carGrip,
   colorOf,
   driver,
   gap,
@@ -46,6 +48,10 @@ const BEST = (id: string) => `${id}-best-v3`;
 // The rest kept Monza's names from when it was the only track, so picks carry over.
 const TRACK = "drive-track";
 const SOUND = "monza-sound";
+// The driving aids, as in the F1 games (assist.ts).
+const SETTINGS = "drive-settings";
+type Settings = { line: Line; brakes: boolean; assist: boolean };
+const AIDS: Settings = { line: "off", brakes: false, assist: true };
 const LEVEL = "monza-level";
 // The race distance, as an index into DISTANCES. The v1 key held a lap count: 5, 10, 15 or 20.
 const DIST = "drive-distance";
@@ -317,6 +323,35 @@ const raceWord = (table: Result["table"]) => {
     : word;
 };
 
+// A setting: its choices in a row, the one picked lit.
+function Choice<T extends string | boolean>(props: {
+  name: string;
+  value: T;
+  options: [T, string][];
+  pick: (v: T) => void;
+}) {
+  const { name, value, options, pick } = props;
+  return (
+    <div className="mt-3">
+      <p className={label}>{name}</p>
+      <div role="radiogroup" aria-label={name} className="mt-1 grid grid-flow-col gap-2">
+        {options.map(([v, text]) => (
+          <button
+            key={String(v)}
+            type="button"
+            role="radio"
+            aria-checked={value === v}
+            onClick={() => pick(v)}
+            className={`min-h-11 rounded-md px-2 text-sm ring-1 active:scale-[.98] ${value === v ? "bg-lamp font-semibold ring-paper" : "ring-paper/25"}`}
+          >
+            {text}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // The whole page. three.js (in scene.ts) loads on mount and draws the circuit; the race
 // (race.ts) runs in one rAF loop here, which writes the HUD straight to the DOM so React doesn't
 // re-render every frame.
@@ -325,6 +360,9 @@ export default function Drive() {
   const [result, setResult] = useState<Result | null>(null);
   const [rules, setRules] = useState(false);
   const [sound, setSound] = useState(() => read(SOUND, false));
+  const [aids, setAids] = useState<Settings>(() => ({ ...AIDS, ...read(SETTINGS, {}) }));
+  const aidsRef = useRef(aids);
+  const [settings, setSettings] = useState(false);
   const engine = useRef<Engine | null>(null);
   const again = useRef<() => void>(() => {});
   // The grid screen's pick, and what it and the pit lane's chips call into the race.
@@ -410,7 +448,7 @@ export default function Drive() {
   const pauseEl = useRef<HTMLDivElement>(null);
   const abandonEl = useRef<HTMLButtonElement>(null);
   const quitEl = useRef<HTMLButtonElement>(null);
-  const togglePause = useRef<() => void>(() => {});
+  const togglePause = useRef<(on?: boolean) => void>(() => {});
   const towerEl = useRef<HTMLDivElement>(null);
   const towerEls = useRef<HTMLDivElement[]>([]);
   const lampEls = useRef<HTMLSpanElement[]>([]);
@@ -449,6 +487,18 @@ export default function Drive() {
     };
   };
 
+  const aid = (change: Partial<Settings>) => {
+    const next = { ...aids, ...change };
+    setAids(next);
+    aidsRef.current = next;
+    write(SETTINGS, next);
+  };
+  // Mid-race, the settings pause it.
+  const openSettings = () => {
+    togglePause.current(true);
+    setSettings(true);
+  };
+
   const toggleSound = () => {
     const on = !sound;
     setSound(on);
@@ -471,12 +521,14 @@ export default function Drive() {
       chrome: col("chrome"),
       ink: col("ink"),
       pit: col("pit"),
+      slow: col("slow"),
     };
     const paintOf = (id: number) => colorOf(race, id);
     const flat = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const track = getTrack(trackId);
     const { LENGTH, ZONES, atDist, dirAt, limitAt, nextCorner } = track;
     const { box, box2, outline } = SHAPES.get(trackId)!;
+    const shades = new Uint8Array(track.PATH.length);
     const road = new Path2D(outline);
 
     let record: number = read(BEST(trackId), 0);
@@ -733,9 +785,9 @@ export default function Drive() {
       skipping = true;
     };
     // Not on the grid screen or once the classification's up.
-    togglePause.current = () => {
+    togglePause.current = (on = !paused) => {
       if (phase === "grid" || race.done) return;
-      paused = !paused;
+      paused = on;
       pauseEl.current!.hidden = !paused;
       abandonEl.current!.hidden = !quali;
       quitEl.current!.hidden = !!quali;
@@ -863,7 +915,8 @@ export default function Drive() {
         // Before your tick: a lap that ends after every computer car's would otherwise already
         // read as over, and the classification would never come.
         const over = quali?.every((q) => q.done);
-        const split = tick(race, { gas, brake, steer, ot }, dt);
+        const raw = { gas, brake, steer, ot };
+        const split = tick(race, aidsRef.current.assist ? assist(race, me, raw) : raw, dt);
         // After your flag, Skip runs the rest of the field to theirs a few hundred frames at a time.
         if (skipping) for (let n = 0; n < 300 && !race.done; n++) tick(race, still, 1 / 30);
         if (quali) {
@@ -1078,6 +1131,19 @@ export default function Drive() {
       batText.current!.classList.toggle("text-paper", !me.clipping);
       engine.current?.set(paused ? 0 : Math.abs(car.v) / TOP, paused ? 0 : thr);
 
+      // The racing line and braking point (assist.ts), while you're the one driving.
+      const { line, brakes } = aidsRef.current;
+      const driving = me.finish === null && !me.out && !me.pitting;
+      const m = me.p * LENGTH;
+      const brakeIn =
+        driving && (line !== "off" || brakes)
+          ? guide(track, carGrip(race, me), car.v, m, line, shades)
+          : null;
+      scene!.guide(
+        driving && line !== "off" ? shades : null,
+        brakes && brakeIn !== null && brakeIn > 15 ? m + brakeIn : null,
+      );
+
       // Each team's crew: out for a car in the lane, at the car while it's stopped.
       const crews = new Array<number>(CARS / 2).fill(0);
       for (const r of race.racers)
@@ -1138,11 +1204,11 @@ export default function Drive() {
         </span>
         <button
           type="button"
-          onClick={toggleSound}
-          aria-pressed={sound}
+          onClick={openSettings}
+          aria-haspopup="dialog"
           className="ml-auto min-h-11 pl-4 text-soft active:scale-[.96]"
         >
-          Sound {sound ? "on" : "off"}
+          Settings
         </button>
       </div>
 
@@ -1360,12 +1426,78 @@ export default function Drive() {
           </button>
           <button
             type="button"
+            onClick={() => setSettings(true)}
+            className="min-h-11 rounded-md px-4 font-semibold ring-1 ring-paper/25 active:scale-[.98]"
+          >
+            Settings
+          </button>
+          <button
+            type="button"
             onClick={() => togglePause.current()}
             className="min-h-11 rounded-md bg-paper px-4 font-semibold text-ink active:scale-[.98]"
           >
             Resume
           </button>
         </div>
+
+        {settings && (
+          <div
+            className="absolute inset-0 z-10 grid place-items-center bg-ink/70 p-4"
+            onClick={(e) => e.target === e.currentTarget && setSettings(false)}
+          >
+            <div
+              role="dialog"
+              aria-label="Settings"
+              className={`${panel} max-h-full w-full max-w-sm overflow-y-auto p-4 md:p-5`}
+            >
+              <p className="disp text-xl">Settings</p>
+              <Choice
+                name="Racing line"
+                value={aids.line}
+                options={[
+                  ["off", "Off"],
+                  ["corners", "Corners"],
+                  ["full", "Full"],
+                ]}
+                pick={(line) => aid({ line })}
+              />
+              <Choice
+                name="Braking point"
+                value={aids.brakes}
+                options={[
+                  [false, "Off"],
+                  [true, "On"],
+                ]}
+                pick={(brakes) => aid({ brakes })}
+              />
+              <Choice
+                name="Steering assist on the straights"
+                value={aids.assist}
+                options={[
+                  [false, "Off"],
+                  [true, "On"],
+                ]}
+                pick={(on) => aid({ assist: on })}
+              />
+              <Choice
+                name="Sound"
+                value={sound}
+                options={[
+                  [false, "Off"],
+                  [true, "On"],
+                ]}
+                pick={(on) => on !== sound && toggleSound()}
+              />
+              <button
+                type="button"
+                onClick={() => setSettings(false)}
+                className="mt-4 min-h-11 w-full rounded-md bg-paper px-4 font-semibold text-ink active:scale-[.98]"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        )}
 
         <div
           className={`${panel} pointer-events-none absolute top-2 right-2 p-2 transition-opacity duration-300 md:top-3 md:right-3 md:p-3 ${shown}`}
