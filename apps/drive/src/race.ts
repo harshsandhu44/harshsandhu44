@@ -525,8 +525,18 @@ const SC_PACE = 0.7;
 const SC_TOP = 50;
 const SC_STOP = 0.45;
 const VSC_STOP = 0.6;
-// The slowest a blue flag holds a car to (see the blue flags below).
+// The slowest a blue flag holds a car to, and how long its closing speed is averaged over (see
+// the blue flags below).
 const BLUE_V = 20;
+const CLOSE_T = 2;
+// Under the Safety Car, lapped cars are waved through from half a lap behind it, with more than
+// UNLAP_LAPS to go, at UNLAP_PACE of the corner speeds, and back in the queue once within
+// REJOIN m of its tail. ponytail: should one never get back, it rejoins where it is after
+// UNLAP_MAX laps behind the Safety Car.
+const UNLAP_LAPS = 3;
+const UNLAP_PACE = 1;
+const REJOIN = 150;
+const UNLAP_MAX = 4;
 
 export type Racer = {
   // Driver index into the level's roster: 0 is you, and id >> 1 is the team (and its box).
@@ -616,12 +626,15 @@ export type Racer = {
   damage: number;
   puncture: boolean;
   flat: number;
-  // Queued behind the Safety Car until it crosses the line at the restart; the top speed a Safety
-  // Car, VSC or blue flag holds it to; and the blue flag: 0, or the side (+1 right of the faster
-  // car) to move over to.
+  // Queued behind the Safety Car until it crosses the line at the restart, or lapped and waved
+  // through to the back of the queue; the top speed a Safety Car, VSC or blue flag holds it to;
+  // the blue flag: 0, or the side (+1 right of the faster car) to move over to; and how fast the
+  // car a lap up behind is closing (m/s, averaged).
   held: boolean;
+  unlap: boolean;
   cap: number;
   blue: number;
+  close: number;
 };
 
 // Race Control and your team radio, queued for the HUD. Chatter goes unsaid if it's waited
@@ -659,7 +672,9 @@ export type Race = {
   incidents: boolean;
   // A Safety Car or VSC: which, when a VSC ends, and whether it's ending (the Safety Car is in
   // this lap); and the Safety Car itself while it's on track, with how far it's driven.
-  neutral: { kind: "sc" | "vsc"; end: number; ending: boolean } | null;
+  // A VSC or Safety Car: when a VSC ends, whether it's ending, and whether lapped cars have been
+  // waved through.
+  neutral: { kind: "sc" | "vsc"; end: number; ending: boolean; wave: boolean } | null;
   sc: { car: Car; p: number; run: number } | null;
   // What your engineer last said, so it's said once (see engineer).
   eng: Engineer;
@@ -758,8 +773,10 @@ export function newRace(
       puncture: false,
       flat: 0,
       held: false,
+      unlap: false,
       cap: Infinity,
       blue: 0,
+      close: 0,
     };
   });
   for (const r of racers) r.lap.start = 0;
@@ -843,6 +860,12 @@ export function aiInput(r: Racer, race: Race): Input {
   }
   if (r.mistake >= 0 && fwd(CORNERS[r.mistake]!.at, m) < 200) r.mistake = -1;
   const at = atDist(m + 5);
+  // How far ahead on track another car is (behind, less than 0), so cars a lap apart are traffic
+  // to each other too.
+  const gap = (o: Racer) => {
+    const d = fwd(m, o.p * LENGTH);
+    return d > LENGTH / 2 ? d - LENGTH : d;
+  };
   // The profiles stop at TOP, so a car the 2026 power has taken past it looks down the road for
   // the first point under TOP and brakes for that in time; with none in sight, flat out.
   const gp = g * (r.mistake >= 0 ? 1.08 : r.pace * r.form);
@@ -866,7 +889,7 @@ export function aiInput(r: Racer, race: Race): Input {
   const ahead = (lane: number, from: number, to = 30) =>
     race.racers
       .filter((o) => {
-        const ds = o.dist - r.dist;
+        const ds = gap(o);
         const back = from < 0 ? from - Math.max(0, o.car.v - car.v) : from;
         return (
           o !== r &&
@@ -876,7 +899,7 @@ export function aiInput(r: Racer, race: Race): Input {
           Math.abs(off(o) - lane) < 2 * CAR_HALF_WIDTH + 0.2
         );
       })
-      .sort((a, b) => a.dist - b.dist)[0];
+      .sort((a, b) => gap(a) - gap(b))[0];
   const now = lateral(car.x, car.y, r.p);
   const mine = off(r);
   // Lanes are offsets from the line, kept on the tarmac.
@@ -892,7 +915,7 @@ export function aiInput(r: Racer, race: Race): Input {
     want = Math.min(want, Math.sqrt(PIT_V ** 2 + 2 * brake * Math.max(0, PIT_IN + 40 - s)));
     const block = ahead(mine, 0);
     if (block && block.car.v < car.v)
-      want = Math.min(want, block.car.v + Math.sqrt(16 * Math.max(0, block.dist - r.dist - 7)));
+      want = Math.min(want, block.car.v + Math.sqrt(16 * Math.max(0, gap(block) - 7)));
     // And for its box from the way in: a first box can be only metres past where the lane's out.
     const box = BOXES[r.id >> 1]!.s;
     if (!r.served && !r.through && Math.abs(box - s) < 60)
@@ -908,39 +931,37 @@ export function aiInput(r: Racer, race: Race): Input {
     // No unsafe release: at the box until nothing's coming down the fast lane from 20 m back.
     const fast = (o: Racer) => Math.abs(lateral(o.car.x, o.car.y, o.p) - pitOffset(i)) < 2.5;
     const traffic = race.racers.some(
-      (o) =>
-        o !== r &&
-        !o.out &&
-        o.pit &&
-        o.car.v > 2 &&
-        fast(o) &&
-        o.dist - r.dist > -20 &&
-        o.dist - r.dist < 4,
+      (o) => o !== r && !o.out && o.pit && o.car.v > 2 && fast(o) && gap(o) > -20 && gap(o) < 4,
     );
     if (r.served && s - box < 3 && traffic) want = 0;
   } else {
     // Off the line the corners are tighter than the line's speeds, so a driver who never makes
     // a mistake only pulls out with no corner coming, and is back on the line for the next. Under
-    // the Safety Car nobody pulls out.
-    const clear = !r.held && (slip > 0 || limitAt(at, g * r.pace * r.form, line) > car.v + PASS);
+    // the Safety Car nobody pulls out but the lapped cars waved through, past anything but each
+    // other, and kept off the Safety Car's line while near it.
+    const clear =
+      r.unlap || (!r.held && (slip > 0 || limitAt(at, g * r.pace * r.form, line) > car.v + PASS));
     if (!clear) r.lane = 0;
+    const sc = race.sc && r.unlap ? fwd(m, race.sc.p * LENGTH) : Infinity;
+    const bySc = sc < 150 || (sc < LENGTH && sc > LENGTH - 30);
+    if (bySc && !r.lane) r.lane = SPACE;
     // Sat in the tow until close enough to pull out and go by: from further back it'd only lose
     // the tow and have to drop in behind again.
     const block = ahead(lat(r.lane) - base, 0, PULL);
-    if (block && block.car.v < car.v + 1) {
+    if (block && block.car.v < car.v + 1 && !(r.unlap && block.unlap)) {
       // A blue-flagged car is passed whatever's coming.
       const free =
         clear || (block.blue && !r.held)
           ? [SPACE, -SPACE, 0].find((l) => !ahead(lat(l) - base, -8))
           : undefined;
       if (free !== undefined && race.t > r.laneT) [r.lane, r.laneT] = [free, race.t + 2000];
-    } else if (r.lane && race.t > r.laneT && !ahead(lat(0) - base, -10)) r.lane = 0;
+    } else if (r.lane && race.t > r.laneT && !bySc && !ahead(lat(0) - base, -10)) r.lane = 0;
     // Shown the blue flag, over to the side away from the faster car.
     to = lat(r.blue ? r.blue * SPACE : r.lane);
     // Behind a car where it is now, at a safe distance: looking far enough ahead to stop for a
     // queue at a hairpin.
     const front = ahead(mine, 0, 120);
-    if (front) want = Math.min(want, behind(front.car.v, front.dist - r.dist, g));
+    if (front) want = Math.min(want, behind(front.car.v, gap(front), g));
   }
   let held = false;
   if (r.pitting) {
@@ -950,12 +971,12 @@ export function aiInput(r: Racer, race: Race): Input {
     // rejoining together all squeeze onto one line and lean on each other to a stop.
     held = race.racers.some((o) => {
       const d = lateral(o.car.x, o.car.y, o.p) - now;
-      const gap = o.dist - r.dist;
+      const ds = gap(o);
       return (
         o !== r &&
         !o.out &&
-        Math.abs(gap) < 6 &&
-        !(s < 0 && gap < 0) &&
+        Math.abs(ds) < 6 &&
+        !(s < 0 && ds < 0) &&
         d * (to - now) > 0 &&
         Math.abs(d) < 3
       );
@@ -965,19 +986,21 @@ export function aiInput(r: Racer, race: Race): Input {
     // On track, a car's width for any car alongside, moving over to make it. With no room on its
     // side, the car further back lifts and drops in behind; the one ahead keeps what room it can.
     for (const o of race.racers) {
-      const gap = o.dist - r.dist;
+      const ds = gap(o);
       const lo = off(o) + base;
-      if (o === r || o.out || Math.abs(gap) > 2 * CAR_HALF_LENGTH + 1 || Math.abs(to - lo) >= SPACE)
+      if (o === r || o.out || Math.abs(ds) > 2 * CAR_HALF_LENGTH + 1 || Math.abs(to - lo) >= SPACE)
         continue;
       held = true;
       const side = Math.sign(mine - off(o)) || 1;
       to = Math.max(-room, Math.min(room, lo + side * SPACE));
-      if (Math.abs(to - lo) < SPACE - 0.1 && gap > 0) want = Math.min(want, o.car.v - 2);
+      if (Math.abs(to - lo) < SPACE - 0.1 && ds > 0) want = Math.min(want, o.car.v - 2);
     }
-  // A wreck ahead: round it on the side with more room, whatever's coming.
+  // A wreck ahead, or a car stopped on track (one that never left the grid, say): round it on the
+  // side with more room, whatever's coming.
   if (!r.pitting)
     for (const o of race.racers) {
-      if (!o.wreck || fwd(m, o.p * LENGTH) > 150) continue;
+      const stopped = o !== r && !o.out && !o.pit && o.car.v < 1 && !r.held && car.v > 5;
+      if (!(o.wreck || stopped) || fwd(m, o.p * LENGTH) > 150) continue;
       const lo = lateral(o.car.x, o.car.y, o.p);
       if (Math.abs(to - lo) < SPACE) to = lo + (lo > 0 ? -1 : 1) * SPACE;
     }
@@ -1114,6 +1137,17 @@ const LINES = {
     (k: string) => `${k} out. Box this lap.`,
     (k: string) => `${k}, cheap stop. Box, box.`,
     (k: string) => `Box under the ${k}. Box, box.`,
+  ],
+  // Lapped under the Safety Car: the team takes you through, then hands you back.
+  unlap: [
+    "You're lapped, we'll take you through to the back of the queue.",
+    "Lapped cars may overtake. We'll take you round to the back of the queue.",
+    "You can unlap yourself. We've got it, back of the queue.",
+  ],
+  rejoin: [
+    "Back of the queue. It's yours.",
+    "That's the lap back. You have control.",
+    "In the queue now, over to you.",
   ],
   puncture: [
     "Puncture. Box, box.",
@@ -1443,12 +1477,12 @@ function deploy(race: Race, kind: "sc" | "vsc") {
     if (n?.kind === "sc") return;
     if (n) n.end = Math.max(n.end, race.t + VSC_LAPS * lap);
     else {
-      race.neutral = { kind, end: race.t + VSC_LAPS * lap, ending: false };
+      race.neutral = { kind, end: race.t + VSC_LAPS * lap, ending: false, wave: false };
       say(race, "sc", -1, "Virtual Safety Car deployed");
     }
   } else if (n?.kind === "sc" && race.sc) [race.sc.run, n.ending] = [0, false];
   else {
-    race.neutral = { kind, end: Infinity, ending: false };
+    race.neutral = { kind, end: Infinity, ending: false, wave: false };
     // Out ahead of the leader, on the centreline.
     const { LENGTH, dirAt, pointAt, nearest } = race.track;
     const lead = rs.reduce((a, b) => (b.dist > a.dist ? b : a));
@@ -1624,7 +1658,7 @@ function cover(race: Race, r: Racer) {
 // Racing again: the wrecks are cleared away.
 function green(race: Race) {
   race.neutral = null;
-  for (const r of race.racers) r.wreck = false;
+  for (const r of race.racers) [r.wreck, r.unlap] = [false, false];
   say(race, "sc", -1, "Green flag");
 }
 // The Safety Car, VSC and blue flags for a frame: drives the Safety Car, ends a VSC, and sets
@@ -1632,6 +1666,7 @@ function green(race: Race) {
 function neutralise(race: Race, dt: number) {
   const { LENGTH, PIT_IN, ahead: fwd, atDist, lateral, limitAt, nearest, pointAt } = race.track;
   const rs = race.racers.filter((r) => !r.out);
+  const m0 = (r: Racer) => r.p * LENGTH;
   for (const r of rs) [r.cap, r.blue] = [Infinity, 0];
   const n = race.neutral;
   const pace = (m: number) => Math.min(SC_TOP, SC_PACE * limitAt(atDist(m + 5), 1));
@@ -1652,7 +1687,29 @@ function neutralise(race: Race, dt: number) {
     const p = nearest(sc.car.x, sc.car.y).p;
     sc.run += fwd(m, p * LENGTH);
     sc.p = p;
-    if (!n.ending && sc.run > 0.75 * LENGTH) {
+    // Lapped cars may overtake, F1's way: half a lap in, every lapped car goes by the queue and
+    // the Safety Car and round to the back of the queue, and it's in once the last is back.
+    const lead = rs.reduce((a, b) => (b.dist > a.dist ? b : a));
+    const down = (r: Racer) =>
+      Math.round((lead.dist - r.dist - fwd(r.p * LENGTH, lead.p * LENGTH)) / LENGTH);
+    if (!n.wave && sc.run > LENGTH / 2) {
+      n.wave = true;
+      const lapped = rs.filter((r) => r.finish === null && down(r) > 0);
+      if (race.laps - lead.laps > UNLAP_LAPS && lapped.length) {
+        for (const r of lapped) [r.unlap, r.held] = [true, false];
+        say(race, "sc", -1, "Lapped cars may overtake");
+        if (lapped.some((r) => r.id === 0)) radio(race, pick(LINES.unlap));
+      }
+    }
+    for (const r of rs) {
+      if (!r.unlap) continue;
+      const tail = rs.some((o) => o.held && !o.pit && fwd(m0(r), o.p * LENGTH) < REJOIN);
+      if ((down(r) <= 0 && tail) || sc.run > UNLAP_MAX * LENGTH) {
+        [r.unlap, r.held] = [false, true];
+        if (r.id === 0) radio(race, pick(LINES.rejoin));
+      }
+    }
+    if (!n.ending && sc.run > 0.75 * LENGTH && !rs.some((r) => r.unlap)) {
       n.ending = true;
       say(race, "sc", -1, "Safety Car in this lap");
     }
@@ -1669,23 +1726,35 @@ function neutralise(race: Race, dt: number) {
     let [gap, v] = race.sc ? [fwd(m, race.sc.p * LENGTH), race.sc.car.v] : [Infinity, 0];
     for (const o of rs) {
       const d = fwd(m, o.p * LENGTH);
-      if (o !== r && !o.pit && d < gap) [gap, v] = [d, o.car.v];
+      if (o !== r && !o.pit && !o.unlap && d < gap) [gap, v] = [d, o.car.v];
     }
     r.cap = race.sc || gap < 300 ? behind(v, gap, carGrip(race, r)) : pace(m);
   }
+  for (const r of rs)
+    if (r.unlap) r.cap = UNLAP_PACE * limitAt(atDist(m0(r) + 5), carGrip(race, r));
   if (race.neutral || rs.some((r) => r.held)) return;
-  // Blue flags: a car a lap or more up, up to 60 m behind on track, is let by, lifting to BLUE_V
-  // at the least: held to the car behind's speed alone, it stops when that car slows behind it,
-  // and the pair stop dead in a corner.
+  // Blue flags: a car a lap or more up, up to 60 m behind on track and closing (over CLOSE_T s,
+  // so not just braking later), is let by, lifting to BLUE_V at the least: held to the car
+  // behind's speed alone, it stops when that car slows behind it, and the pair stop dead in a
+  // corner. A lapped car pulling away from it, having unlapped itself, keeps the place.
   for (const r of rs) {
-    if (r.pit || r.finish !== null) continue;
-    for (const o of rs) {
-      const up = o.dist - r.dist > LENGTH / 2;
-      if (!up || o.pit || o.finish !== null || fwd(o.p * LENGTH, r.p * LENGTH) > 60) continue;
-      const side = lateral(r.car.x, r.car.y, r.p) - lateral(o.car.x, o.car.y, o.p);
-      r.blue = Math.sign(side) || 1;
-      r.cap = Math.min(r.cap, Math.max(BLUE_V, o.car.v - 6));
+    let near: Racer | undefined;
+    let gap = 60;
+    if (!r.pit && r.finish === null)
+      for (const o of rs) {
+        const up = o.dist - r.dist > LENGTH / 2;
+        const d = fwd(o.p * LENGTH, r.p * LENGTH);
+        if (up && !o.pit && o.finish === null && d <= gap) [near, gap] = [o, d];
+      }
+    if (!near) {
+      r.close = 0;
+      continue;
     }
+    r.close += (near.car.v - r.car.v - r.close) * Math.min(1, dt / CLOSE_T);
+    if (r.close <= 0) continue;
+    const side = lateral(r.car.x, r.car.y, r.p) - lateral(near.car.x, near.car.y, near.p);
+    r.blue = Math.sign(side) || 1;
+    r.cap = Math.min(r.cap, Math.max(BLUE_V, near.car.v - 6));
   }
 }
 
@@ -1759,7 +1828,8 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     if (!r.pit) r.through = false;
     else if (!r.pitting && (r.id || r.finish !== null)) r.through = true;
     if (r.pit) r.pitting = true;
-    const input = r.id === 0 && !r.pitting && r.finish === null && !failed ? you : aiInput(r, race);
+    const input =
+      r.id === 0 && !r.pitting && !r.unlap && r.finish === null && !failed ? you : aiInput(r, race);
     const moved = Math.abs(dp) < 0.02 && dp > 0;
     // Over the line once the Safety Car's in: racing again, the first across bringing the green.
     if (r.held && !race.sc && moved && p * LENGTH < from) {

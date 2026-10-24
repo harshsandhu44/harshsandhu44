@@ -200,7 +200,7 @@ const RULES: [string, string][] = [
   ],
   [
     "Safety Car & failures",
-    "Cars break down (about one in twenty-five a race, yours too), crash out on a big hit, take lasting damage from smaller ones, and puncture from contact or a set run to nothing; a puncture costs grip, not top speed, until you box, its wheel blinking red. A car stopped off the track brings the Virtual Safety Car: everyone is held to the same speed. A crash, or a car stopped on the track, brings the Safety Car: the field queues behind it with no passing, and racing starts again at the line once it's gone in. Your car is held to both for you, and a stop under either costs less. When a car a lap up catches you, the blue flag lets it by.",
+    "Cars break down (about one in twenty-five a race, yours too), crash out on a big hit, take lasting damage from smaller ones, and puncture from contact or a set run to nothing; a puncture costs grip, not top speed, until you box, its wheel blinking red. A car stopped off the track brings the Virtual Safety Car: everyone is held to the same speed. A crash, or a car stopped on the track, brings the Safety Car: the field queues behind it with no passing, and racing starts again at the line once it's gone in. Your car is held to both for you, and a stop under either costs less. With more than three laps to go, lapped cars are waved past the queue to its back first (the team drives you through), and the Safety Car comes in once the last is back. When a car a lap up catches you, the blue flag lets it by; pass it again and pull away, and you've unlapped yourself.",
   ],
   [
     "Track limits",
@@ -514,6 +514,7 @@ export default function Drive() {
   const otEl = useRef<HTMLSpanElement>(null);
   const scEl = useRef<HTMLSpanElement>(null);
   const blueEl = useRef<HTMLSpanElement>(null);
+  const unlapEl = useRef<HTMLSpanElement>(null);
   const otPad = useRef<HTMLButtonElement>(null);
   const batEl = useRef<HTMLSpanElement>(null);
   const batText = useRef<HTMLSpanElement>(null);
@@ -1178,6 +1179,7 @@ export default function Drive() {
       if (n && sc.lastChild!.textContent !== n.toUpperCase())
         sc.lastChild!.textContent = n.toUpperCase();
       blueEl.current!.hidden = !me.blue;
+      unlapEl.current!.hidden = !me.unlap;
       const otChip = otEl.current!;
       otChip.hidden = !me.ot;
       otChip.classList.toggle("bg-lamp", me.ot === "ready");
@@ -1680,6 +1682,10 @@ export default function Drive() {
             <span ref={scEl} hidden className={`${chip} bg-slow text-ink`}>
               <Car className="size-3.5" />
               <span>SC</span>
+            </span>
+            <span ref={unlapEl} hidden className={`${chip} bg-go text-ink`}>
+              <Flag className="size-3.5" />
+              Unlapping
             </span>
             <span ref={blueEl} hidden className={`${chip} bg-print text-paper`}>
               <Flag className="size-3.5" />
