@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.2.0...drive-v1.3.0) (2026-10-24)
+
+
+### Features
+
+* **drive:** team tiers, BMW livery and a 6 MJ battery ([#54](https://github.com/harshsandhu44/harshsandhu44/issues/54)) ([89d539d](https://github.com/harshsandhu44/harshsandhu44/commit/89d539d30095a429779a02a24cb012df5aa5d6e5))
+
 ## [1.2.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.1.0...drive-v1.2.0) (2026-10-24)
 
 
