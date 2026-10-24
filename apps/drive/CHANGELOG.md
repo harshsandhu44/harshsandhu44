@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.1.0...drive-v1.2.0) (2026-10-24)
+
+
+### Features
+
+* **drive:** favicon of your car from above ([#52](https://github.com/harshsandhu44/harshsandhu44/issues/52)) ([b3e3d94](https://github.com/harshsandhu44/harshsandhu44/commit/b3e3d940241063667977e83aaaaca56109f04949))
+
 ## [1.1.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.0.0...drive-v1.1.0) (2026-10-23)
 
 
