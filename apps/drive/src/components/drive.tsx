@@ -42,7 +42,7 @@ import { TRACKS, getTrack } from "@/tracks";
 
 // Your record per track. v2: Monza's real-length track; the v1 keys hold bests from the old short
 // one. ponytail: the old `-sectors-v2` keys are left in storage, unread.
-const BEST = (id: string) => `${id}-best-v2`;
+const BEST = (id: string) => `${id}-best-v3`;
 // The rest kept Monza's names from when it was the only track, so picks carry over.
 const TRACK = "drive-track";
 const SOUND = "monza-sound";
@@ -175,7 +175,7 @@ const RULES: [string, string][] = [
   ],
   [
     "2026 power",
-    "Straight Mode flattens the wings on the straights for every car, every lap, until you brake. The 4 MJ battery deploys by itself flat out, at 350 kW in the zones and 250 kW elsewhere, and recharges off the throttle (most on the brakes) and in the pit lane, up to 8.5 MJ a lap. Run it flat and the car super clips: it harvests at full throttle and loses speed (the reading turns red). From lap 2, within a second of the car ahead at a detection line (the painted line with the Overtake board), Overtake Mode is ready: Space for full power and more speed to the end of the next straight, and the next lap harvests faster, up to 9 MJ (the bar turns green).",
+    "Straight Mode flattens the wings on the straights for every car, every lap, until you brake. The 6 MJ battery deploys by itself flat out, at 350 kW in the zones and 250 kW elsewhere, and recharges off the throttle (most on the brakes) and in the pit lane, up to 12 MJ a lap. Run it flat and the car super clips: it harvests at full throttle and loses speed (the reading turns red). From lap 2, within a second of the car ahead at a detection line (the painted line with the Overtake board), Overtake Mode is ready: Space for full power and more speed to the end of the next straight, and the next lap harvests faster, up to 12.5 MJ (the bar turns green).",
   ],
 ];
 const PAD: ["left" | "right", string, string][] = [
@@ -472,7 +472,7 @@ export default function Drive() {
       ink: col("ink"),
       pit: col("pit"),
     };
-    const paintOf = (id: number) => colorOf(race, id) || C.accent;
+    const paintOf = (id: number) => colorOf(race, id);
     const flat = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const track = getTrack(trackId);
     const { LENGTH, ZONES, atDist, dirAt, limitAt, nextCorner } = track;
@@ -487,9 +487,10 @@ export default function Drive() {
     // plays behind it), then the lights come on a second apart and go out after an unannounced
     // pause, as in the hero. Qualifying runs the same phases with `quali` set: your race (`race`,
     // just you) and the computer's, one car each, ticked together. Its grid waits in `nextGrid`
-    // for the classification's button.
+    // for the classification's button, and its cars in `weekend` for the race on that grid.
     let race: Race;
     let quali: Race[] | null = null;
+    let weekend: number[] | undefined;
     let nextGrid: number[] | null = null;
     let scene: Scene | null = null;
     let phase: "grid" | "lights" | "racing" = "grid";
@@ -699,12 +700,13 @@ export default function Drive() {
         levelRef.current,
         lapsOf(DISTANCES[distRef.current]!, track),
         true,
+        lineupRef.current === GRID ? undefined : weekend,
       );
       quali = null;
       towerEl.current!.hidden = false;
       lapName.current!.textContent = "Lap";
       posEl.current!.classList.remove("text-go");
-      scene?.paint(LEVELS[race.level].colors);
+      scene?.paint(LEVELS[race.level].colors, LEVELS[race.level].liveries);
       phase = "grid";
       setGrid(true);
       pickWing(lineupRef.current === GRID ? track.WING : qualiWing.current);
@@ -792,6 +794,7 @@ export default function Drive() {
     qualify.current = () => {
       quali = newQuali(track, levelRef.current);
       race = quali[0]!;
+      weekend = race.cars;
       qualiWing.current = wingRef.current;
       [race.racers[0]!.wing, race.racers[0]!.nextWing] = [wingRef.current, wingRef.current];
       towerEl.current!.hidden = true;
@@ -1472,7 +1475,7 @@ export default function Drive() {
                 <span ref={batEl} className="block h-full origin-left rounded-full bg-paper" />
               </span>
               <span ref={batText} className="w-12 text-right whitespace-nowrap text-paper">
-                4.0 MJ
+                6.0 MJ
               </span>
             </div>
             <div ref={fitWrap} hidden className="pointer-events-auto mt-2 flex flex-col gap-1.5">
@@ -1845,8 +1848,7 @@ export default function Drive() {
                               <span
                                 className="h-3 w-1 shrink-0 rounded-full ring-1 ring-paper/25"
                                 style={{
-                                  background:
-                                    LEVELS[result.level].colors[r.id >> 1] || "var(--color-accent)",
+                                  background: LEVELS[result.level].colors[r.id >> 1],
                                 }}
                               />
                               <span className="font-semibold">{who.code}</span>

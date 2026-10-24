@@ -5,7 +5,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { CARS } from "@/race";
+import { CARS, type Livery } from "@/race";
 import { KERB_R, PIT_HALF, STAND_HALF, WORK, type Car, type Track } from "@/track";
 
 export type Colors = Record<"accent" | "carbon" | "paper" | "chrome" | "ink" | "pit", string>;
@@ -174,6 +174,57 @@ function instances(root: THREE.Object3D, mats: THREE.Matrix4[]) {
     g.add(im);
   });
   return g;
+}
+
+// Liveries (race.ts Livery), drawn on the body paint from the model's own coordinates, as its UVs
+// index a palette and a texture won't map: along the car from the tail (0) to the nose (1), and
+// across it from the centreline (0) to the side (1). ponytail: five layouts by eye, as the chase
+// camera sees them from above and behind.
+const LAYOUTS: Livery[0][] = ["fade", "split", "pods", "nose", "m"];
+const LIVERY_GLSL = `
+  vec3 q = (vLiv - livLo) / livSize;
+  float t = q.z, s = abs(q.x * 2.0 - 1.0);
+  vec3 col = livC[0];
+  if (livLayout == 0) {
+    col = mix(livC[0], livC[1], 1.0 - smoothstep(0.25, 0.65, t));
+    if (s < 0.12) col = livC[2];
+  } else if (livLayout == 1) {
+    col = t > 0.5 ? livC[0] : livC[1];
+    if (abs(t - 0.5) < 0.035) col = livC[2];
+  } else if (livLayout == 2) {
+    col = s > 0.55 ? livC[1] : livC[0];
+    if (abs(s - 0.55) < 0.06) col = livC[2];
+  } else if (livLayout == 3) {
+    col = t > 0.68 ? livC[1] : livC[0];
+    if (abs(t - 0.68) < 0.03) col = livC[2];
+  } else {
+    float d = t + 0.3 * s;
+    if (d > 0.7 && d < 0.85) col = livC[1 + int((d - 0.7) / 0.05)];
+  }
+  vec4 diffuseColor = vec4(col, opacity);`;
+function livery(m: THREE.MeshStandardMaterial, box: THREE.Box3) {
+  const u = {
+    livLayout: { value: 0 },
+    livC: { value: [0, 1, 2, 3].map(() => new THREE.Color()) },
+    livLo: { value: box.min },
+    livSize: { value: box.getSize(new THREE.Vector3()) },
+  };
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, u);
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vLiv;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvLiv = position;");
+    sh.fragmentShader = sh.fragmentShader
+      .replace(
+        "#include <common>",
+        "#include <common>\nvarying vec3 vLiv;\nuniform int livLayout;\nuniform vec3 livC[4];\nuniform vec3 livLo;\nuniform vec3 livSize;",
+      )
+      .replace("vec4 diffuseColor = vec4( diffuse, opacity );", LIVERY_GLSL);
+  };
+  return ([layout, ...colors]: Livery) => {
+    u.livLayout.value = LAYOUTS.indexOf(layout);
+    u.livC.value.forEach((c, k) => c.set(colors[k] ?? colors[0]!));
+  };
 }
 
 const place = (x: number, z: number, rot: number, sx: number, sy = sx, sz = sx) =>
@@ -810,15 +861,16 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
   }
 
   // The cars, about 5.5 m long. The model faces +z. Yours is the model; the others are clones,
-  // and each has its own copy of the body paint for paint() to set.
-  const paints: THREE.MeshStandardMaterial[][] = [];
+  // and each has its own copy of the body paint, in a livery for paint() to set.
+  const paints: ((l: Livery) => void)[][] = [];
   const bodies = Array.from({ length: CARS }, (_, k) => {
     const b = k ? car!.root.clone(true) : car!.root;
-    const paint: THREE.MeshStandardMaterial[] = [];
+    const paint: ((l: Livery) => void)[] = [];
     b.traverse((o) => {
       if (!(o instanceof THREE.Mesh) || o.material.name !== "red") return;
       o.material = o.material.clone();
-      paint.push(o.material);
+      o.geometry.computeBoundingBox();
+      paint.push(livery(o.material, o.geometry.boundingBox!));
     });
     paints.push(paint);
     b.scale.setScalar(5.5 / car!.size.z);
@@ -1034,15 +1086,15 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
       camera.fov = w < h ? 60 : 45;
       camera.updateProjectionMatrix();
     },
-    // Team colours, yours "" for the accent: its two cars, its box, garage and crew.
-    paint(teams: string[]) {
-      boxes.forEach((m, k) => m.color.set(teams[k] || C.accent));
-      garages.forEach((g, k) => g.band.color.set(teams[k] || C.accent));
+    // Team colours for its box, garage and crew, and its liveries on its two cars.
+    paint(teams: string[], liveries: Livery[]) {
+      boxes.forEach((m, k) => m.color.set(teams[k]!));
+      garages.forEach((g, k) => g.band.color.set(teams[k]!));
       const c = new THREE.Color();
       for (let i = 0; i < crewBody.count; i++)
-        crewBody.setColorAt(i, c.set(teams[Math.floor(i / SLOTS.length)] || C.accent));
+        crewBody.setColorAt(i, c.set(teams[Math.floor(i / SLOTS.length)]!));
       crewBody.instanceColor!.needsUpdate = true;
-      paints.forEach((ms, id) => ms.forEach((m) => m.color.set(teams[id >> 1] || C.accent)));
+      paints.forEach((ps, id) => ps.forEach((p) => p(liveries[id >> 1]!)));
     },
     skipIntro() {
       if (intro < 1) {

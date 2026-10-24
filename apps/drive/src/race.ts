@@ -38,8 +38,9 @@ export const lapsOf = ({ share }: (typeof DISTANCES)[number], track: Track) =>
 // dare use (so they brake earlier and corner slower, but run flat out on the straights), and
 // how often it overcooks a corner (never, for legends). Pro cars also get EDGE more grip: on the
 // best line at the limit the computer laps well off a clean human, so that closes it.
-// The field is eleven two-car teams. Driver 0 is you, in the car's own livery, and driver 1 your
-// teammate, the best driver whose team didn't make the top ten; then that series' top ten teams
+// The field is eleven two-car teams. Driver 0 is you, in BMW's livery, and driver 1 your
+// teammate, the best driver whose team didn't make the top ten (in F1, Rafael Câmara, F2's
+// leader, rated by eye a little above Lindblad's rookie rating); then that series' top ten teams
 // in championship order, each driver above their teammate. Standings as of 19 Oct 2026; F3
 // teams run three cars, so their best two. ponytail: colours are near each team's, by eye.
 // Refresh the rosters when the seasons turn over.
@@ -51,12 +52,37 @@ export const lapsOf = ({ share }: (typeof DISTANCES)[number], track: Track) =>
 // Räikkönen, at the team each is best known for. Their pace is their best season in
 // f1-analysis.com's model as a share of the best anyone had managed by then, as its scores grow
 // with the era. They never make a mistake, and their winner beats a clean race from you by a
-// second or two.
+// second or two. In F1, Hamilton and Verstappen are stars: STAR on top of their pace.
 export type Level = "amateur" | "intermediate" | "pro" | "legends";
-// ponytail: tuned in race.check.ts so pro's pole at Monza is about 1:20.5, a clean qualifying
-// lap from the player.
-const EDGE = 1.33;
-const LEGEND_EDGE = 1.38;
+// ponytail: tuned in race.check.ts so pro's pole at Monza is a clean qualifying lap from the
+// player (1:20.567 on the 4 MJ battery, about 1:20.1 on today's), Verstappen's in the best car.
+const EDGE = 1.3;
+const LEGEND_EDGE = 1.31;
+const STAR = 1.005;
+// Pro's cars, in tiers: your team and the top four, the midfield, and the back, in roster order.
+// Each weekend every tier deals its offsets (seconds a lap off the best car at Monza) to its teams
+// at random, so who's quickest within a tier changes and the tiers don't. An offset takes PER_S
+// of the car's grip and top speed a second; tuned in race.check.ts.
+export const TIERS = [
+  [0, 0.025, 0.05, 0.075, 0.1],
+  [0.375, 0.4, 0.425],
+  [0.875, 0.9, 0.925],
+];
+const PER_S = 0.02;
+// Each team's car, as a share of the best's grip and top speed: from offsets in team order, or
+// drawn for a weekend (all the best car below pro).
+export const carsOf = (offsets: number[]) => offsets.map((s) => 1 - PER_S * s);
+export const drawCars = (lv: Level, rand = Math.random) =>
+  carsOf(
+    lv === "pro"
+      ? TIERS.flatMap((t) =>
+          t
+            .map((s) => [rand(), s] as const)
+            .sort((a, b) => a[0] - b[0])
+            .map(([, s]) => s),
+        )
+      : Array<number>(CARS / 2).fill(0),
+  );
 // How far under its limit (m/s) a legend has to be to pull out and pass.
 const PASS = 15;
 // A computer car's form, drawn fresh each lap: up to this share either side of its pace and top
@@ -89,7 +115,7 @@ const aim = (car: Car, [x, y]: [number, number]) => {
 export const edgeOf = ({ level: lv, track }: Race) =>
   (lv === "pro" ? track.PRO_EDGE : lv === "legends" ? track.LEGENDS_EDGE : undefined) ??
   LEVELS[lv].edge;
-// A car's grip on its tyres and wing: a computer car's scaled by its edge. Close behind another car its
+// A car's grip on its tyres, wing and car: a computer car's scaled by its edge. Close behind another car its
 // dirty air takes some of that, and so do cold tyres and damage; on a puncture it has little.
 export const carGrip = (race: Race, r: Racer) => {
   const g =
@@ -98,12 +124,35 @@ export const carGrip = (race: Race, r: Racer) => {
     (r.id ? edgeOf(race) : 1) *
     (1 - r.dirty) *
     (1 - COLD * (1 - r.warm)) *
-    (1 - r.damage);
+    (1 - r.damage) *
+    race.cars[r.id >> 1]!;
   return r.puncture ? Math.max(MOST_WORN, g * 0.6) : g;
 };
 // Awareness defaults to pace, for the levels that rate only by championship place.
-type Seat = [code: string, name: string, pace: number, aware?: number];
-type Team = [color: string, a: Seat, b: Seat];
+type Seat = [code: string, name: string, pace: number, aware?: number, star?: boolean];
+// A car's paint (scene.ts draws the layouts): a base colour, a second and a stripe, and for BMW's
+// M stripes a third. F1's are each team's by eye; the rest are made from the team's colour.
+export type Livery = [
+  layout: "fade" | "split" | "pods" | "nose" | "m",
+  base: string,
+  ...more: string[],
+];
+type Team = [color: string, a: Seat, b: Seat, livery?: Livery];
+// Your team, in every series: BMW, white with the M stripes, its box and crew in BMW blue.
+const BMW = "#1c69d4";
+const BMW_LIVERY: Livery = ["m", "#f2f2ef", "#5fb4ec", "#1c3f94", "#e2231a"];
+const AUTO = ["fade", "split", "pods", "nose"] as const;
+// A team colour at 40%, and whether it's pale enough to want a dark stripe.
+const shade = (c: string) =>
+  `#${[1, 3, 5]
+    .map((k) =>
+      Math.round(parseInt(c.slice(k, k + 2), 16) * 0.4)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
+const pale = (c: string) =>
+  [1, 3, 5].reduce((n, k) => n + parseInt(c.slice(k, k + 2), 16), 0) > 3 * 180;
 const level = (
   series: string,
   line: number,
@@ -113,7 +162,7 @@ const level = (
   mate: Seat,
   teams: Team[],
 ) => {
-  const all: Team[] = [["", ["HAR", "You", 0], mate], ...teams];
+  const all: Team[] = [[BMW, ["HAR", "You", 0], mate, BMW_LIVERY], ...teams];
   return {
     series,
     line,
@@ -121,9 +170,13 @@ const level = (
     slip,
     edge,
     colors: all.map(([c]) => c),
+    liveries: all.map(
+      ([c, , , livery], k): Livery =>
+        livery ?? [AUTO[k % AUTO.length]!, c, shade(c), pale(c) ? "#15151e" : "#f2f2ef"],
+    ),
     drivers: all
       .flatMap(([, a, b]) => [a, b])
-      .map(([code, name, pace, aware = pace]) => ({ code, name, pace, aware })),
+      .map(([code, name, pace, aware = pace, star = false]) => ({ code, name, pace, aware, star })),
   };
 };
 export const LEVELS: Record<Level, ReturnType<typeof level>> = {
@@ -175,18 +228,68 @@ export const LEVELS: Record<Level, ReturnType<typeof level>> = {
     [0.98, 0.93],
     0.015,
     EDGE,
-    ["PER", "Sergio Pérez", 85, 81],
+    ["CAM", "Rafael Câmara", 84, 76],
     [
-      ["#27f4d2", ["ANT", "Kimi Antonelli", 93, 77], ["RUS", "George Russell", 92, 93]],
-      ["#a6051a", ["HAM", "Lewis Hamilton", 90, 91], ["LEC", "Charles Leclerc", 93, 91]],
-      ["#ff8000", ["NOR", "Lando Norris", 94, 85], ["PIA", "Oscar Piastri", 91, 84]],
-      ["#1e41ff", ["VER", "Max Verstappen", 97, 82], ["HAD", "Isack Hadjar", 87, 82]],
-      ["#6692ff", ["LAW", "Liam Lawson", 81, 74], ["LIN", "Arvid Lindblad", 78, 66]],
-      ["#ff87bc", ["GAS", "Pierre Gasly", 86, 78], ["COL", "Franco Colapinto", 75, 74]],
-      ["#b6babd", ["BEA", "Oliver Bearman", 84, 70], ["OCO", "Esteban Ocon", 84, 84]],
-      ["#4a4f55", ["HUL", "Nico Hülkenberg", 85, 85], ["BOR", "Gabriel Bortoleto", 82, 77]],
-      ["#64c4ff", ["SAI", "Carlos Sainz", 85, 80], ["ALB", "Alexander Albon", 83, 76]],
-      ["#229971", ["ALO", "Fernando Alonso", 90, 85], ["STR", "Lance Stroll", 76, 73]],
+      [
+        "#27f4d2",
+        ["ANT", "Kimi Antonelli", 93, 77],
+        ["RUS", "George Russell", 92, 93],
+        ["fade", "#c3c8cc", "#121416", "#27f4d2"],
+      ],
+      [
+        "#a6051a",
+        ["HAM", "Lewis Hamilton", 95, 91, true],
+        ["LEC", "Charles Leclerc", 93, 91],
+        ["pods", "#c8102e", "#1a1a1a", "#f2f2ef"],
+      ],
+      [
+        "#ff8000",
+        ["NOR", "Lando Norris", 94, 85],
+        ["PIA", "Oscar Piastri", 91, 84],
+        ["split", "#ff8000", "#23272b", "#f2f2ef"],
+      ],
+      [
+        "#1e41ff",
+        ["VER", "Max Verstappen", 97, 82, true],
+        ["HAD", "Isack Hadjar", 87, 82],
+        ["nose", "#1e2a5e", "#d71e28", "#ffcc00"],
+      ],
+      [
+        "#6692ff",
+        ["LAW", "Liam Lawson", 81, 74],
+        ["LIN", "Arvid Lindblad", 78, 66],
+        ["fade", "#f2f2ef", "#1634cc", "#d71e28"],
+      ],
+      [
+        "#ff87bc",
+        ["GAS", "Pierre Gasly", 86, 78],
+        ["COL", "Franco Colapinto", 75, 74],
+        ["split", "#ff87bc", "#0a2a8a", "#f2f2ef"],
+      ],
+      [
+        "#b6babd",
+        ["BEA", "Oliver Bearman", 84, 70],
+        ["OCO", "Esteban Ocon", 84, 84],
+        ["pods", "#e8e9ea", "#1a1a1a", "#d4002a"],
+      ],
+      [
+        "#4a4f55",
+        ["HUL", "Nico Hülkenberg", 85, 85],
+        ["BOR", "Gabriel Bortoleto", 82, 77],
+        ["fade", "#a7abb0", "#141414", "#f50537"],
+      ],
+      [
+        "#64c4ff",
+        ["SAI", "Carlos Sainz", 85, 80],
+        ["ALB", "Alexander Albon", 83, 76],
+        ["nose", "#041e42", "#64c4ff", "#f2f2ef"],
+      ],
+      [
+        "#229971",
+        ["ALO", "Fernando Alonso", 90, 85],
+        ["STR", "Lance Stroll", 76, 73],
+        ["pods", "#0b6b56", "#04352b", "#cedc00"],
+      ],
     ],
   ),
   // ponytail: tuned in race.check.ts against pro.
@@ -213,7 +316,7 @@ export const LEVELS: Record<Level, ReturnType<typeof level>> = {
 };
 export const CARS = 22;
 export const driver = (race: Race, id: number) => LEVELS[race.level].drivers[id]!;
-// A car's colour: its team's, or "" for yours.
+// A car's colour: its team's.
 export const colorOf = (race: Race, id: number) => LEVELS[race.level].colors[id >> 1]!;
 
 // The grid without qualifying, as driver ids front to back: the computer in roster order, then
@@ -366,24 +469,25 @@ const CALL: Record<Level, number> = {
 };
 
 // 2026 power, all as a higher drag-limited top speed: Straight Mode (flat wings in the zones,
-// every car, every lap) about 10 km/h, deploying the battery at 350 kW 11 more, and Overtake Mode
-// 9 on top. Super clipping, harvesting flat out, costs about 11.
+// every car, every lap) about 10 km/h, deploying the battery at 350 kW 18 more, so 370 in a zone,
+// and Overtake Mode 9 on top. Super clipping, harvesting flat out, costs about 2: 350 in a zone.
 const STRAIGHT_TOP = 2.8;
-const DEPLOY_TOP = 3.1;
+const DEPLOY_TOP = 5;
 const OT_TOP = 2.5;
-const CLIP_TOP = -3;
-// The battery in MJ, as the 2026 rules have it: 4 usable. It deploys by itself flat out above
-// 40 m/s, at 350 kW (0.35 MJ a second, about 11 s from full) in the zones and in Overtake Mode and
+const CLIP_TOP = -0.6;
+// The battery in MJ: 6 usable, more than the 2026 rules' 4. It deploys by itself flat out above
+// 40 m/s, at 350 kW (0.35 MJ a second, about 17 s from full) in the zones and in Overtake Mode and
 // 250 kW elsewhere, for less speed. It harvests HARVEST MJ a second on the brakes, half that
-// coasting, and CLIP flat out on an empty battery (super clipping) until it's back to 1 MJ; up to
-// 8.5 MJ a lap, or 9 MJ, a quarter faster, the lap after a car was within a second at a detection
-// line. The pit lane puts back about 2 MJ a trip on top.
-export const CAP = 4;
+// coasting, and CLIP flat out on an empty battery (super clipping) until it's back to CLIP_TO; up
+// to 12 MJ a lap, or 12.5 MJ, a quarter faster, the lap after a car was within a second at a
+// detection line. The pit lane puts back about 2 MJ a trip on top.
+export const CAP = 6;
 const KW350 = 0.35;
 const KW250 = 0.25;
-const HARVEST = 0.49;
+const HARVEST = 0.65;
 const CLIP = 0.2;
-const LAP_HARVEST = 8.5;
+const CLIP_TO = 1.5;
+const LAP_HARVEST = 12;
 const OT_HARVEST = 0.5;
 
 // The pit limiter and the stop at the box. ponytail: 120 km/h, not F1's 80, so a stop costs
@@ -419,6 +523,8 @@ const SC_PACE = 0.7;
 const SC_TOP = 50;
 const SC_STOP = 0.45;
 const VSC_STOP = 0.6;
+// The slowest a blue flag holds a car to (see the blue flags below).
+const BLUE_V = 20;
 
 export type Racer = {
   // Driver index into the level's roster: 0 is you, and id >> 1 is the team (and its box).
@@ -528,6 +634,8 @@ export type Race = {
   level: Level;
   laps: number;
   racers: Racer[];
+  // Each team's car (see drawCars), for the weekend.
+  cars: number[];
   // Milliseconds since the lights went out, and the first car's time at each checkpoint.
   t: number;
   cps: number[];
@@ -559,6 +667,7 @@ export function newRace(
   lv: Level = "intermediate",
   laps = SPRINT,
   incidents = false,
+  cars = drawCars(lv, rand),
 ): Race {
   // Computer paces spread across the level's range by pace rating, and mistakes around its rate
   // by awareness, from half for the most aware to one and a half for the least. Everyone lines up
@@ -597,7 +706,10 @@ export function newRace(
       stop: 0,
       served: false,
       pit: false,
-      pace: id === 0 ? pace[0] : pace[1] + (pace[0] - pace[1]) * spread("pace", id),
+      pace:
+        id === 0
+          ? pace[0]
+          : (pace[1] + (pace[0] - pace[1]) * spread("pace", id)) * (drivers[id]!.star ? STAR : 1),
       stops: strat.at,
       plan: strat.tyres,
       pitting: false,
@@ -655,6 +767,7 @@ export function newRace(
     level: lv,
     laps,
     racers,
+    cars,
     t: 0,
     cps: [],
     done: false,
@@ -875,12 +988,18 @@ export function aiInput(r: Racer, race: Race): Input {
 // at the centreline's speed there. Every car is alone in a race of its own, yours first, all ticked
 // together so they start the lap at about the same moment. No stops, and mistakes still happen.
 const RUN_UP = 500;
-export function newQuali(track: Track, lv: Level, rand = Math.random): Race[] {
+// Every car's run on the weekend's cars.
+export function newQuali(
+  track: Track,
+  lv: Level,
+  rand = Math.random,
+  cars = drawCars(lv, rand),
+): Race[] {
   const { LENGTH, atDist, dirAt, limitAt, pointAt } = track;
   const m = -RUN_UP;
   const p = (m + LENGTH) / LENGTH;
   return [...Array(CARS).keys()].map((id) => {
-    const race = newRace(track, GRID, rand, "soft", lv, 1);
+    const race = newRace(track, GRID, rand, "soft", lv, 1, false, cars);
     const r = race.racers[id]!;
     const [x, y] = pointAt(m, 0);
     const v = Math.min(TOP, limitAt(atDist(m), grip(1, "soft")));
@@ -1396,9 +1515,9 @@ function battery(race: Race, r: Racer, input: Input, dt: number) {
     r.charge += got;
     r.harvested += got;
   };
-  // Clipping until back to 1 MJ, unless the lap's allowance runs out first.
+  // Clipping until back to CLIP_TO, unless the lap's allowance runs out first.
   const flat = input.gas && v > 40;
-  if (!flat || r.charge >= 1 || room <= 0) r.clipping = false;
+  if (!flat || r.charge >= CLIP_TO || room <= 0) r.clipping = false;
   else if (r.charge <= 0) r.clipping = true;
   if (r.clipping) {
     harvest(CLIP * dt);
@@ -1543,7 +1662,9 @@ function neutralise(race: Race, dt: number) {
     r.cap = race.sc || gap < 300 ? behind(v, gap, carGrip(race, r)) : pace(m);
   }
   if (race.neutral || rs.some((r) => r.held)) return;
-  // Blue flags: a car a lap or more up, up to 60 m behind on track, is let by.
+  // Blue flags: a car a lap or more up, up to 60 m behind on track, is let by, lifting to BLUE_V
+  // at the least: held to the car behind's speed alone, it stops when that car slows behind it,
+  // and the pair stop dead in a corner.
   for (const r of rs) {
     if (r.pit || r.finish !== null) continue;
     for (const o of rs) {
@@ -1551,7 +1672,7 @@ function neutralise(race: Race, dt: number) {
       if (!up || o.pit || o.finish !== null || fwd(o.p * LENGTH, r.p * LENGTH) > 60) continue;
       const side = lateral(r.car.x, r.car.y, r.p) - lateral(o.car.x, o.car.y, o.p);
       r.blue = Math.sign(side) || 1;
-      r.cap = Math.min(r.cap, o.car.v - 6);
+      r.cap = Math.min(r.cap, Math.max(BLUE_V, o.car.v - 6));
     }
   }
 }
@@ -1644,7 +1765,7 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
       dt,
       onGrass(edge),
       g,
-      top * (1 - r.damage) * r.form * wingTop(r.wing),
+      top * (1 - r.damage) * r.form * wingTop(r.wing) * race.cars[r.id >> 1]!,
     );
     // Held to a Safety Car, the VSC or a blue flag, braking down to it; limping, slowing gently so
     // nobody runs into the back of it.
