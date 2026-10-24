@@ -97,7 +97,9 @@ export function assist(race: Race, me: Racer, input: Input): Input {
   const i = atDist(look);
   let to = Math.max(-HALF[i]! + 1.5, Math.min(HALF[i]! - 1.5, RACING[i]!));
   const blocked = race.racers.some((o) => {
-    if (o === me || o.out || Math.abs(o.dist - me.dist) > 2 * CAR_HALF_LENGTH + 2) return false;
+    // Alongside on track, a lap apart or not.
+    const d = race.track.ahead(m, o.p * LENGTH);
+    if (o === me || o.out || Math.min(d, LENGTH - d) > 2 * CAR_HALF_LENGTH + 2) return false;
     const lo = lateral(o.car.x, o.car.y, o.p);
     return (lo - now) * (to - now) > 0 && Math.abs(lo - now) < 2 * CAR_HALF_WIDTH + 1.5;
   });

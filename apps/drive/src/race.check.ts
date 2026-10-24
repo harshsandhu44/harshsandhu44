@@ -1153,6 +1153,74 @@ for (const id of [11, 0]) {
   assert.ok(blue, `${id ? "the computer" : "you"}: shown the blue flag`);
   assert.ok(monza.ahead(at(slow), at(fast)) < LENGTH / 2, `${id ? "the computer" : "you"}: let by`);
 }
+// Unlapping on track: a lapped car clearly quicker than the leader (only a little, and the tow
+// brings the leader back to it) goes by it and, pulling away, isn't shown the blue flag to give
+// the place back.
+{
+  const race = newRace(monza, GRID, seeded(7), "medium", "pro", 10);
+  race.racers = race.racers.filter((r) => r.id === 10 || r.id === 11);
+  race.slips = false;
+  const [lead, lapped] = [
+    race.racers.find((r) => r.id === 10)!,
+    race.racers.find((r) => r.id === 11)!,
+  ];
+  const put = (r: typeof lead, m: number, laps: number) => {
+    const [x, y] = pointAt(m, 0);
+    Object.assign(r.car, { x, y, h: dirAt(m / LENGTH), v: 60 });
+    [r.p, r.dist, r.launch, r.laps, r.stops] = [nearest(x, y).p, laps * LENGTH + m, 0, laps, []];
+  };
+  put(lead, 3960, 3);
+  put(lapped, 3900, 2);
+  lead.pace = 0.7;
+  const at = (r: typeof lead) => r.p * LENGTH;
+  let blue = 0;
+  run(race, 120, () => {
+    if (monza.ahead(at(lead), at(lapped)) < LENGTH / 2) blue += lapped.blue ? 1 : 0;
+    return false;
+  });
+  const by = monza.ahead(at(lead), at(lapped));
+  assert.ok(by < LENGTH / 2 && by > 100, `the lapped car goes by and away (${by.toFixed(0)} m)`);
+  assert.equal(blue, 0, "and isn't shown the blue flag to give it back");
+}
+// Lapped cars may overtake under the Safety Car: yours, a lap down, is taken past the queue and
+// the Safety Car and round to its back, and the Safety Car comes in only once it's there.
+{
+  const race = incident([0, 2, 4, 6, 8, 10, 12, 14]);
+  const me = race.racers.find((r) => r.id === 0)!;
+  const drive = (secs: number, until = () => false) => {
+    for (let f = 0; f < secs / DT && !until(); f++) tick(race, aiInput(me, race), DT);
+  };
+  drive(90);
+  [me.dist, me.laps] = [me.dist - LENGTH, me.laps - 1];
+  const x = race.racers.find((r) => r.id === 14)!;
+  const [px, py] = pointAt(-150, HALF[0]! - 1);
+  Object.assign(x.car, { x: px, y: py, h: dirAt(nearest(px, py).p) + Math.PI / 2, v: 60 });
+  x.launch = Infinity;
+  drive(1, () => x.out !== null);
+  assert.equal(race.neutral?.kind, "sc", "a crash brings the Safety Car");
+  let [waved, early] = [false, false];
+  const from = race.t;
+  drive(600, () => {
+    waved ||= me.unlap;
+    early ||= !!race.neutral?.ending && me.unlap;
+    return race.neutral === null;
+  });
+  const rest = race.racers.filter((r) => r !== x);
+  const lead = rest.reduce((a, b) => (b.dist > a.dist ? b : a));
+  const texts = race.msgs.map((m) => m.text);
+  console.log(`Unlapping: Safety Car out ${((race.t - from) / 1000).toFixed(0)} s`);
+  assert.ok(texts.includes("Lapped cars may overtake") && waved, "lapped cars are waved through");
+  assert.ok(!early, "the Safety Car's in only once they're back");
+  assert.ok(race.neutral === null && !me.unlap, "and racing starts again");
+  assert.ok(
+    lead.dist - me.dist < 200,
+    `back on the lead lap (${(lead.dist - me.dist).toFixed(0)} m)`,
+  );
+  assert.ok(
+    rest.every((r) => r === me || r.dist > me.dist),
+    "at the back of the queue",
+  );
+}
 // With incidents on, every race still gets done, and close walls don't take the field: about four
 // crash-outs a race at most, the street circuits included.
 for (const { id, name } of TRACKS) {
