@@ -17,7 +17,7 @@ const hanken = Hanken_Grotesk({
 
 export const metadata: Metadata = {
   title: "Drive",
-  description: "Race an F1 car round Monza, Spa, Silverstone, Interlagos and the Red Bull Ring.",
+  description: "Race an F1 car round ten tracks, from Monza and Spa to Monaco and Las Vegas.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
