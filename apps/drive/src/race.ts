@@ -1584,12 +1584,13 @@ function impact(race: Race, r: Racer, loss: number, limit: number) {
   if (loss > DENT) r.damage = Math.min(DAMAGE, r.damage + (0.05 * (loss - DENT)) / (limit - DENT));
   if (limit === SMASH && loss > 8 && race.rand() < 0.08) puncture(race, r);
 }
-// A puncture, on a wheel picked at random by a hit or the most worn as a set runs out: with
-// damage too it's the end, else the car boxes at the first chance.
+// A puncture, on a wheel picked at random by a hit (with Math.random: it's only shown, so it
+// leaves the race's dice alone) or the most worn as a set runs out: with damage too it's the end,
+// else the car boxes at the first chance.
 function puncture(race: Race, r: Racer, worn = false) {
   if (r.puncture) return;
   r.puncture = true;
-  r.flat = worn ? r.wear.indexOf(Math.min(...r.wear)) : Math.floor(race.rand() * 4);
+  r.flat = worn ? r.wear.indexOf(Math.min(...r.wear)) : Math.floor(Math.random() * 4);
   say(race, "out", r.id, `Puncture · ${code(race, r)}`);
   if (r.damage > 0.1) {
     [r.failAt, r.fault] = [r.dist + 1, "Puncture damage"];
