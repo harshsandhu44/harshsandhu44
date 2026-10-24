@@ -3,6 +3,23 @@
 import { useEffect, useRef, useState } from "react";
 import { assist, guide, type Line } from "@/assist";
 import { createAudio, MIX, rpm, type Audio, type Mix } from "@/audio";
+import {
+  Bolt,
+  Car,
+  Chassis,
+  Cog,
+  Flag,
+  Headset,
+  Out,
+  Pit,
+  Roundel,
+  Stopwatch,
+  Straight,
+  Warned,
+  Warning,
+  Wing,
+  Wrench,
+} from "@/components/icons";
 import type { Scene } from "@/scene";
 import {
   CAP,
@@ -201,10 +218,28 @@ const padKey =
   "pointer-events-auto grid h-16 min-w-16 touch-none place-items-center rounded-lg bg-ink/70 text-2xl text-paper ring-1 ring-paper/25 select-none active:bg-lamp";
 const kbd = "rounded-sm bg-lamp px-1.5 py-0.5 text-xs font-semibold text-paper";
 const panel = "rounded-lg bg-ink/85 text-paper tabular-nums";
+// The HUD's panels, as the F1 games draw them: translucent, square, the outer ends slanted.
+const hud = "bg-ink/75 text-paper tabular-nums backdrop-blur-sm";
+const slantR = "[clip-path:polygon(0_0,100%_0,calc(100%-14px)_100%,0_100%)]";
+const slantL = "[clip-path:polygon(14px_0,100%_0,100%_100%,0_100%)]";
+const chip = "flex items-center gap-1 rounded-sm px-1.5 py-0.5";
+// A sector's colour, as its time and the bar under it.
+const SECTOR_INK = { fl: "text-fl", pb: "text-go", slow: "text-slow", bad: "text-accent", "": "" };
+const SECTOR_BAR = { fl: "bg-fl", pb: "bg-go", slow: "bg-slow", bad: "bg-accent", "": "bg-lamp" };
+// Race Control's icon for each kind of message (the Safety Car's end is its green flag).
+const RC_ICONS = [
+  ["radio", Headset, "text-accent"],
+  ["limits", Warning, "text-slow"],
+  ["flag", Warned, "text-paper"],
+  ["penalty", Stopwatch, "text-accent"],
+  ["fastest", Stopwatch, "text-fl"],
+  ["sc", Car, "text-slow"],
+  ["green", Flag, "text-go"],
+  ["out", Out, "text-accent"],
+] as const;
 const label = "text-sm text-soft";
 const TYRE_CELL =
   "w-8 rounded-sm py-0.5 text-center text-[11px] leading-none font-semibold text-ink tabular-nums";
-const sector = "rounded-sm bg-lamp px-1.5 py-0.5 text-sm text-soft md:px-2 md:text-[15px]";
 const secs = (ms: number) => (ms / 1000).toFixed(3);
 // A gap in seconds as F1 shows it: seconds under a minute, then minutes too.
 const plus = (s: number, dp = 3) => {
@@ -484,8 +519,8 @@ export default function Drive() {
   const limitsEl = useRef<HTMLDivElement>(null);
   const rcEl = useRef<HTMLDivElement>(null);
   const rcLabel = useRef<HTMLSpanElement>(null);
-  const rcFlag = useRef<HTMLSpanElement>(null);
-  const rcLight = useRef<HTMLSpanElement>(null);
+  const rcIcon = useRef<HTMLSpanElement>(null);
+  const damageEl = useRef<HTMLSpanElement>(null);
   const rcText = useRef<HTMLSpanElement>(null);
 
   // Holding a touch control sets its flag; any press also hands the car to the touch controls.
@@ -582,17 +617,13 @@ export default function Drive() {
 
     // F1's colours: purple the quickest anyone's been this race, green your own best, yellow slower,
     // red on a lap past the track limits.
-    const paintSector = (i: number, text: string, cls: "fl" | "pb" | "slow" | "bad" | "") => {
+    const paintSector = (i: number, text: string, cls: keyof typeof SECTOR_INK) => {
       const el = sectorEls.current[i]!;
-      el.lastChild!.textContent = text;
-      el.classList.toggle("bg-fl", cls === "fl");
-      el.classList.toggle("bg-go", cls === "pb");
-      el.classList.toggle("bg-slow", cls === "slow");
-      el.classList.toggle("bg-accent", cls === "bad");
-      el.classList.toggle("bg-lamp", cls === "");
-      el.classList.toggle("text-soft", cls === "");
-      el.classList.toggle("text-paper", cls === "bad");
-      el.classList.toggle("text-ink", cls !== "" && cls !== "bad");
+      const [time, bar] = el.children as unknown as HTMLElement[];
+      time!.textContent = text || `S${i + 1}`;
+      time!.className = SECTOR_INK[cls];
+      bar!.className = `h-0.5 rounded-full ${SECTOR_BAR[cls]}`;
+      el.dataset.cls = cls;
     };
 
     const ac = new AbortController();
@@ -719,17 +750,19 @@ export default function Drive() {
         const row = towerEls.current[k]!;
         row.hidden = cut ? k >= n - 3 && Math.abs(k - at) > 1 : k >= n;
         row.classList.toggle("border-t", cut && k === at - 1);
-        const [num, sw, code, fl, pen, right] = row.children as unknown as HTMLElement[];
+        const [num, sw, code, fl, pit, pen, right] = row.children as unknown as HTMLElement[];
         num!.textContent = String(k + 1);
-        const [tyre, g] = right!.children as unknown as HTMLElement[];
+        const [tyre, out, g] = right!.children as unknown as HTMLElement[];
+        pit!.hidden = !r.pit || !!r.out;
+        out!.hidden = !r.out;
         sw!.style.background = paintOf(r.id);
         code!.textContent = driver(race, r.id).code;
         fl!.hidden = race.fastest?.id !== r.id;
         pen!.hidden = !r.penalty;
         pen!.textContent = `+${r.penalty / 1000}s`;
         tyre!.hidden = m !== "Tyres" || !!r.out;
-        tyre!.textContent = letter(r.tyre);
-        tyre!.className = `font-semibold ${TYRE_INK[r.tyre]}`;
+        tyre!.querySelector("text")!.textContent = letter(r.tyre);
+        tyre!.className = TYRE_INK[r.tyre];
         row.classList.toggle("opacity-50", !!r.out);
         const down = r.finish !== null ? race.laps - r.laps : Math.floor((lead - r.dist) / LENGTH);
         // Order is by distance and gaps by checkpoint, so a car just out of the pits can time in
@@ -988,12 +1021,13 @@ export default function Drive() {
         }
         // Off the track: the sector you're in goes red there and then, and so does the rest of the lap.
         const k = me.lap.marks.length;
-        if (me.lap.invalid && !sectorEls.current[k]!.classList.contains("bg-accent"))
+        if (me.lap.invalid && sectorEls.current[k]!.dataset.cls !== "bad")
           paintSector(k, "", "bad");
         if (split?.lap) {
           const l = lastEl.current!;
           l.textContent = fmt(split.lap);
           l.classList.toggle("text-accent", !split.valid);
+          l.classList.toggle("text-paper", split.valid);
           if (me.best) bestEl.current!.textContent = fmt(me.best);
           if (split.valid && (!record || split.lap < record)) {
             record = split.lap;
@@ -1039,6 +1073,7 @@ export default function Drive() {
         phase === "racing" && me.finish === null && !me.out && from !== null ? race.t - from : 0,
       );
       time.classList.toggle("text-accent", me.lap.invalid);
+      time.classList.toggle("text-paper", !me.lap.invalid);
 
       const ease = Math.min(1, dt * 12);
       thr += (+gas - thr) * ease;
@@ -1075,8 +1110,8 @@ export default function Drive() {
       tyreText.current!.textContent = `${Math.round(me.life * 100)}%`;
       const name = tyreName.current!;
       if (name.textContent !== letter(me.tyre)) {
-        name.textContent = letter(me.tyre);
-        name.className = `font-semibold ${TYRE_INK[me.tyre]}`;
+        name.querySelector("text")!.textContent = letter(me.tyre);
+        name.className = TYRE_INK[me.tyre];
       }
       wingEl.current!.textContent = `W${me.wing}`;
       const nextWing = wingNext.current!;
@@ -1118,25 +1153,26 @@ export default function Drive() {
           rcLabel.current!.textContent = m.kind === "radio" ? "Radio · HAR" : "Race Control";
           if (m.kind === "radio") audio.current?.radio();
           rcLabel.current!.classList.toggle("text-accent", m.kind === "radio");
-          rcFlag.current!.hidden = m.kind !== "flag";
-          // Yellow for the Safety Car and the VSC, green when it's racing again.
-          const light = rcLight.current!;
-          light.hidden = m.kind !== "sc";
-          light.classList.toggle("bg-go", m.text === "Green flag");
-          light.classList.toggle("bg-slow", m.text !== "Green flag");
+          const icon = m.kind === "sc" && m.text === "Green flag" ? "green" : m.kind;
+          for (const el of rcIcon.current!.children as unknown as HTMLElement[])
+            el.hidden = el.dataset.kind !== icon;
           rcText.current!.textContent = m.text;
         }
       }
       const limits = limitsEl.current!;
       limits.hidden = !me.strikes;
-      limits.textContent = `Track limits ${me.strikes}`;
+      limits.lastChild!.textContent = String(me.strikes);
       limits.classList.toggle("text-accent", me.strikes >= 3);
-      limits.classList.toggle("text-soft", me.strikes < 3);
+      limits.classList.toggle("text-slow", me.strikes < 3);
+      const hurt = damageEl.current!;
+      hurt.hidden = !me.damage;
+      hurt.lastChild!.textContent = `${Math.round(me.damage * 100)}%`;
       straightEl.current!.hidden = !me.straight;
       const sc = scEl.current!;
       const n = race.neutral?.kind;
       sc.hidden = !n;
-      if (n && sc.textContent !== n.toUpperCase()) sc.textContent = n.toUpperCase();
+      if (n && sc.lastChild!.textContent !== n.toUpperCase())
+        sc.lastChild!.textContent = n.toUpperCase();
       blueEl.current!.hidden = !me.blue;
       const otChip = otEl.current!;
       otChip.hidden = !me.ot;
@@ -1266,8 +1302,9 @@ export default function Drive() {
           type="button"
           onClick={openSettings}
           aria-haspopup="dialog"
-          className="ml-auto min-h-11 pl-4 text-soft active:scale-[.96]"
+          className="ml-auto flex min-h-11 items-center gap-1.5 pl-4 text-soft active:scale-[.96]"
         >
+          <Cog />
           Settings
         </button>
       </div>
@@ -1298,87 +1335,74 @@ export default function Drive() {
           </div>
         )}
 
+        {/* Top left, the F1 games' way: your place and the lap on a slanted header, over the tower. */}
         <div
-          className={`pointer-events-none absolute top-2 left-2 flex flex-col gap-2 transition-opacity duration-300 md:top-3 md:left-3 ${shown}`}
+          className={`pointer-events-none absolute top-2 left-2 flex flex-col items-start gap-1.5 transition-opacity duration-300 md:top-3 md:left-3 ${shown}`}
         >
-          <div className={`${panel} p-2.5 md:p-3.5`}>
-            <div className="flex items-baseline gap-3">
-              <span ref={posEl} className="disp text-[26px] leading-none md:text-[32px]">
-                P{slot}
-              </span>
-              <span className={label}>
+          <div
+            className={`${hud} ${slantR} flex items-center gap-3 border-l-[3px] border-accent py-1.5 pr-7 pl-2.5 md:py-2`}
+          >
+            <span ref={posEl} className="disp text-[26px] leading-none md:text-[32px]">
+              P{slot}
+            </span>
+            <span className="flex flex-col gap-0.5 text-xs leading-none">
+              <span className="font-semibold tracking-wide text-soft uppercase">
                 <span ref={lapName}>Lap</span>{" "}
                 <span ref={lapEl} className="text-paper">
                   1/{laps}
                 </span>
               </span>
-              <span ref={timeEl} className="disp text-[20px] leading-none md:text-[24px]">
-                0:00.000
-              </span>
-            </div>
-            <div className="mt-2 flex gap-1">
-              {[0, 1, 2].map((i) => (
-                <span
-                  key={i}
-                  ref={(el) => {
-                    if (el) sectorEls.current[i] = el;
-                  }}
-                  className={sector}
-                >
-                  S{i + 1} <span />
-                </span>
-              ))}
-            </div>
-            <div className="mt-2 flex gap-4 text-sm md:text-[15px]">
               <span className="text-soft">
-                Last{" "}
-                <span ref={lastEl} className="text-paper">
-                  {DASH}
+                Next{" "}
+                <span ref={nextEl} className="text-paper">
+                  Rettifilo
                 </span>
               </span>
-              <span className="text-soft">
-                Best{" "}
-                <span ref={bestEl} className="text-paper">
-                  {DASH}
-                </span>
-              </span>
-            </div>
-            <div className="mt-1 flex items-center gap-1.5 text-sm md:text-[15px]">
-              <span aria-hidden className="size-2 shrink-0 rounded-full bg-fl" />
-              <span className="text-soft">Fastest</span>
-              <span ref={fastEl} className="text-paper">
-                {DASH}
-              </span>
-            </div>
-            <div className="mt-1 text-sm text-soft md:text-[15px]">
-              Next{" "}
-              <span ref={nextEl} className="text-paper">
-                Rettifilo
-              </span>
-            </div>
-            <div ref={nearEl} className="mt-1 text-sm text-paper md:hidden" />
-            <div ref={limitsEl} hidden className="mt-1 text-sm text-soft md:text-[15px]" />
+            </span>
+            <span
+              ref={limitsEl}
+              hidden
+              title="Track limits"
+              className="flex items-center gap-1 text-sm font-semibold"
+            >
+              <Warning />
+              <span />
+            </span>
           </div>
+          <div
+            ref={nearEl}
+            className={`${hud} px-2.5 py-1 text-xs text-paper empty:hidden md:hidden`}
+          />
 
-          <div ref={towerEl} className={`${panel} hidden w-52 py-1.5 text-sm md:block`}>
+          <div ref={towerEl} className={`${hud} hidden w-56 py-1 text-sm md:block`}>
             {Array.from({ length: CARS }, (_, k) => (
               <div
                 key={k}
                 ref={(el) => {
                   if (el) towerEls.current[k] = el;
                 }}
-                className="flex items-center gap-2 border-paper/25 pr-3 pl-2 leading-5 whitespace-nowrap"
+                className="flex items-center gap-1.5 border-paper/25 pr-2.5 pl-2 leading-5 whitespace-nowrap"
               >
                 <span className="w-5 shrink-0 text-right text-xs text-soft" />
                 <span className="h-3 w-1 shrink-0 rounded-full ring-1 ring-paper/25" />
                 <span className="shrink-0 font-semibold" />
-                <span hidden title="Fastest lap" className="size-2 shrink-0 rounded-full bg-fl" />
+                <span hidden title="Fastest lap" className="text-fl">
+                  <Stopwatch className="size-3.5" />
+                </span>
+                <span hidden title="In the pit lane" className="text-slow">
+                  <Pit className="size-3.5" />
+                </span>
                 <span
                   hidden
                   className="shrink-0 rounded-sm bg-slow px-1 text-xs font-semibold text-ink"
                 />
-                <span className="ml-auto flex gap-1.5 text-right text-soft">
-                  <span hidden />
+                <span className="ml-auto flex items-center gap-1.5 text-right text-soft">
+                  <span hidden>
+                    <Roundel letter="M" className="size-3.5" />
+                  </span>
+                  <span hidden className="text-accent">
+                    <Out className="size-3.5" />
+                  </span>
                   <span />
                 </span>
               </div>
@@ -1408,11 +1432,15 @@ export default function Drive() {
           className={`${panel} pointer-events-none absolute right-2 bottom-24 left-2 flex items-center gap-3 px-3 py-2 text-sm max-md:pointer-coarse:bottom-56 md:top-3 md:right-auto md:bottom-auto md:left-1/2 md:max-w-xl md:-translate-x-1/2 md:px-4 md:text-[15px]`}
         >
           <span
-            ref={rcFlag}
-            hidden
-            className="h-5 w-7 shrink-0 rounded-[2px] bg-[linear-gradient(135deg,var(--color-ink)_50%,var(--color-paper)_50%)] ring-1 ring-paper"
-          />
-          <span ref={rcLight} hidden className="h-5 w-7 shrink-0 rounded-[2px] bg-slow" />
+            ref={rcIcon}
+            className="grid size-7 shrink-0 place-items-center rounded-[3px] bg-lamp"
+          >
+            {RC_ICONS.map(([k, Glyph, ink]) => (
+              <span key={k} data-kind={k} hidden className={ink}>
+                <Glyph className="size-5" />
+              </span>
+            ))}
+          </span>
           <span>
             <span ref={rcLabel} className="block text-xs font-semibold tracking-wide uppercase" />
             <span ref={rcText} />
@@ -1574,10 +1602,54 @@ export default function Drive() {
           </div>
         )}
 
+        {/* Top right: the map, and under it your lap, sectors and times, small. */}
         <div
-          className={`${panel} pointer-events-none absolute top-2 right-2 p-2 transition-opacity duration-300 md:top-3 md:right-3 md:p-3 ${shown}`}
+          className={`${hud} pointer-events-none absolute top-2 right-2 flex flex-col p-2 transition-opacity duration-300 md:top-3 md:right-3 md:p-3 ${shown}`}
         >
-          <canvas ref={map} className={`block ${MAPS[mapSize]}`} />
+          <canvas ref={map} className={`block self-center ${MAPS[mapSize]}`} />
+          <div className="mt-2 min-w-36 text-xs text-soft md:text-[13px]">
+            <div className="flex items-center justify-between gap-2">
+              <Stopwatch className="size-3.5" />
+              <span ref={timeEl} className="disp text-base leading-none text-paper md:text-lg">
+                0:00.000
+              </span>
+            </div>
+            <div className="mt-1.5 grid grid-cols-3 gap-1.5 text-center">
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  ref={(el) => {
+                    if (el) sectorEls.current[i] = el;
+                  }}
+                  className="flex flex-col gap-0.5"
+                >
+                  <span>S{i + 1}</span>
+                  <span className="h-0.5 rounded-full bg-lamp" />
+                </span>
+              ))}
+            </div>
+            <div className="mt-1.5 flex justify-between gap-2">
+              <span>
+                Last{" "}
+                <span ref={lastEl} className="text-paper">
+                  {DASH}
+                </span>
+              </span>
+              <span>
+                Best{" "}
+                <span ref={bestEl} className="text-paper">
+                  {DASH}
+                </span>
+              </span>
+            </div>
+            <div className="mt-0.5 flex items-center gap-1">
+              <Stopwatch className="size-3.5 text-fl" />
+              Fastest
+              <span ref={fastEl} className="ml-auto text-paper">
+                {DASH}
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* The car, F1 TV's onboard way: the status pills over a slab with the rev strip, the gear
@@ -1585,24 +1657,31 @@ export default function Drive() {
         <div
           className={`pointer-events-none absolute right-2 bottom-2 flex flex-col items-end gap-1.5 transition-opacity duration-300 pointer-coarse:bottom-20 md:right-3 md:bottom-3 md:pointer-coarse:bottom-21 ${shown}`}
         >
-          <div className="flex h-5 items-center gap-1 text-xs font-semibold tracking-wide uppercase">
-            <span ref={limiterEl} hidden className="rounded-sm bg-slow px-1.5 py-0.5 text-ink">
+          <div className="flex h-6 items-center gap-1 text-xs font-semibold tracking-wide uppercase">
+            <span ref={limiterEl} hidden className={`${chip} bg-slow text-ink`}>
+              <Pit className="size-3.5" />
               Pit
             </span>
-            <span ref={straightEl} hidden className="rounded-sm bg-go px-1.5 py-0.5 text-ink">
+            <span ref={straightEl} hidden className={`${chip} bg-go text-ink`}>
+              <Straight className="size-3.5" />
               Straight
             </span>
-            <span ref={otEl} hidden className="rounded-sm px-1.5 py-0.5 text-paper">
+            <span ref={otEl} hidden className={`${chip} text-paper`}>
+              <Bolt className="size-3.5" />
               Overtake
             </span>
-            <span ref={scEl} hidden className="rounded-sm bg-slow px-1.5 py-0.5 text-ink">
-              SC
+            <span ref={scEl} hidden className={`${chip} bg-slow text-ink`}>
+              <Car className="size-3.5" />
+              <span>SC</span>
             </span>
-            <span ref={blueEl} hidden className="rounded-sm bg-print px-1.5 py-0.5 text-paper">
-              Blue flag
+            <span ref={blueEl} hidden className={`${chip} bg-print text-paper`}>
+              <Flag className="size-3.5" />
+              Blue
             </span>
           </div>
-          <div className={`${panel} w-44 p-2.5 md:w-60 md:p-3.5`}>
+          <div
+            className={`${hud} ${slantL} w-48 py-2.5 pr-2.5 pl-5 md:w-60 md:py-3.5 md:pr-3.5 md:pl-6`}
+          >
             <div className="flex gap-0.5" aria-hidden>
               {Array.from({ length: REVS }, (_, k) => (
                 <span
@@ -1651,14 +1730,18 @@ export default function Drive() {
             </div>
             {/* Each tyre's life as the car carries them, front at the top: blue while cold. */}
             <div className="mt-2 flex items-center gap-3 text-xs text-soft">
-              <div className="relative grid grid-cols-2 gap-x-3 gap-y-1" aria-hidden>
-                <span className="absolute inset-y-1 left-1/2 w-px -translate-x-1/2 bg-paper/15" />
+              <div
+                className="grid grid-cols-[auto_auto_auto] items-center gap-x-1.5 gap-y-1"
+                aria-hidden
+              >
+                <Chassis className="col-start-2 row-span-2 row-start-1 h-9 w-4 text-paper/30" />
                 {CORNERS.map((c, k) => (
                   <span
                     key={c}
                     ref={(el) => {
                       if (el) tyreEls.current[k] = el;
                     }}
+                    style={{ gridColumn: k % 2 ? 3 : 1, gridRow: k < 2 ? 1 : 2 }}
                     className={`${TYRE_CELL} bg-go`}
                   >
                     100
@@ -1666,12 +1749,13 @@ export default function Drive() {
                 ))}
               </div>
               <div className="ml-auto flex flex-col items-end gap-1">
-                <span className="flex items-baseline gap-1.5">
-                  <span ref={tyreName} className="font-semibold text-slow">
-                    M
+                <span className="flex items-center gap-2">
+                  <span ref={tyreName} title="Compound" className="text-slow">
+                    <Roundel letter="M" />
                   </span>
-                  <span ref={wingEl} className="text-paper">
-                    W3
+                  <span className="flex items-center gap-1 text-paper" title="Rear wing">
+                    <Wing className="size-3.5 text-soft" />
+                    <span ref={wingEl}>W3</span>
                   </span>
                 </span>
                 <span>
@@ -1680,10 +1764,22 @@ export default function Drive() {
                     100%
                   </span>
                 </span>
+                <span
+                  ref={damageEl}
+                  hidden
+                  title="Damage"
+                  className="flex items-center gap-1 text-accent"
+                >
+                  <Wrench className="size-3.5" />
+                  <span />
+                </span>
               </div>
             </div>
             <div className="mt-2 grid grid-cols-[auto_1fr_auto] items-center gap-x-2 text-xs text-soft">
-              Battery
+              <span>
+                <Bolt className="size-3.5" />
+                <span className="sr-only">Battery</span>
+              </span>
               <span className="h-1 rounded-full bg-lamp">
                 <span ref={batEl} className="block h-full origin-left rounded-full bg-paper" />
               </span>
