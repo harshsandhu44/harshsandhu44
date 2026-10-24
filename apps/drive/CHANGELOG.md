@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.5.0...drive-v1.6.0) (2026-10-24)
+
+
+### Features
+
+* **drive:** F1 25-style HUD with icons, and the timing under the map ([#62](https://github.com/harshsandhu44/harshsandhu44/issues/62)) ([48b0b1e](https://github.com/harshsandhu44/harshsandhu44/commit/48b0b1ef98c7c04d59b78ecc615050147e26d97e))
+
 ## [1.5.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.4.0...drive-v1.5.0) (2026-10-24)
 
 
