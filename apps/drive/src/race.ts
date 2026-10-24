@@ -504,7 +504,7 @@ const BOX_BRAKE = 12;
 // CRASH m/s of speed on a wall (about 150 km/h head on), or SMASH m/s car to car (running into one
 // about 90 km/h slower), is a crash out; harder than DENT m/s leaves lasting damage, up to
 // DAMAGE. ponytail: SMASH is set from race.check.ts's whole races, about one crash out in two.
-// A puncture, from contact or a set run to nothing, limps to the box at PUNCTURE_V.
+// A puncture, from contact or a set run to nothing, costs grip (carGrip), not top speed.
 const FAIL = 0.04;
 const FAULTS = ["Engine", "Gearbox", "Hydraulics", "Power unit", "Brakes"];
 const LIMP = 800;
@@ -513,7 +513,6 @@ const CRASH = 50;
 const SMASH = 25;
 const DENT = 10;
 const DAMAGE = 0.15;
-const PUNCTURE_V = 25;
 const LIMP_BRAKE = 6;
 // The worst grip the corner profiles go down to (track.ts).
 const MOST_WORN = 0.55;
@@ -609,13 +608,14 @@ export type Racer = {
   // Incidents (see race.incidents): why the car's out of the race (null while it's running) and
   // whether its wreck is still out there; how far into the race (m) its mechanical failure comes
   // (Infinity for none) and what fails; lasting damage, a share off its grip and top speed; and a
-  // puncture.
+  // puncture, and the wheel it's on (in CORNERS' order).
   out: string | null;
   wreck: boolean;
   failAt: number;
   fault: string;
   damage: number;
   puncture: boolean;
+  flat: number;
   // Queued behind the Safety Car until it crosses the line at the restart; the top speed a Safety
   // Car, VSC or blue flag holds it to; and the blue flag: 0, or the side (+1 right of the faster
   // car) to move over to.
@@ -756,6 +756,7 @@ export function newRace(
       fault: "",
       damage: 0,
       puncture: false,
+      flat: 0,
       held: false,
       cap: Infinity,
       blue: 0,
@@ -1583,10 +1584,12 @@ function impact(race: Race, r: Racer, loss: number, limit: number) {
   if (loss > DENT) r.damage = Math.min(DAMAGE, r.damage + (0.05 * (loss - DENT)) / (limit - DENT));
   if (limit === SMASH && loss > 8 && race.rand() < 0.08) puncture(race, r);
 }
-// A puncture: with damage too it's the end, else the car limps to its box at the first chance.
-function puncture(race: Race, r: Racer) {
+// A puncture, on a wheel picked at random by a hit or the most worn as a set runs out: with
+// damage too it's the end, else the car boxes at the first chance.
+function puncture(race: Race, r: Racer, worn = false) {
   if (r.puncture) return;
   r.puncture = true;
+  r.flat = worn ? r.wear.indexOf(Math.min(...r.wear)) : Math.floor(race.rand() * 4);
   say(race, "out", r.id, `Puncture · ${code(race, r)}`);
   if (r.damage > 0.1) {
     [r.failAt, r.fault] = [r.dist + 1, "Puncture damage"];
@@ -1776,11 +1779,10 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
       top * (1 - r.damage) * r.form * wingTop(r.wing) * race.cars[r.id >> 1]!,
     );
     r.slide = Math.abs(turn);
-    // Held to a Safety Car, the VSC or a blue flag, braking down to it; limping, slowing gently so
-    // nobody runs into the back of it.
+    // Held to a Safety Car, the VSC or a blue flag, braking down to it; broken down and limping,
+    // slowing gently so nobody runs into the back of it.
     if (car.v > r.cap) car.v = Math.max(0, r.cap, Math.min(car.v, v0 - brakeAt(v0) * g * dt));
-    const limp = failed ? LIMP_V : r.puncture ? PUNCTURE_V : Infinity;
-    if (car.v > limp) car.v = Math.max(limp, Math.min(car.v, v0 - LIMP_BRAKE * dt));
+    if (failed && car.v > LIMP_V) car.v = Math.max(LIMP_V, Math.min(car.v, v0 - LIMP_BRAKE * dt));
     pitStop(race, r, dt);
     if (r.out) continue;
     const hit = car.v;
@@ -1793,7 +1795,7 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     wearTyres(race, r, input, turn, edge, dt * v);
     r.warm = Math.min(1, r.warm + (dt * v) / (TYRES[r.tyre].warm * LENGTH));
     if (race.incidents && r.life <= 0 && r.finish === null && race.rand() < 0.05 * dt)
-      puncture(race, r);
+      puncture(race, r, true);
     r.wrong = Math.cos(car.h - dirAt(p)) < -0.5 && car.v > 4.2 ? r.wrong + dt : 0;
     // Track limits, once per trip off. The pit lane's side doesn't count, to 30 m past the exit
     // for a car rejoining alongside another, nor being pushed off: contact in the last second

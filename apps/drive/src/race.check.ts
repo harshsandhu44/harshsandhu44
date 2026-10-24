@@ -1061,7 +1061,8 @@ const onTarmac = (r: Race["racers"][number]) =>
   assert.ok(pitted.length > 0, "a cheap stop under the Safety Car is taken");
   assert.ok(race.neutral === null && !x.wreck, "the restart clears the wreck");
 }
-// A smaller hit leaves lasting damage, and a puncture limps to the box and is fixed there.
+// A smaller hit leaves lasting damage, and a puncture costs grip, not top speed, and is fixed at
+// the box.
 {
   const race = incident([10, 11]);
   const [a, b] = race.racers as [Race["racers"][number], Race["racers"][number]];
@@ -1086,7 +1087,14 @@ const onTarmac = (r: Race["racers"][number]) =>
     return r.stints.length > 1;
   });
   assert.ok(!r.puncture && r.stints.length === 2, "a puncture is fixed at the stop");
-  assert.ok(fastest < 25.5, `limping slowly (${(fastest * 3.6).toFixed(0)} km/h)`);
+  assert.ok(fastest > 70, `flat out on the straights (${(fastest * 3.6).toFixed(0)} km/h)`);
+  // A set run to nothing punctures its most worn tyre.
+  const worn = incident([10]);
+  const w = worn.racers[0]!;
+  run(worn, 30);
+  [w.life, w.wear] = [0, [0.3, 0.2, 0, 0.1]];
+  run(worn, 120, () => w.puncture);
+  assert.ok(w.puncture && w.flat === 2, `the worn-out tyre punctures (${w.flat})`);
 }
 // The undercut: a rival just in front that stops brings a car with its own stop due soon in the
 // lap after.

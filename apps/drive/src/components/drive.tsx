@@ -200,7 +200,7 @@ const RULES: [string, string][] = [
   ],
   [
     "Safety Car & failures",
-    "Cars break down (about one in twenty-five a race, yours too), crash out on a big hit, take lasting damage from smaller ones, and puncture from contact or a set run to nothing; a puncture limps back to the box. A car stopped off the track brings the Virtual Safety Car: everyone is held to the same speed. A crash, or a car stopped on the track, brings the Safety Car: the field queues behind it with no passing, and racing starts again at the line once it's gone in. Your car is held to both for you, and a stop under either costs less. When a car a lap up catches you, the blue flag lets it by.",
+    "Cars break down (about one in twenty-five a race, yours too), crash out on a big hit, take lasting damage from smaller ones, and puncture from contact or a set run to nothing; a puncture costs grip, not top speed, until you box, its wheel blinking red. A car stopped off the track brings the Virtual Safety Car: everyone is held to the same speed. A crash, or a car stopped on the track, brings the Safety Car: the field queues behind it with no passing, and racing starts again at the line once it's gone in. Your car is held to both for you, and a stop under either costs less. When a car a lap up catches you, the blue flag lets it by.",
   ],
   [
     "Track limits",
@@ -1103,10 +1103,12 @@ export default function Drive() {
         });
       }
       tyreEls.current.forEach((el, k) => {
-        const w = me.wear[k]!;
+        // A puncture: that wheel at 0, blinking red.
+        const flat = me.puncture && me.flat === k;
+        const w = flat ? 0 : me.wear[k]!;
         const text = String(Math.round(w * 100));
         if (el.textContent !== text) el.textContent = text;
-        const cls = `${TYRE_CELL} ${wearInk(w, me.warm)}`;
+        const cls = `${TYRE_CELL} ${flat ? "bg-accent motion-safe:animate-pulse" : wearInk(w, me.warm)}`;
         if (el.className !== cls) el.className = cls;
       });
       tyreText.current!.textContent = `${Math.round(me.life * 100)}%`;
