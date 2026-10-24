@@ -7,6 +7,7 @@ import {
   Bolt,
   Car,
   Chassis,
+  Chequered,
   Cog,
   Flag,
   Headset,
@@ -750,7 +751,8 @@ export default function Drive() {
         const row = towerEls.current[k]!;
         row.hidden = cut ? k >= n - 3 && Math.abs(k - at) > 1 : k >= n;
         row.classList.toggle("border-t", cut && k === at - 1);
-        const [num, sw, code, fl, pit, pen, right] = row.children as unknown as HTMLElement[];
+        const [num, sw, code, done, fl, pit, pen, right] = row.children as unknown as HTMLElement[];
+        done!.hidden = r.finish === null || !!r.out;
         num!.textContent = String(k + 1);
         const [tyre, out, g] = right!.children as unknown as HTMLElement[];
         pit!.hidden = !r.pit || !!r.out;
@@ -1386,6 +1388,9 @@ export default function Drive() {
                 <span className="w-5 shrink-0 text-right text-xs text-soft" />
                 <span className="h-3 w-1 shrink-0 rounded-full ring-1 ring-paper/25" />
                 <span className="shrink-0 font-semibold" />
+                <span hidden title="Finished">
+                  <Chequered className="size-3.5" />
+                </span>
                 <span hidden title="Fastest lap" className="text-fl">
                   <Stopwatch className="size-3.5" />
                 </span>
