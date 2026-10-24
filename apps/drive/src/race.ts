@@ -90,6 +90,9 @@ const PASS = 15;
 // matters most for that: the computer's pedals are on or off, so pace alone moves its lap only
 // when a pedal flips a frame earlier or later, and close paces drive the very same lap.
 const FORM = 0.002;
+// How close (centre to centre, m) a computer car gets behind a slower one before pulling out to
+// pass it: about a car's length between them, near the follow distance at speed.
+const PULL = 12;
 // A car's width and a metre, centre to centre: the room a computer car leaves one alongside,
 // and how far over it pulls out to pass.
 const SPACE = 2 * CAR_HALF_WIDTH + 1;
@@ -916,7 +919,9 @@ export function aiInput(r: Racer, race: Race): Input {
     // the Safety Car nobody pulls out.
     const clear = !r.held && (slip > 0 || limitAt(at, g * r.pace * r.form, line) > car.v + PASS);
     if (!clear) r.lane = 0;
-    const block = ahead(lat(r.lane) - base, 0);
+    // Sat in the tow until close enough to pull out and go by: from further back it'd only lose
+    // the tow and have to drop in behind again.
+    const block = ahead(lat(r.lane) - base, 0, PULL);
     if (block && block.car.v < car.v + 1) {
       // A blue-flagged car is passed whatever's coming.
       const free =
@@ -1056,8 +1061,10 @@ function pitStop(race: Race, r: Racer, dt: number) {
     }
     return;
   }
+  // A stop's done for the visit: out where the lane merges, a car can read as on track for a
+  // moment and back in the lane after, and that's not another stop.
   if (!r.pit) {
-    r.served = false;
+    if (!r.pitting) r.served = false;
     return;
   }
   if (car.v > PIT_V) car.v = Math.max(PIT_V, car.v - 40 * dt);
@@ -1208,31 +1215,32 @@ const LINES = {
     (_: string, p: number) => `P${p}. The mirrors are on the car for a reason.`,
     (c: string, p: number) => `${c}'s by. P${p}. Get that one back.`,
   ],
-  // By strike: the first, the second, the black and white flag, then penalties.
+  // By strike, at the corner: the first, the second, the black and white flag, then penalties.
+  // What counts in a race is the strikes, not the deleted lap.
   limits: [
     [
-      "Lap deleted. Watch the track limits.",
-      "Track limits, lap deleted. Keep it inside the lines.",
-      "That's a strike. Lap deleted.",
-      "Lap time deleted. Mind the white lines.",
+      (c: string) => `Track limits at ${c}, that's one.`,
+      (c: string) => `That's one for track limits, ${c}. Two more and it's the flag.`,
+      (c: string) => `Strike one at ${c}. Keep it inside the lines.`,
+      (c: string) => `Track limits, ${c}. First one, they're counting.`,
     ],
     [
-      "Second strike. The white lines are a suggestion we follow.",
-      "Two strikes. The track is the grey bit.",
-      "Strike two. Let's not collect the set.",
-      "Second one. The stewards are counting, so am I.",
+      (c: string) => `Two now, ${c}. One more and it's the black and white flag.`,
+      (c: string) => `Second strike at ${c}. The track is the grey bit.`,
+      (c: string) => `That's two, ${c}. The white lines are a suggestion we follow.`,
+      (c: string) => `Strike two, ${c}. Next one's the flag.`,
     ],
     [
-      "Black and white flag. One more and it's a penalty.",
-      "That's the black and white. Last warning, I promise.",
-      "Black and white. Next one costs us time.",
-      "Third strike, black and white flag. Please.",
+      (c: string) => `Black and white flag for ${c}. One more and it's a penalty.`,
+      (c: string) => `Three, at ${c}. That's the black and white. Next one costs us five seconds.`,
+      (c: string) => `Black and white flag. ${c} again? Next one costs time.`,
+      (c: string) => `Third strike, ${c}. Black and white flag. Please.`,
     ],
     [
-      "Penalty. Was it worth it?",
-      "Another penalty. The stewards are enjoying this more than we are.",
-      "Penalty. I'll stop telling you where the lines are.",
-      "Penalty. At this point it's a lifestyle.",
+      (c: string) => `Penalty for ${c}. Was it worth it?`,
+      (c: string) => `Another penalty, ${c}. The stewards are enjoying this more than we are.`,
+      (c: string) => `${c}, penalty. I'll stop telling you where the lines are.`,
+      (c: string) => `Penalty at ${c}. At this point it's a lifestyle.`,
     ],
   ],
   spun: [
@@ -1463,15 +1471,11 @@ function boxCall(race: Race, r: Racer, why: string) {
 // white flag, and every one after that costs time, 5 s and then 10 s each, like F1.
 function strike(race: Race, r: Racer) {
   const who = driver(race, r.id).code;
+  const at = race.track.cornerAt(r.p);
   r.strikes++;
-  say(
-    race,
-    "limits",
-    r.id,
-    `Track limits · ${who} · ${race.track.cornerAt(r.p)} · Lap ${r.laps + 1} time deleted`,
-  );
+  say(race, "limits", r.id, `Track limits · ${who} · ${at} · Lap ${r.laps + 1} time deleted`);
   if (r.strikes === 3) say(race, "flag", r.id, `Black and white flag · ${who} · Track limits`);
-  if (r.id === 0 && race.laps > 1) radio(race, pick(LINES.limits[Math.min(r.strikes, 4) - 1]!));
+  if (r.id === 0 && race.laps > 1) radio(race, pick(LINES.limits[Math.min(r.strikes, 4) - 1]!)(at));
   if (r.strikes < 4) return;
   const add = r.strikes === 4 ? 5000 : 10000;
   r.penalty += add;

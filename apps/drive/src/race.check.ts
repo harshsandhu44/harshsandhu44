@@ -1188,15 +1188,20 @@ for (const { id, name } of TRACKS) {
   const me = race.racers[0]!;
   const plan = teamPlan(10, monza, "medium");
   [me.stops, me.plan, me.nextWing] = [plan.at, plan.tyres, 5];
-  for (let f = 0; f < 1100 / DT && me.stints.length < 2; f++) {
+  const after: string[] = [];
+  for (let f = 0; f < 1100 / DT && (me.stints.length < 2 || me.pitting); f++) {
     // The computer drives you in on the lap the team calls, as it would itself.
     const s = signed(me.p);
     if (me.stops.includes(me.laps + 1) && s > monza.PIT_IN - 200 && s < monza.PIT_IN)
       me.pitting = true;
     tick(race, aiInput(me, race), DT);
+    for (const m of race.msgs.splice(0))
+      if (m.kind === "radio" && me.stints.length > 1) after.push(m.text);
   }
   assert.equal(me.stints.length, 2, "you stop");
   assert.equal(me.wing, 5, "and the wing for the stop goes on there");
+  // Out of the lane where it merges, the team doesn't take you for coming in again.
+  assert.ok(!after.some((t) => t.endsWith("ready.")), `no second stop called: ${after}`);
 }
 
 console.log("race: ok");
