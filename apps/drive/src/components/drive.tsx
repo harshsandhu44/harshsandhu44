@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { assist, guide, type Line } from "@/assist";
-import { createEngine, type Engine } from "@/engine";
+import { createAudio, MIX, rpm, type Audio, type Mix } from "@/audio";
 import type { Scene } from "@/scene";
 import {
   CAP,
@@ -13,6 +13,7 @@ import {
   GRID,
   LEVELS,
   TYRES,
+  STOP,
   WINGS,
   carGrip,
   colorOf,
@@ -39,7 +40,7 @@ import {
   type Racer,
   type Tyre,
 } from "@/race";
-import { TOP, fmt, gear } from "@/track";
+import { KERB_R, TOP, fmt, gear } from "@/track";
 import { TRACKS, getTrack } from "@/tracks";
 
 // Your record per track. v2: Monza's real-length track; the v1 keys hold bests from the old short
@@ -50,8 +51,16 @@ const TRACK = "drive-track";
 const SOUND = "monza-sound";
 // The driving aids, as in the F1 games (assist.ts).
 const SETTINGS = "drive-settings";
-type Settings = { line: Line; brakes: boolean; assist: boolean };
-const AIDS: Settings = { line: "off", brakes: false, assist: true };
+type Settings = { line: Line; brakes: boolean; assist: boolean; mix: Mix };
+const MIX_NAMES: Record<keyof Mix, string> = {
+  engine: "Engine",
+  cars: "Other cars",
+  crowd: "Crowd",
+  pit: "Pit lane",
+  tyres: "Tyres",
+  radio: "Radio",
+};
+const AIDS: Settings = { line: "off", brakes: false, assist: true, mix: MIX };
 const LEVEL = "monza-level";
 // The race distance, as an index into DISTANCES. The v1 key held a lap count: 5, 10, 15 or 20.
 const DIST = "drive-distance";
@@ -360,10 +369,13 @@ export default function Drive() {
   const [result, setResult] = useState<Result | null>(null);
   const [rules, setRules] = useState(false);
   const [sound, setSound] = useState(() => read(SOUND, false));
-  const [aids, setAids] = useState<Settings>(() => ({ ...AIDS, ...read(SETTINGS, {}) }));
+  const [aids, setAids] = useState<Settings>(() => {
+    const kept: Partial<Settings> = read(SETTINGS, {});
+    return { ...AIDS, ...kept, mix: { ...MIX, ...kept.mix } };
+  });
   const aidsRef = useRef(aids);
   const [settings, setSettings] = useState(false);
-  const engine = useRef<Engine | null>(null);
+  const audio = useRef<Audio | null>(null);
   const again = useRef<() => void>(() => {});
   // The grid screen's pick, and what it and the pit lane's chips call into the race.
   const [grid, setGrid] = useState(true);
@@ -492,6 +504,7 @@ export default function Drive() {
     setAids(next);
     aidsRef.current = next;
     write(SETTINGS, next);
+    if (change.mix) audio.current?.mix(next.mix);
   };
   // Mid-race, the settings pause it.
   const openSettings = () => {
@@ -503,8 +516,8 @@ export default function Drive() {
     const on = !sound;
     setSound(on);
     write(SOUND, on);
-    engine.current?.stop();
-    engine.current = on ? createEngine() : null;
+    audio.current?.close();
+    audio.current = on ? createAudio(aidsRef.current.mix) : null;
   };
 
   useEffect(() => {
@@ -526,7 +539,7 @@ export default function Drive() {
     const paintOf = (id: number) => colorOf(race, id);
     const flat = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const track = getTrack(trackId);
-    const { LENGTH, ZONES, atDist, dirAt, limitAt, nextCorner } = track;
+    const { CURVE, LENGTH, STANDS, ZONES, atDist, dirAt, limitAt, nearest, nextCorner } = track;
     const { box, box2, outline } = SHAPES.get(trackId)!;
     const shades = new Uint8Array(track.PATH.length);
     const road = new Path2D(outline);
@@ -553,6 +566,10 @@ export default function Drive() {
     let board = 0;
     let msgAt = -Infinity;
     let mode: number = read(TOWER, 0);
+    // Your place at the last board, and whether you were stopped at the box last frame, for the
+    // sound.
+    let place = 0;
+    let stopped = false;
     if (!MODES[mode]) mode = 0;
     let revs = -1;
     let skipping = false;
@@ -692,6 +709,9 @@ export default function Drive() {
       const cut = at > n - 2;
       const m = MODES[mode]!;
       posEl.current!.textContent = `P${at + 1}`;
+      // The crowd cheers a place taken.
+      if (place && at + 1 < place && !quali) audio.current?.cheer();
+      place = at + 1;
       // Laps down: by distance while running (to the leader's, which stops at the flag), and by
       // laps once in.
       const lead = Math.min(run[0]!.dist, race.laps * LENGTH);
@@ -836,7 +856,7 @@ export default function Drive() {
       setGrid(false);
       // Lining up or qualifying is a click or a key, so the browser lets a remembered "sound on"
       // start.
-      if (read(SOUND, false)) engine.current ??= createEngine();
+      if (read(SOUND, false)) audio.current ??= createAudio(aidsRef.current.mix);
     };
     go.current = (t) => {
       const me = race.racers[0]!;
@@ -904,6 +924,7 @@ export default function Drive() {
         });
         if (t - phaseAt > 5000 + pause) {
           phase = "racing";
+          if (!quali) audio.current?.cheer();
           for (const l of lampEls.current) l.classList.replace("bg-accent", "bg-lamp");
           setTimeout(() => lightsEl.current && (lightsEl.current.hidden = true), 1200);
         }
@@ -1095,6 +1116,7 @@ export default function Drive() {
         if (m) {
           msgAt = t;
           rcLabel.current!.textContent = m.kind === "radio" ? "Radio · HAR" : "Race Control";
+          if (m.kind === "radio") audio.current?.radio();
           rcLabel.current!.classList.toggle("text-accent", m.kind === "radio");
           rcFlag.current!.hidden = m.kind !== "flag";
           // Yellow for the Safety Car and the VSC, green when it's racing again.
@@ -1129,7 +1151,45 @@ export default function Drive() {
       batText.current!.textContent = `${me.charge.toFixed(1)} MJ`;
       batText.current!.classList.toggle("text-accent", me.clipping);
       batText.current!.classList.toggle("text-paper", !me.clipping);
-      engine.current?.set(paused ? 0 : Math.abs(car.v) / TOP, paused ? 0 : thr);
+      // What you hear (audio.ts): your engine, the three nearest cars, the stands and the tyres.
+      if (me.stop > 0 && !stopped) audio.current?.stop(STOP);
+      stopped = me.stop > 0;
+      if (audio.current && (paused || me.out)) audio.current.frame(null);
+      else if (audio.current) {
+        const { edge, p: at } = nearest(car.x, car.y);
+        const kerbed = Math.abs(CURVE[atDist(at * LENGTH)]!) > 1 / KERB_R;
+        const [fx, fy] = [Math.cos(car.h), Math.sin(car.h)];
+        const cars = race.racers
+          .filter((o) => o !== me && !o.out)
+          .map((o) => {
+            const [dx, dy] = [o.car.x - car.x, o.car.y - car.y];
+            const dist = Math.max(0.1, Math.hypot(dx, dy));
+            const [vx, vy] = [
+              Math.cos(o.car.h) * o.car.v - fx * car.v,
+              Math.sin(o.car.h) * o.car.v - fy * car.v,
+            ];
+            const closing = -(dx * vx + dy * vy) / dist;
+            return { dist, closing, pan: (dy * fx - dx * fy) / dist, rpm: rpm(o.car.v) };
+          })
+          .sort((a, b) => a.dist - b.dist)
+          .slice(0, 3);
+        const crowd = Math.max(
+          0,
+          ...STANDS.map((st) => Math.max(0, 1 - Math.hypot(st.x - car.x, st.y - car.y) / 150) ** 2),
+        );
+        const g = gear(car.v);
+        audio.current.frame({
+          rpm: rpm(car.v),
+          gear: g === "R" ? 1 : g,
+          load: thr,
+          limiter: me.pit && me.stop <= 0 && Math.abs(car.v) > 1,
+          slide: Math.abs(car.v) > 15 ? (me.slide - 0.95) / 0.3 : 0,
+          kerb: kerbed && edge > -2.3 && edge < 0.3 ? Math.abs(car.v) / TOP : 0,
+          grass: edge > 0 ? Math.min(1, Math.abs(car.v) / 40) : 0,
+          crowd: Math.min(1, crowd),
+          cars,
+        });
+      }
 
       // The racing line and braking point (assist.ts), while you're the one driving.
       const { line, brakes } = aidsRef.current;
@@ -1184,8 +1244,8 @@ export default function Drive() {
       ro.disconnect();
       ac.abort();
       scene?.dispose();
-      engine.current?.stop();
-      engine.current = null;
+      audio.current?.close();
+      audio.current = null;
     };
   }, [trackId]);
 
@@ -1488,6 +1548,21 @@ export default function Drive() {
                 ]}
                 pick={(on) => on !== sound && toggleSound()}
               />
+              {sound &&
+                (Object.keys(MIX) as (keyof Mix)[]).map((k) => (
+                  <label key={k} className="mt-2 flex items-center gap-3 text-sm">
+                    <span className="w-20 shrink-0 text-soft">{MIX_NAMES[k]}</span>
+                    <input
+                      type="range"
+                      min={0}
+                      max={100}
+                      value={Math.round(aids.mix[k] * 100)}
+                      onChange={(e) => aid({ mix: { ...aids.mix, [k]: +e.target.value / 100 } })}
+                      className="min-h-11 flex-1 accent-accent"
+                    />
+                    <span className="w-8 text-right">{Math.round(aids.mix[k] * 100)}</span>
+                  </label>
+                ))}
               <button
                 type="button"
                 onClick={() => setSettings(false)}

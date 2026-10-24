@@ -591,6 +591,9 @@ export type Racer = {
   // In another car's wake: the top speed its tow adds and the share of grip its dirty air takes.
   tow: number;
   dirty: number;
+  // What the steering asked of the grip last frame, over 1 at the limit (track.ts step): the
+  // tyres' squeal.
+  slide: number;
   // You: whether the team has already called you in on these tyres.
   boxCall: boolean;
   // In the lane with no stop planned on this visit: a computer car that strayed in, or any car
@@ -740,6 +743,7 @@ export function newRace(
       rolled: -1,
       tow: 0,
       dirty: 0,
+      slide: 0,
       boxCall: false,
       through: false,
       warm: 1,
@@ -1771,6 +1775,7 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
       g,
       top * (1 - r.damage) * r.form * wingTop(r.wing) * race.cars[r.id >> 1]!,
     );
+    r.slide = Math.abs(turn);
     // Held to a Safety Car, the VSC or a blue flag, braking down to it; limping, slowing gently so
     // nobody runs into the back of it.
     if (car.v > r.cap) car.v = Math.max(0, r.cap, Math.min(car.v, v0 - brakeAt(v0) * g * dt));
