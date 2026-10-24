@@ -5,6 +5,9 @@ import { bump, fmt, step, TOP, type Car, type Track } from "./track.ts";
 import { TRACKS, getTrack } from "./tracks.ts";
 import {
   CARS,
+  TIERS,
+  carsOf,
+  drawCars,
   DISTANCES,
   SPRINT,
   lapsOf,
@@ -82,12 +85,46 @@ const seeded = (seed: number) => () => {
   return seed / 2147483647;
 };
 
+// Pro's cars, for the checks that compare levels or time pole: one weekend, fixed, with Red Bull's
+// the best (so Verstappen sets pole, as tuned) and yours the slowest of the top five. Elsewhere
+// in pro the cars are drawn from the seed.
+const WEEKEND = carsOf([0.1, 0.025, 0.05, 0.075, 0, 0.4, 0.375, 0.425, 0.9, 0.875, 0.925]);
+const carsFor = (lv: Level) => (lv === "pro" ? WEEKEND : undefined);
+const BEST_CARS = carsOf(Array<number>(CARS / 2).fill(0));
+
+// The tiers: each weekend every tier deals out its own offsets, in a new order; below pro every
+// car is the best.
+{
+  const rand = seeded(11);
+  const orders = new Set<string>();
+  for (let k = 0; k < 20; k++) {
+    const cars = drawCars("pro", rand);
+    let at = 0;
+    for (const tier of TIERS) {
+      const got = cars.slice(at, (at += tier.length));
+      assert.deepEqual(
+        got.sort((a, b) => a - b),
+        carsOf(tier).sort((a, b) => a - b),
+        "a tier deals its own offsets",
+      );
+    }
+    orders.add(cars.slice(0, 5).join());
+  }
+  assert.ok(orders.size > 10, `the top five's order changes weekend to weekend (${orders.size})`);
+  assert.deepEqual(drawCars("legends", rand), BEST_CARS, "below pro, every car's the best");
+}
+
 // Ratings: in F1 Verstappen (8) has the best pace and Colapinto (13) the worst, and
 // Lindblad (11) the least awareness and Russell (3) the most.
 {
   const rs = newRace(getTrack("monza"), GRID, seeded(1), "medium", "pro").racers;
   const paces = rs.slice(1).map((r) => r.pace);
   assert.equal(rs[8]!.pace, Math.max(...paces), "the best pace rating drives quickest");
+  const stars = [rs[4]!.pace, rs[8]!.pace];
+  assert.ok(
+    rs.slice(1).every((r) => r.id === 4 || r.id === 8 || r.pace < Math.min(...stars)),
+    "and Hamilton (4) and Verstappen are the stars",
+  );
   assert.equal(rs[13]!.pace, Math.min(...paces), "and the worst slowest");
   assert.ok(rs[11]!.slip > rs[3]!.slip, "the less aware make more mistakes");
   const legends = newRace(getTrack("monza"), GRID, seeded(1), "medium", "legends").racers;
@@ -198,11 +235,50 @@ for (const t of [monza, getTrack("silverstone")]) {
 // Monza, high at Monaco, and up to about a second a lap.
 const cleanLap = (track: Track, wing = track.WING) => {
   const race = solo(2, (r) => ([r.tyre, r.stops, r.wing] = ["medium", [], wing]), "pro", track);
+  race.cars = BEST_CARS;
   race.racers[0]!.pace = 1 / edgeOf(race);
   race.slips = false;
   nonStop(race, 600, () => race.racers[0]!.laps >= 3);
   return race.racers[0]!.best;
 };
+// A clean lap at wing 3 on the 4 MJ battery, as tuned, and how much quicker the 6 MJ one is.
+const OLD_CLEAN: Record<string, number> = {
+  monza: 86_941,
+  spa: 112_216,
+  silverstone: 99_757,
+  interlagos: 74_466,
+  redbullring: 72_246,
+  austin: 107_513,
+  lasvegas: 100_454,
+  yasmarina: 94_239,
+  monaco: 75_802,
+  lusail: 94_165,
+};
+const BATTERY = cleanLap(monza, 3) / OLD_CLEAN.monza!;
+assert.ok(BATTERY < 0.998, `the bigger battery's quicker (${BATTERY.toFixed(4)})`);
+
+// The tiers at Monza: one driver, alone and clean, in the best car, a midfield one (0.4 s
+// down) and a back-marker (0.9 s).
+{
+  const lap = (s: number) => {
+    const race = solo(10, (r) => (r.form = 1), "pro");
+    race.cars = carsOf(Array<number>(CARS / 2).fill(s));
+    const r = race.racers[0]!;
+    race.slips = false;
+    for (let f = 0; f < 400 / DT && r.laps < 3; f++) {
+      [r.life, r.warm, r.stops, r.plan, r.form] = [1, 1, [], ["medium"], 1];
+      tick(race, still, DT);
+    }
+    return r.best;
+  };
+  const best = lap(0);
+  for (const s of [0.4, 0.9])
+    assert.ok(
+      Math.abs(lap(s) - best - 1000 * s) < 100,
+      `a car ${s} s down is (${((lap(s) - best) / 1000).toFixed(3)} s)`,
+    );
+}
+
 for (const def of TRACKS) {
   const t = getTrack(def.id);
   const laps = Array.from({ length: WINGS }, (_, k) => cleanLap(t, k + 1));
@@ -541,9 +617,9 @@ assert.ok(
   assert.ok(apart > 3.4, `side by side, a car's width and more apart (${apart.toFixed(1)} m)`);
 }
 
-// The battery, in MJ: a pro's flying lap at Monza harvests the 8.5 MJ allowance and no more;
-// flat out on a flat battery the car super clips, harvesting; and a lap with Overtake's bonus
-// harvests up to 9 MJ.
+// The battery, in MJ: a pro's flying lap at Monza harvests most of the 12 MJ allowance and no
+// more; flat out on a flat battery the car super clips, harvesting; and a lap with Overtake's
+// bonus harvests up to 12.5 MJ.
 {
   const race = solo(10, (r) => (r.launch = 0), "pro");
   race.slips = false;
@@ -555,15 +631,15 @@ assert.ok(
       return r.laps > n;
     });
   lap(1);
-  assert.ok(most > 8 && most <= 8.5 + 1e-9, `a lap harvests up to 8.5 MJ (${most.toFixed(2)})`);
+  assert.ok(most > 10.5 && most <= 12 + 1e-9, `a lap harvests up to 12 MJ (${most.toFixed(2)})`);
   [r.charge, r.harvested] = [0, 0];
   nonStop(race, 1);
   assert.ok(r.clipping && r.charge > 0, "flat out on a flat battery, it super clips");
   [most, r.bonusLap] = [0, r.laps];
   lap(r.laps);
   assert.ok(
-    most > 8.5 && most <= 9 + 1e-9,
-    `Overtake's lap harvests up to 9 MJ (${most.toFixed(2)})`,
+    most > 12 && most <= 12.5 + 1e-9,
+    `Overtake's lap harvests up to 12.5 MJ (${most.toFixed(2)})`,
   );
 }
 
@@ -574,7 +650,7 @@ assert.ok(
 // lap, a few seconds of it), or a queue behind a teammate's stop.
 const median = (xs: number[]) => xs.slice().sort((a, b) => a - b)[xs.length >> 1]!;
 const field = (lv: Level, track: Track = monza) => {
-  const race = newRace(track, GRID, seeded(3), "medium", lv);
+  const race = newRace(track, GRID, seeded(3), "medium", lv, LAPS, false, carsFor(lv));
   race.racers = race.racers.filter((r) => r.id !== 0);
   const stuck = new Map<number, number>();
   const worst = { track: 0, lane: 0 };
@@ -643,10 +719,10 @@ const [am, mid, pro, leg] = levels as [
   (typeof levels)[0],
   (typeof levels)[0],
 ];
-// The ladder: the front of each field laps about 1:36, 1:31 and 1:22, and pro's winner takes
-// about 7:15, about what a clean race from the player (pole pace on mediums) takes with the stop
-// everyone has to make.
-const near = (ms: number, want: number, by: number) => Math.abs(ms - want) < by;
+// The ladder: on the 4 MJ battery the front of each field lapped about 1:36, 1:31 and 1:22, and
+// pro's winner took about 7:15, about what a clean race from the player (pole pace on mediums)
+// takes with the stop everyone has to make; all quicker now by as much as a clean lap is.
+const near = (ms: number, want: number, by: number) => Math.abs(ms - want * BATTERY) < by;
 assert.ok(near(am.front, 95_500, 1500), `amateur's front laps about 1:36 (${fmt(am.front)})`);
 assert.ok(near(mid.front, 91_000, 1500), `intermediate's about 1:31 (${fmt(mid.front)})`);
 assert.ok(near(pro.front, 82_000, 1000), `pro's about 1:22 (${fmt(pro.front)})`);
@@ -667,8 +743,9 @@ legends(leg, pro, "Monza");
 // Pro's pole on the tracks you've set a clean qualifying lap at: your lap at Monza (1:20.567) and
 // Silverstone (1:29.634); 1% off it at Austin (1:34.119), Las Vegas (1:27.666), Yas Marina
 // (1:25.238), Monaco (1:07.879) and Lusail (1:24.975), so it's within reach of more than you.
-// Those laps were on the car as tuned (wing 3): on the track's wing you'd be quicker by as much
-// as a clean lap is, so pole is too.
+// Those laps were on the car as tuned (wing 3) and the 4 MJ battery, a clean lap there taking
+// OLD_CLEAN ms: on the track's wing and today's battery you'd be quicker by as much as a clean
+// lap is, so pole is too. Pole is Verstappen's, in the best car (WEEKEND).
 const POLE: Record<string, number> = {
   monza: 80_500,
   silverstone: 89_600,
@@ -860,7 +937,7 @@ for (const def of TRACKS) {
 // computer at your grip, without pro's edge, is about 6 s off pole). Pole is your lap where you've
 // set one.
 for (const { id, name } of TRACKS) {
-  const q = newQuali(getTrack(id), "pro", seeded(5));
+  const q = newQuali(getTrack(id), "pro", seeded(5), WEEKEND);
   const me = q[0]!.racers[0]!;
   const drive = id === "monza";
   let worst = 0;
@@ -879,7 +956,7 @@ for (const { id, name } of TRACKS) {
   const pole = order[0]!.best;
   if (POLE[id]) {
     const t = getTrack(id);
-    const ms = (POLE[id] * cleanLap(t)) / cleanLap(t, 3);
+    const ms = (POLE[id] * cleanLap(t)) / OLD_CLEAN[id]!;
     const want = fmt(ms);
     assert.ok(Math.abs(pole - ms) < 500, `${name}: pro pole about ${want} (${fmt(pole)})`);
     console.log(`${name} quali: pole ${fmt(pole)}`);

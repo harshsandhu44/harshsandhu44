@@ -1,5 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
-  <!-- raceCarRed.glb from above, nose up, traced and squared off. Hex = globals.css ink/soft/accent. -->
+  <!-- raceCarRed.glb from above, nose up, traced and squared off, in your BMW livery (race.ts
+       BMW_LIVERY, its M stripes as scene.ts draws them). Hex = globals.css ink/soft/paper. -->
+  <defs>
+    <clipPath id="body">
+      <path d="M22 4h10v24l9 12.5h7V70h-7v22.5H13V70H6V40.5h7L22 28z"/>
+    </clipPath>
+  </defs>
   <rect width="120" height="120" rx="22.5" fill="#15151e"/>
   <g transform="translate(33 10)" fill="#a9a9b3">
     <rect x="10" y="22.5" width="34" height="4"/>
@@ -8,7 +14,12 @@
     <rect x="42" y="14" width="12" height="21.5" rx="2"/>
     <rect y="73.5" width="12" height="21.5" rx="2"/>
     <rect x="42" y="73.5" width="12" height="21.5" rx="2"/>
-    <path fill="#e10600" d="M22 4h10v24l9 12.5h7V70h-7v22.5H13V70H6V40.5h7L22 28z"/>
+    <path fill="#f2f2ef" d="M22 4h10v24l9 12.5h7V70h-7v22.5H13V70H6V40.5h7L22 28z"/>
+    <g clip-path="url(#body)">
+      <polygon fill="#5fb4ec" points="0,55 27,25 54,55 54,60 27,30 0,60"/>
+      <polygon fill="#1c3f94" points="0,50 27,20 54,50 54,55 27,25 0,55"/>
+      <polygon fill="#e2231a" points="0,45 27,15 54,45 54,50 27,20 0,50"/>
+    </g>
     <rect x="9" width="36" height="11"/>
     <rect x="11" y="92.5" width="32" height="7.5"/>
   </g>
