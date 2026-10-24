@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <!-- raceCarRed.glb from above, nose up, traced and squared off. Hex = globals.css ink/soft/accent. -->
+  <rect width="120" height="120" rx="22.5" fill="#15151e"/>
+  <g transform="translate(33 10)" fill="#a9a9b3">
+    <rect x="10" y="22.5" width="34" height="4"/>
+    <rect x="10" y="80" width="34" height="4"/>
+    <rect y="14" width="12" height="21.5" rx="2"/>
+    <rect x="42" y="14" width="12" height="21.5" rx="2"/>
+    <rect y="73.5" width="12" height="21.5" rx="2"/>
+    <rect x="42" y="73.5" width="12" height="21.5" rx="2"/>
+    <path fill="#e10600" d="M22 4h10v24l9 12.5h7V70h-7v22.5H13V70H6V40.5h7L22 28z"/>
+    <rect x="9" width="36" height="11"/>
+    <rect x="11" y="92.5" width="32" height="7.5"/>
+  </g>
+</svg>
