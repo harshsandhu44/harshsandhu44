@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.3.0...drive-v1.3.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **drive:** tow-aware passing, pit-exit radio, red sectors, strike-count radio ([#56](https://github.com/harshsandhu44/harshsandhu44/issues/56)) ([e21600f](https://github.com/harshsandhu44/harshsandhu44/commit/e21600f8547eb0de7c8b7fb7989464dec16fc145))
+
 ## [1.3.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.2.0...drive-v1.3.0) (2026-10-24)
 
 
