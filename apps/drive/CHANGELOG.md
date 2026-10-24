@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.7.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.6.1...drive-v1.7.0) (2026-10-24)
+
+
+### Features
+
+* **drive:** lapped cars can unlap themselves ([#68](https://github.com/harshsandhu44/harshsandhu44/issues/68)) ([c76bf7d](https://github.com/harshsandhu44/harshsandhu44/commit/c76bf7dbbe39d92f0fb3722b59a6234759fb5438))
+
+
+### Bug Fixes
+
+* **drive:** a puncture costs grip, not top speed, and shows on its wheel ([#66](https://github.com/harshsandhu44/harshsandhu44/issues/66)) ([b1ea68d](https://github.com/harshsandhu44/harshsandhu44/commit/b1ea68dca8b44a28cc2631b2f0991c566f137276))
+
 ## [1.6.1](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.6.0...drive-v1.6.1) (2026-10-24)
 
 
