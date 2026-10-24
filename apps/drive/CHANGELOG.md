@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.0.0...drive-v1.1.0) (2026-10-23)
+
+
+### Features
+
+* **drive:** add Austin, Las Vegas, Yas Marina, Monaco and Lusail ([#48](https://github.com/harshsandhu44/harshsandhu44/issues/48)) ([dffa5e6](https://github.com/harshsandhu44/harshsandhu44/commit/dffa5e665947ff33f00553b0187f751cf225a04f))
+* **drive:** race distances, broadcast HUD, engineer radio and pit fixes ([#50](https://github.com/harshsandhu44/harshsandhu44/issues/50)) ([363f912](https://github.com/harshsandhu44/harshsandhu44/commit/363f91272f845c800915786601f0c2236b691d0f))
+* **drive:** rear wing, per-tyre wear and a single-stint sprint ([#51](https://github.com/harshsandhu44/harshsandhu44/issues/51)) ([62fcd47](https://github.com/harshsandhu44/harshsandhu44/commit/62fcd474cf330c8cabc8908043dda533c28c1f78))
+
 ## 1.0.0 (2026-10-20)
 
 
