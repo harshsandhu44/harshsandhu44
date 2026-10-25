@@ -38,6 +38,9 @@ import {
   goOut,
   inGarage,
   CUTS,
+  RUBBER,
+  bestSet,
+  type Session,
   toggleBox,
   trend,
   WINGS,
@@ -1334,8 +1337,8 @@ assert.equal(trend(false, 1.0, 1.05, 1), "", "a steady gap goes unsaid");
 }
 // Full qualifying at Monza: the whole field on track, every computer car sets a time in Q1, 16
 // go through to Q2 and 10 to Q3, and nobody knocked out goes out again. You go out in Q1 and
-// push until the flag, then the team brings you in. Traffic and out-laps cost pole little
-// against the quick lap on the same cars.
+// push until the flag, then the team brings you in. Pole is about the quick lap's on the same
+// cars.
 {
   const race = newSession(monza, "pro", seeded(5));
   const s = race.session!;
@@ -1373,7 +1376,73 @@ assert.equal(trend(false, 1.0, 1.05, 1), "", "a steady gap goes unsaid");
   for (const q of quick.slice(1)) run(q, 200, () => q.done);
   const quickPole = qualiOrder(quick.slice(1))[0]!.best;
   console.log(`Full qualifying: pole ${fmt(pole)}, quick ${fmt(quickPole)}`);
-  assert.ok(Math.abs(pole - quickPole) < 500, "pole about the quick lap's");
+  // Up to about 0.3 s quicker as the track rubbers in, and traffic costs little.
+  assert.ok(pole - quickPole > -800 && pole - quickPole < 500, "pole about the quick lap's");
+}
+// Full qualifying's extras. The track rubbers in about 0.3 s a lap by the end of Q3.
+{
+  const lap = (rubber: number) => {
+    const q = newQuali(monza, "pro", seeded(3))[2]!;
+    [q.slips, q.rubber] = [false, rubber];
+    return run(q, 200, () => q.done).racers[0]!.best;
+  };
+  const gain = (lap(0) - lap(RUBBER)) / 1000;
+  assert.ok(gain > 0.2 && gain < 0.45, `the track rubbers in (${gain.toFixed(2)} s)`);
+}
+// The set to go out on: a new one while there is one, else the one with the most life left.
+{
+  const set = (life: number, used = true) => ({ wear: [life, life, life, life], used });
+  assert.equal(bestSet([set(0.6), set(1, false), set(1, false)]), 1, "a new set first");
+  assert.equal(bestSet([set(0.6), set(0.8), set(0.7)]), 1, "then the most life");
+}
+// A car stopped on track brings the red flag: every car's back in its garage, the clock stops,
+// and after it the session goes on without the car that stopped.
+{
+  const race = newSession(monza, "pro", seeded(5));
+  const s = race.session!;
+  const x = race.racers[5]!;
+  const go = (secs: number, until = () => false) => {
+    for (let f = 0; f < secs / DT && !until(); f++) tickSession(race, still, DT);
+  };
+  go(600, () => s.phase[5] === "push");
+  x.failAt = x.dist + 1;
+  go(120, () => s.red > 0);
+  assert.ok(s.red > 0, "a car stopped on track brings the red flag");
+  assert.ok(
+    race.racers.every((r) => inGarage(r) || r === x),
+    "every car's in its garage",
+  );
+  const left = s.left;
+  go(5);
+  assert.equal(s.left, left, "the clock stops");
+  let again = false;
+  go(1200, () => {
+    again ||= !x.out;
+    return s.state !== "running";
+  });
+  assert.ok(!again, "the car that stopped is out for the segment");
+  assert.ok(
+    race.msgs.some((m) => m.text === "Green flag"),
+    "and the session goes on",
+  );
+}
+// Crawling round in front of a push lap is impeding: a warning, then three places on the grid.
+{
+  const race = newSession(monza, "pro", seeded(5));
+  const s = race.session!;
+  const me = race.racers[0]!;
+  const pushes = () => race.racers.filter((r) => s.phase[r.id] === "push").length;
+  for (let f = 0; f < 600 / DT && pushes() < 3; f++) tickSession(race, still, DT);
+  goOut(race);
+  for (let f = 0; f < 600 / DT && s.state === "running" && !s.drop; f++) {
+    me.pace = 0.45;
+    tickSession(race, teamDriving(race, me) || me.pitting ? still : aiInput(me, race), DT);
+  }
+  assert.ok(s.warned && s.drop === 3, `impeding: a warning, then a drop (${s.drop})`);
+  const fake = { reached: [[0, 1, 2, 3, 4]], best: [[1, 2, 3, 4, 5]], drop: 3 } as Session;
+  assert.deepEqual(sessionGrid(fake), [1, 2, 3, 0, 4], "three places down the grid");
+  fake.drop = 9;
+  assert.equal(sessionGrid(fake).at(-1), 0, "no further than the back");
 }
 // With incidents on, every race still gets done, and close walls don't take the field: about four
 // crash-outs a race at most, the street circuits included.

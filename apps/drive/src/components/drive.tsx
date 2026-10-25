@@ -46,6 +46,7 @@ import {
   newRace,
   newSession,
   nextSegment,
+  pickSet,
   segmentOrder,
   sessionGrid,
   tickSession,
@@ -218,7 +219,7 @@ const CONTROLS: [string[], string][] = [
 const RULES: [string, string][] = [
   [
     "Start",
-    "You start at the back, or qualify for your slot. Quick qualifying is one flying lap on softs from a rolling start, and the grid lines up by lap time. Track limits, the pit lane or abandoning the lap leaves you without a time, still at the back. Full qualifying is Q1, Q2 and Q3 on the clock with the whole field on track: go out from the garage when you like, on new softs, and only a lap started before the flag counts. The slowest six go out after Q1 and Q2, and the last ten fight for pole. Cars on a push lap get room; in the garage you can fast-forward the clock. Go when the lights go out. Amateur races the F3 grid, intermediate F2 and pro F1: on the racing line, with the fewest mistakes and a little more grip than your car. Legends is the world champions: no mistakes, and a perfect race only just keeps up.",
+    "You start at the back, or qualify for your slot. Quick qualifying is one flying lap on softs from a rolling start, and the grid lines up by lap time. Track limits, the pit lane or abandoning the lap leaves you without a time, still at the back. Full qualifying is Q1, Q2 and Q3 on the clock with the whole field on track: go out from the garage when you like, on new softs, and only a lap started before the flag counts. The slowest six go out after Q1 and Q2, and the last ten fight for pole. Each car has five sets of softs for the session: go out on a new one or a used one, as worn as you left it. The track rubbers in and gets quicker. Cars on a push lap get room, and holding one up is impeding: a warning, then three places on the grid each time. A car stopped on track brings the red flag: the clock stops and everyone's back in the garage. In the garage you can fast-forward the clock. Go when the lights go out. Amateur races the F3 grid, intermediate F2 and pro F1: on the racing line, with the fewest mistakes and a little more grip than your car. Legends is the world champions: no mistakes, and a perfect race only just keeps up.",
   ],
   [
     "Tyres & pits",
@@ -284,7 +285,7 @@ const lapsDown = (n: number) => `+${n} lap${n > 1 ? "s" : ""}`;
 // its sectors, and the team's word on it.
 type Result = {
   quali: boolean;
-  table: (ReturnType<typeof results>[number] & { sectors?: number[] })[];
+  table: (ReturnType<typeof results>[number] & { sectors?: number[]; drop?: number })[];
   // Full qualifying: the segment (0 for Q1), how many go through, and whether another follows.
   seg?: number;
   cut?: number;
@@ -314,9 +315,13 @@ const qualiRow = (id: number, best: number, sectors: number[]): Result["table"][
 type Timing = {
   seg: number;
   left: number;
+  red: number;
   through: boolean;
   fast: boolean;
   rows: { id: number; best: number; phase: Phase }[];
+  // Your sets: life left (1 new) and whether run, and the one picked for the next run.
+  sets: { life: number; used: boolean }[];
+  pick: number;
 };
 // F1's points, P1 to P10, for a classified finish.
 const POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
@@ -522,6 +527,7 @@ export default function Drive() {
   const [timing, setTiming] = useState<Timing | null>(null);
   const leaveGarage = useRef<() => void>(() => {});
   const fastForward = useRef<() => void>(() => {});
+  const chooseSet = useRef<(k: number) => void>(() => {});
   const abandon = useRef<() => void>(() => {});
   const quit = useRef<() => void>(() => {});
   const fit = useRef<(t: Tyre) => void>(() => {});
@@ -1016,6 +1022,11 @@ export default function Drive() {
       if (race.session) goOut(race);
       fast = 0;
     };
+    chooseSet.current = (k) => {
+      if (!race.session) return;
+      pickSet(race, k);
+      showSession();
+    };
     // Fast-forward in the garage, and once you're knocked out, skip to the end.
     fastForward.current = () => {
       const s = race.session;
@@ -1039,9 +1050,15 @@ export default function Drive() {
           ? {
               seg: s.seg,
               left: s.left,
+              red: s.red,
               through: s.in.includes(0),
               fast: fast > 0,
               rows: order.map((id) => ({ id, best: s.best[s.seg]![id]!, phase: s.phase[id]! })),
+              sets: s.sets[0]!.map(({ wear, used }) => ({
+                life: wear.reduce((a, b) => a + b, 0) / wear.length,
+                used,
+              })),
+              pick: s.pick,
             }
           : null,
       );
@@ -1052,9 +1069,10 @@ export default function Drive() {
       const done = s.state === "done";
       const segOf = (id: number) => s.reached.reduce((k, ids, i) => (ids.includes(id) ? i : k), 0);
       const ids = done ? sessionGrid(s) : segmentOrder(s, s.seg);
-      const table = ids.map((id) =>
-        qualiRow(id, s.best[segOf(id)]![id]!, s.sectors[segOf(id)]![id]!),
-      );
+      const table = ids.map((id) => ({
+        ...qualiRow(id, s.best[segOf(id)]![id]!, s.sectors[segOf(id)]![id]!),
+        drop: done && !id ? s.drop : 0,
+      }));
       const k = ids.indexOf(0);
       const q = `Q${s.seg + 1}`;
       const text = done
@@ -2110,8 +2128,10 @@ export default function Drive() {
           <div className="absolute inset-x-0 bottom-0 grid place-items-center p-4">
             <div className={`${panel} w-full max-w-md p-4`}>
               <div className="flex items-baseline justify-between gap-4">
-                <p className="disp text-xl">
-                  Q{timing.seg + 1} · {clock(timing.left)}
+                <p className={`disp text-xl ${timing.red ? "text-accent" : ""}`}>
+                  {timing.red
+                    ? `Red flag · ${Math.ceil(timing.red / 1000)}`
+                    : `Q${timing.seg + 1} · ${clock(timing.left)}`}
                 </p>
                 <p className={label}>
                   {timing.through
@@ -2142,13 +2162,37 @@ export default function Drive() {
                   </li>
                 ))}
               </ol>
+              {timing.through && (
+                <div
+                  role="radiogroup"
+                  aria-label="Tyre set"
+                  className="mt-3 grid grid-cols-5 gap-1.5"
+                >
+                  {timing.sets.map((t, k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      role="radio"
+                      aria-checked={timing.pick === k}
+                      onClick={() => chooseSet.current(k)}
+                      className={`min-h-11 rounded-md px-1 text-xs ring-1 active:scale-[.98] ${timing.pick === k ? "bg-lamp ring-paper" : "ring-paper/25"}`}
+                    >
+                      <span className="block font-semibold text-accent">S{k + 1}</span>
+                      <span className="block text-soft">
+                        {t.used ? `${Math.round(t.life * 100)}%` : "New"}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="mt-3 flex gap-2">
                 {timing.through && (
                   <button
                     type="button"
                     autoFocus
+                    disabled={timing.red > 0}
                     onClick={() => leaveGarage.current()}
-                    className="min-h-11 flex-1 rounded-md bg-paper font-semibold text-ink active:scale-[.98]"
+                    className="min-h-11 flex-1 rounded-md bg-paper font-semibold text-ink active:scale-[.98] disabled:opacity-40"
                   >
                     Go out
                   </button>
@@ -2540,6 +2584,11 @@ export default function Drive() {
                               ) : null}
                               {r.paid ? (
                                 <span className="text-xs text-soft">{r.paid / 1000}s served</span>
+                              ) : null}
+                              {r.drop ? (
+                                <span className="rounded-sm bg-slow px-1 text-xs font-semibold text-ink">
+                                  +{r.drop} grid
+                                </span>
                               ) : null}
                             </span>
                           </td>

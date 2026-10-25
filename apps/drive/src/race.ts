@@ -128,6 +128,7 @@ export const carGrip = (race: Race, r: Racer) => {
     (1 - r.dirty) *
     (1 - COLD * (1 - r.warm)) *
     (1 - r.damage) *
+    (1 + race.rubber) *
     race.cars[r.id >> 1]!;
   return r.puncture ? Math.max(MOST_WORN, g * 0.6) : g;
 };
@@ -716,8 +717,9 @@ export type Race = {
   sc: { car: Car; p: number; run: number } | null;
   // What your engineer last said, so it's said once (see engineer).
   eng: Engineer;
-  // Full qualifying (see newSession), or null.
+  // Full qualifying (see newSession), or null, and the grip the track's rubbered in by.
   session: Session | null;
+  rubber: number;
 };
 
 export function newRace(
@@ -850,6 +852,7 @@ export function newRace(
     neutral: null,
     sc: null,
     session: null,
+    rubber: 0,
     eng: {
       next: 0,
       pos: 0,
@@ -1013,7 +1016,11 @@ export function aiInput(r: Racer, race: Race): Input {
     // Behind a car where it is now, at a safe distance: looking far enough ahead to stop for a
     // queue at a hairpin.
     const front = ahead(mine, 0, 120);
-    if (front) want = Math.min(want, behind(front.car.v, gap(front), g));
+    if (front) {
+      const held = behind(front.car.v, gap(front), g);
+      if (race.session && held < want) impeding(race, r, front, gap(front));
+      want = Math.min(want, held);
+    }
   }
   let held = false;
   if (r.pitting) {
@@ -1125,79 +1132,137 @@ export function qualiDelta([mine, ...rest]: Race[]) {
 // together. Each segment's clock runs SEGMENTS average laps; the slowest go out after Q1 and Q2,
 // leaving CUTS through, and the grid is Q3's order, then Q2's and Q1's for those out. A lap
 // counts only if it starts before the flag. Every car waits in its garage (out of the race as
-// GARAGE, so nothing on track sees it), goes out on new softs, drives an out-lap at COOL of its
-// pace, pushes, and back in at its box is in the garage again. The computer goes out at times
-// planned per segment: its last run to push just before the flag, and an early one where a whole
-// run (RUN average laps) fits before that.
+// GARAGE, so nothing on track sees it), goes out on a set of softs from its SETS for the session,
+// drives an out-lap at COOL of its pace, pushes, and back in at its box is in the garage again.
+// The computer goes out at times planned per segment: its last run to push just before the flag,
+// and an early one where a whole run (RUN average laps) fits before that; a new set each run while
+// it has one. The track rubbers in, up to RUBBER more grip by the end of Q3. A car stopped on
+// track brings the red flag: the clock stops, every car's back in its garage, and after RED ms
+// the session goes on; the car that stopped is out for the segment, repaired for the next. Hold
+// up a computer car's push lap on yours that isn't for IMPEDE s, within 30 m, and that's
+// impeding: a warning, then each time DROP places on the grid.
 export const SEGMENTS = [6, 5, 4];
 export const CUTS = [16, 10];
 export const GARAGE = "Garage";
+export const SETS = 5;
 const COOL = 0.85;
 const RUN = 3.1;
+export const RUBBER = 0.015;
+const RED = 10_000;
+const IMPEDE = 1;
+const DROP = 3;
 export type Phase = "garage" | "out" | "push" | "in";
+export type TyreSet = { wear: number[]; used: boolean };
 export type Session = {
-  // The segment (0 for Q1), the clock (ms; under 0 after the flag), an average lap (ms), and
-  // whether it's running, between segments or over.
+  // The segment (0 for Q1), the clock (ms; under 0 after the flag), an average lap (ms), whether
+  // it's running, between segments or over, and the red flag's ms still to run (0 for none).
   seg: number;
   left: number;
   lap: number;
   state: "running" | "break" | "done";
+  red: number;
   // The cars in each segment so far, and in this one; by id, each car's phase, when (ms into the
-  // segment) the computer goes out, its pace on a push lap, and the sectors of the lap it's on.
+  // segment) the computer goes out, its pace on a push lap, the sectors of the lap it's on, its
+  // sets, the one on the car (-1 none) and the one you've picked for your next run.
   reached: number[][];
   in: number[];
   phase: Phase[];
   go: number[][];
   pace: number[];
   now: number[][];
+  sets: TyreSet[][];
+  on: number[];
+  pick: number;
   // By segment and id, each car's best lap (0 for none) and that lap's sectors.
   best: number[][];
   sectors: number[][][];
+  // Impeding: whether a push lap's lifting for you this frame, for how long (-1 once it's called,
+  // until you're clear), the warning, and the places you drop on the grid.
+  lifting: boolean;
+  held: number;
+  // Your speed as a share of the car's limit, smoothed over a couple of seconds: under SLOW you're
+  // on a slow lap, whatever the timing says.
+  effort: number;
+  warned: boolean;
+  drop: number;
 };
 export const inGarage = (r: Racer) => r.out === GARAGE;
 const pushing = (race: Race, r: Racer) => race.session!.phase[r.id] === "push";
+// On a push lap for traffic and impeding: yours only while you're on the pace.
+const SLOW = 0.85;
+const onPush = (race: Race, r: Racer) =>
+  pushing(race, r) && (r.id > 0 || race.session!.effort >= SLOW);
+const lifeOf = (set: TyreSet) => set.wear.reduce((a, b) => a + b, 0) / set.wear.length;
+// The set to go out on: a new one while there's one left, else the one with the most life.
+export const bestSet = (sets: TyreSet[]) => {
+  const fresh = sets.findIndex((t) => !t.used);
+  if (fresh >= 0) return fresh;
+  return sets.reduce((k, t, i) => (lifeOf(t) > lifeOf(sets[k]!) ? i : k), 0);
+};
 // About a lap on new softs on the racing line, from the track's speed limits. ponytail: they
 // leave out the time a car takes to get up to them, so 4% on, as pole at Monza comes out.
 const lapGuess = ({ CUM, PATH, limitAt }: Track) =>
   1040 * PATH.reduce((t, _, i) => t + (CUM[i + 1]! - CUM[i]!) / limitAt(i, grip(1, "soft"), 1), 0);
 export function newSession(track: Track, lv: Level, rand = Math.random, cars = drawCars(lv, rand)) {
-  const race = newRace(track, GRID, rand, "soft", lv, 1, false, cars);
+  const race = newRace(track, GRID, rand, "soft", lv, 1, true, cars);
   const ids = race.racers.map((r) => r.id);
   const lap = lapGuess(track);
+  // A breakdown comes somewhere in the session's dozen-odd laps, not on the first.
+  for (const r of race.racers) r.failAt *= 12;
   race.session = {
     seg: 0,
     left: SEGMENTS[0]! * lap,
     lap,
     state: "running",
+    red: 0,
     reached: [ids],
     in: ids,
     phase: ids.map(() => "garage"),
     go: ids.map(() => []),
     pace: race.racers.map((r) => r.pace),
     now: ids.map(() => []),
+    sets: ids.map(() => Array.from({ length: SETS }, () => ({ wear: [1, 1, 1, 1], used: false }))),
+    on: ids.map(() => -1),
+    pick: 0,
     best: SEGMENTS.map(() => ids.map(() => 0)),
     sectors: SEGMENTS.map(() => ids.map(() => [])),
+    lifting: false,
+    held: 0,
+    effort: 1,
+    warned: false,
+    drop: 0,
   };
   for (const r of race.racers) toGarage(race, r);
-  plan(race);
+  plan(race, 0);
   return race;
 }
-function plan(race: Race) {
+// The computer's runs from `from` ms into the segment: its last to push just before the flag (or
+// straight away, if that's past), and an early one where a whole run fits before it.
+function plan(race: Race, from: number) {
   const s = race.session!;
-  const n = SEGMENTS[s.seg]!;
+  const end = SEGMENTS[s.seg]! * s.lap;
   s.go = s.go.map(() => []);
   for (const id of s.in) {
-    if (!id) continue;
-    const last = (n - 1.35 - 0.6 * race.rand()) * s.lap;
+    if (!id || end - from < 1.3 * s.lap) continue;
+    const last = Math.max(
+      from + 0.3 * race.rand() * s.lap,
+      end - (1.35 + 0.6 * race.rand()) * s.lap,
+    );
     const early = last - RUN * s.lap;
-    s.go[id] = early > 0 ? [race.rand() * early, last] : [last];
+    s.go[id] = early > from ? [from + race.rand() * (early - from), last] : [last];
   }
 }
+// Back in the garage: the set comes off, as worn as it is, and the lap in progress is lost.
 function toGarage(race: Race, r: Racer) {
+  const s = race.session!;
   const b = race.track.BOXES[r.id >> 1]!;
+  const k = s.on[r.id]!;
+  if (k >= 0 && !r.out) s.sets[r.id]![k]!.wear = r.wear.slice();
+  s.on[r.id] = -1;
   Object.assign(r.car, { x: b.x, y: b.y, h: b.h, v: 0 });
   Object.assign(r, {
-    out: GARAGE,
+    out: r.out && r.out !== GARAGE ? r.out : GARAGE,
+    wreck: false,
     p: race.track.nearest(b.x, b.y).p,
     pit: true,
     pitting: false,
@@ -1209,35 +1274,47 @@ function toGarage(race: Race, r: Racer) {
     cap: Infinity,
     blue: 0,
   });
-  race.session!.phase[r.id] = "garage";
-  race.session!.now[r.id] = [];
+  s.phase[r.id] = "garage";
+  s.now[r.id] = [];
+  if (r.id === 0) s.pick = bestSet(s.sets[0]!);
 }
-// Out of the garage on new softs and a full battery, the team driving down the lane. Not while
-// the teammate's still pulling out of the shared box.
-function leave(race: Race, r: Racer) {
+// Out of the garage on set k and a full battery, the team driving down the lane. Not while the
+// teammate's still pulling out of the shared box.
+function leave(race: Race, r: Racer, k: number) {
   const s = race.session!;
   const box = race.track.BOXES[r.id >> 1]!;
   const mate = race.racers[r.id ^ 1];
   if (mate && !inGarage(mate) && mate.pit && Math.abs(toBox(box, mate.car)) < 15) return false;
+  const set = s.sets[r.id]![k]!;
+  set.used = true;
+  s.on[r.id] = k;
   Object.assign(r, {
     out: null,
     pitting: true,
     served: true,
     tyre: "soft",
-    life: 1,
-    wear: [1, 1, 1, 1],
+    wear: set.wear.slice(),
+    life: lifeOf(set),
     warm: 0,
     charge: CAP,
+    damage: 0,
+    puncture: false,
     pace: s.pace[r.id]! * COOL,
   });
   s.phase[r.id] = "out";
   return true;
 }
-// You, out of the garage: while the clock's running and you're still in.
+// Your set for the next run, and out of the garage on it: while the clock's running, you're still
+// in, and there's no red flag.
+export function pickSet(race: Race, k: number) {
+  const s = race.session!;
+  if (s.sets[0]![k]) s.pick = k;
+}
 export function goOut(race: Race) {
   const s = race.session!;
   const me = race.racers[0]!;
-  if (s.state === "running" && s.left > 0 && inGarage(me) && s.in.includes(0)) leave(race, me);
+  if (s.state === "running" && !s.red && s.left > 0 && inGarage(me) && s.in.includes(0))
+    leave(race, me, s.pick);
 }
 // A lap's sectors as they come, and at the line its time if it was a push lap. A lap starting
 // after the flag, or the computer's push lap done, is the in-lap: you're driven in.
@@ -1254,44 +1331,101 @@ function timeLap(race: Race, r: Racer, split: Split | null, started: boolean) {
     started = true;
   }
   if (!started || phase[r.id] === "in") return;
-  if (s.left <= 0 || (r.id && pushing(race, r))) {
-    phase[r.id] = "in";
-    r.pace = s.pace[r.id]! * COOL;
-    if (r.id) r.stops = [r.laps + 1];
-    else r.box = true;
-  } else [phase[r.id], r.pace] = ["push", s.pace[r.id]!];
+  if (s.left <= 0 || (r.id && pushing(race, r))) goIn(race, r);
+  else [phase[r.id], r.pace] = ["push", s.pace[r.id]!];
+}
+// The in-lap: back to the box at the first chance, the team driving yours.
+function goIn(race: Race, r: Racer) {
+  const s = race.session!;
+  [s.phase[r.id], r.pace] = ["in", s.pace[r.id]! * COOL];
+  if (r.id) r.stops = [firstChance(race, r)];
+  else r.box = true;
+}
+// A car stopped on track before the flag: the red flag. Every car's back in its garage.
+function redFlag(race: Race) {
+  const s = race.session!;
+  if (s.left <= 0 || s.red) return;
+  s.red = RED;
+  for (const r of race.racers) toGarage(race, r);
+  say(race, "flag", -1, `Red flag · Q${s.seg + 1}`);
+}
+// Whether a computer car on a push lap is lifting for you, from aiInput: you're the car ahead
+// it's held to, within 30 m, not on a push lap yourself.
+function impeding(race: Race, r: Racer, front: Racer, gap: number) {
+  if (front.id === 0 && r.id && gap < 30 && pushing(race, r) && !onPush(race, front))
+    race.session!.lifting = true;
 }
 // The segment's ids, quickest first and no time last.
 export const segmentOrder = (s: Session, seg: number) =>
   s.reached[seg]!.slice().sort(
     (a, b) => (s.best[seg]![a] || Infinity) - (s.best[seg]![b] || Infinity) || a - b,
   );
-// The grid: Q3's order, then the rest of Q2's, then of Q1's.
+// The grid: Q3's order, then the rest of Q2's, then of Q1's, and you down the places you've
+// dropped for impeding.
 export function sessionGrid(s: Session) {
   const grid: number[] = [];
   for (let seg = s.reached.length - 1; seg >= 0; seg--)
     for (const id of segmentOrder(s, seg)) if (!grid.includes(id)) grid.push(id);
+  const k = grid.indexOf(0);
+  grid.splice(k, 1);
+  grid.splice(Math.min(grid.length, k + s.drop), 0, 0);
   return grid;
 }
-// A frame of qualifying: the clock, the computer's runs, then every car. Once the flag's out and
+// A frame of qualifying: the clock (stopped under a red flag), the track rubbering in, the
+// computer's runs, then every car, and whether you held a push lap up. Once the flag's out and
 // nobody's on a lap that can still count (or three laps on, should one never finish), the
 // segment's done and every car's back in its garage, as the F1 games skip the in-laps.
 export function tickSession(race: Race, you: Input, dt: number) {
   const s = race.session!;
   if (s.state !== "running") return null;
+  const end = SEGMENTS[s.seg]! * s.lap;
+  if (s.red) {
+    race.t += dt * 1000;
+    s.red = Math.max(0, s.red - dt * 1000);
+    if (!s.red) {
+      say(race, "sc", -1, "Green flag");
+      plan(race, end - s.left);
+    }
+    return null;
+  }
   const was = s.left;
   s.left -= dt * 1000;
   if (was > 0 && s.left <= 0) say(race, "flag", -1, `Chequered flag · Q${s.seg + 1}`);
-  const at = SEGMENTS[s.seg]! * s.lap - s.left;
+  const at = end - s.left;
+  const all = SEGMENTS.reduce((a, b) => a + b, 0) * s.lap;
+  const done = SEGMENTS.slice(0, s.seg).reduce((a, b) => a + b, 0) * s.lap;
+  race.rubber = (RUBBER * Math.min(all, done + at)) / all;
   for (const r of race.racers) {
     const go = s.go[r.id]!;
-    if (r.id && s.left > 0 && inGarage(r) && go.length && at >= go[0]! && leave(race, r))
-      go.shift();
+    if (r.id && s.left > 0 && inGarage(r) && go.length && at >= go[0]!) {
+      if (leave(race, r, bestSet(s.sets[r.id]!))) go.shift();
+    }
   }
+  s.lifting = false;
   const split = tick(race, you, dt);
-  const running = race.racers.some((r) => !inGarage(r) && s.phase[r.id] !== "in");
+  const me = race.racers[0]!;
+  if (!me.out) {
+    const { LENGTH, atDist, limitAt } = race.track;
+    const limit = Math.min(TOP, limitAt(atDist(me.p * LENGTH), carGrip(race, me), 1));
+    s.effort += (Math.min(1, me.car.v / limit) - s.effort) * Math.min(1, dt / 2);
+  } else s.effort = 1;
+  if (!s.lifting) s.held = 0;
+  else if (s.held >= 0) s.held += dt;
+  if (s.held > IMPEDE) {
+    s.held = -1;
+    if (!s.warned) {
+      s.warned = true;
+      say(race, "flag", 0, `Warning · ${driver(race, 0).code} · Impeding`);
+      radio(race, pick(LINES.impedeWarn));
+    } else {
+      s.drop += DROP;
+      say(race, "penalty", 0, `${DROP}-place grid penalty · ${driver(race, 0).code} · Impeding`);
+      radio(race, pick(LINES.impede));
+    }
+  }
+  const running = race.racers.some((r) => !r.out && s.phase[r.id] !== "in");
   if (s.left <= 0 && (!running || -s.left > 3 * s.lap)) {
-    for (const r of race.racers) if (!inGarage(r)) toGarage(race, r);
+    for (const r of race.racers) toGarage(race, r);
     if (s.seg < CUTS.length) {
       s.in = segmentOrder(s, s.seg).slice(0, CUTS[s.seg]);
       s.state = "break";
@@ -1299,14 +1433,16 @@ export function tickSession(race: Race, you: Input, dt: number) {
   }
   return split;
 }
-// On to the next segment, everyone in the garage.
+// On to the next segment, everyone in the garage and the cars that stopped repaired.
 export function nextSegment(race: Race) {
   const s = race.session!;
   if (s.state !== "break") return;
   s.seg++;
   [s.left, s.state] = [SEGMENTS[s.seg]! * s.lap, "running"];
   s.reached.push(s.in);
-  plan(race);
+  for (const r of race.racers)
+    if (r.out !== GARAGE) [r.out, r.failAt, s.phase[r.id]] = [GARAGE, Infinity, "garage"];
+  plan(race, 0);
 }
 
 // How far a car is short of a box, down the box's heading: exact at the box, where the lane can
@@ -1421,6 +1557,17 @@ const LINES = {
     "Damage on the car. We'll keep an eye on it.",
     "That cost us some downforce. Drive round it.",
     "Damage. Bit less grip from here.",
+  ],
+  // Qualifying: holding up a push lap, the first time and after.
+  impedeWarn: [
+    "That's a warning for impeding. Watch the mirrors on the slow laps.",
+    "Warning for impeding. Next one costs us grid places.",
+    "We've got a warning, impeding. Out of the way on the out-lap, please.",
+  ],
+  impede: [
+    "Three-place grid penalty for impeding. Mirrors, please.",
+    "Grid penalty, impeding. That's three places gone.",
+    "Impeding again. Three places. The stewards are not amused.",
   ],
   // Qualifying: a car on a push lap closing on you.
   push: [
@@ -1820,6 +1967,7 @@ function retire(race: Race, r: Racer, why: string, crash = false) {
   if (r.id === 0) radio(race, pick(LINES.retire));
   say(race, "out", r.id, `${crash ? "Crash" : "Car stopped"} · ${code(race, r)} · ${why}`);
   if (!r.wreck) return;
+  if (race.session) return redFlag(race);
   const on = Math.abs(lateral(r.car.x, r.car.y, r.p)) < HALF[atDist(r.p * LENGTH)]!;
   deploy(race, crash || on ? "sc" : "vsc");
 }
@@ -1992,6 +2140,10 @@ function puncture(race: Race, r: Racer, worn = false) {
     [r.failAt, r.fault] = [r.dist + 1, "Puncture damage"];
     return;
   }
+  if (race.session) {
+    if (r.id === 0) radio(race, pick(LINES.puncture));
+    return goIn(race, r);
+  }
   [r.stops, r.plan] = [[firstChance(race, r)], [r.tyre, nextSet(race, r)]];
   if (r.id === 0) boxCall(race, r, pick(LINES.puncture));
 }
@@ -2124,7 +2276,7 @@ function neutralise(race: Race, dt: number) {
       for (const o of rs) {
         // In qualifying, any car on a push lap when this one isn't.
         const up = race.session
-          ? pushing(race, o) && !pushing(race, r)
+          ? onPush(race, o) && !onPush(race, r)
           : o.dist - r.dist > LENGTH / 2;
         const d = fwd(o.p * LENGTH, r.p * LENGTH);
         if (up && !o.pit && o.finish === null && d <= gap) [near, gap] = [o, d];
