@@ -657,8 +657,9 @@ export type Race = {
   level: Level;
   laps: number;
   racers: Racer[];
-  // Each team's car (see drawCars), for the weekend.
+  // Each team's car (see drawCars), for the weekend, and the grid as driver ids front to back.
   cars: number[];
+  grid: number[];
   // Milliseconds since the lights went out, and the first car's time at each checkpoint.
   t: number;
   cps: number[];
@@ -799,6 +800,7 @@ export function newRace(
     laps,
     racers,
     cars,
+    grid,
     t: 0,
     cps: [],
     done: false,
@@ -823,6 +825,11 @@ export function newRace(
       worn: 0,
       stopped: -1,
       owed: 0,
+      touch: 0,
+      blue: -1,
+      hurt: 0,
+      gaps: {},
+      gapLap: 0,
     },
   };
 }
@@ -1157,23 +1164,58 @@ const LINES = {
     "You're lapped, we'll take you through to the back of the queue.",
     "Lapped cars may overtake. We'll take you round to the back of the queue.",
     "You can unlap yourself. We've got it, back of the queue.",
+    "Lapped cars through. Sit back, we'll drive you round.",
+    "We're getting the lap back. Leave it with us.",
   ],
   // Under a Safety Car or VSC the team drives you (see teamDriving): taking the car, unless it's
   // calling you in, and handing it back as it ends.
   drive: [
     (k: string) => `${k}. We've got the car, the box is your call.`,
-    (k: string) => `${k}. Leave it with us. Say if you want to box.`,
+    (k: string) => `${k}. We stay out for track position, unless you want to box.`,
     (k: string) => `${k}, we'll drive. Box is there if you want it.`,
+    (k: string) => `${k}. Staying out. Say the word and we'll box.`,
   ],
   handover: [
     (k: string) => `${k}. Your car.`,
     (k: string) => `${k}. Over to you, get ready.`,
     (k: string) => `${k}. It's yours, tyres up to temperature.`,
+    (k: string) => `${k}. Your car, be ready for the restart.`,
   ],
   rejoin: [
     "Back of the queue. It's yours.",
     "That's the lap back. You have control.",
     "In the queue now, over to you.",
+    "Lap back, you're in the queue. Your car.",
+    "Back where we belong. Over to you.",
+  ],
+  damage: [
+    "We've got damage. Car feel OK?",
+    "Damage on the car. We'll keep an eye on it.",
+    "That cost us some downforce. Drive round it.",
+    "Damage. Bit less grip from here.",
+  ],
+  blue: [
+    (c: string) => `Blue flags. Let ${c} through.`,
+    (c: string) => `${c}'s lapping us. Let them by.`,
+    (c: string) => `Blue flag, ${c} behind. Don't fight it.`,
+    (c: string) => `${c} coming through, blue flags. Give them room.`,
+  ],
+  gainedStart: [
+    (n: string, p: number) => `Gained ${n} off the start. P${p}.`,
+    (n: string, p: number) => `P${p}, ${n} up on lap one. Lovely.`,
+    (n: string, p: number) => `Up ${n} already. P${p}, keep it going.`,
+    (n: string, p: number) => `Great start, ${n} gained. P${p}.`,
+  ],
+  lostStart: [
+    (n: string, p: number) => `Lost ${n} at the start, P${p}. Plenty of time.`,
+    (n: string, p: number) => `P${p}, down ${n}. Long way to go.`,
+    (n: string, p: number) => `Dropped ${n} on lap one. Settle in, P${p}.`,
+    (n: string, p: number) => `P${p}. ${cap(n)} lost, we'll get them back.`,
+  ],
+  heldStart: [
+    (_: string, p: number) => `P${p}, held position. Settle in.`,
+    (_: string, p: number) => `P${p}, same as we started. Now push.`,
+    (_: string, p: number) => `Clean start, P${p}. Tyres are in, go.`,
   ],
   puncture: [
     "Puncture. Box, box.",
@@ -1244,13 +1286,14 @@ const LINES = {
     "Good stop,",
     "Nice work from the crew,",
     "Clean stop,",
-    "Great stop from the boys,",
+    "Great stop from the crew,",
     "Smooth stop,",
   ],
   served: [
     (s: string) => `${s} with the penalty. Go get it back.`,
     (s: string) => `Penalty served, ${s}. Clean from here, please.`,
     (s: string) => `${s}, penalty's done. Let's not do that again.`,
+    (s: string) => `${s}. Penalty paid, slate's clean.`,
   ],
   held: [
     (s: string) => `${s} there. Traffic in the lane, sorry.`,
@@ -1348,7 +1391,9 @@ const LINES = {
 // it last called, the place now and since when, the cars either side, the lap you went last (-1
 // when you're not, -2 once it's said so), the lap of the last slow-lap call, whether you're
 // spun, the stint the worn-tyres call was for, when you stopped at the box (-1 when not) and the
-// seconds of penalty that stop served.
+// seconds of penalty that stop served; the last lap you were in the pit lane or under a Safety
+// Car or VSC (not one to call slow), the car the last blue flag call was for, the damage it last
+// called, and the gaps either side at the last gaps call, with its lap.
 type Engineer = {
   next: number;
   pos: number;
@@ -1361,6 +1406,11 @@ type Engineer = {
   worn: number;
   stopped: number;
   owed: number;
+  touch: number;
+  blue: number;
+  hurt: number;
+  gaps: Record<number, number>;
+  gapLap: number;
 };
 // Every tick in a race: a spin, the stop, tyres going off, and twice a second the order, for
 // places won and lost (once held for two seconds, not side by side) and a long time last. Places
@@ -1369,6 +1419,11 @@ function engineer(race: Race) {
   const me = race.racers.find((r) => r.id === 0);
   const e = race.eng;
   if (!me || me.out || me.finish !== null || race.laps < 2) return;
+  if (me.pit || race.neutral) e.touch = me.laps + 1;
+  if (me.damage - e.hurt >= 0.02) {
+    e.hurt = me.damage;
+    radio(race, pick(LINES.damage));
+  }
   const spun = me.wrong > 0.5;
   if (spun && !e.spun) radio(race, pick(LINES.spun), true);
   e.spun = spun;
@@ -1421,12 +1476,25 @@ function engineer(race: Race) {
 function lapCall(race: Race, r: Racer, lap: number, valid: boolean) {
   if (race.laps < 2 || r.laps >= race.laps) return;
   if (r.laps === race.laps - 1) return radio(race, pick(LINES.last));
+  // Lap one: the places against your grid slot.
+  if (r.laps === 1) {
+    const pos =
+      order(race)
+        .filter((o) => !o.out)
+        .indexOf(r) + 1;
+    const n = race.grid.indexOf(r.id) + 1 - pos;
+    const places = `${Math.abs(n)} place${Math.abs(n) > 1 ? "s" : ""}`;
+    return radio(
+      race,
+      pick(n > 0 ? LINES.gainedStart : n < 0 ? LINES.lostStart : LINES.heldStart)(places, pos),
+    );
+  }
   if (race.fastest?.id === 0 && race.fastest.ms === lap)
     return radio(race, `${pick(LINES.fastest)} ${fmt(lap)}.`);
   if (valid && r.laps > 1 && r.best === lap)
     return radio(race, `${pick(LINES.pb)} ${fmt(lap)}.`, true);
-  // Not the start, an in or out lap, or under a Safety Car or VSC.
-  const racing = r.laps > 1 && !r.pitting && r.laps - r.set > 1 && !race.neutral;
+  // Not the start, nor a lap any of which was in the pit lane or under a Safety Car or VSC.
+  const racing = r.laps > 1 && race.eng.touch < r.laps;
   if (racing && valid && r.best && lap > r.best * 1.04 && r.laps - race.eng.slow >= 4) {
     race.eng.slow = r.laps;
     return radio(race, pick(LINES.slow), true);
@@ -1434,12 +1502,30 @@ function lapCall(race: Race, r: Racer, lap: number, valid: boolean) {
   if (r.laps % 3) return;
   const run = order(race);
   const k = run.indexOf(r);
-  const by = (o: Racer | undefined, where: string) =>
-    o && !o.out && o.cp >= 0 && r.cp >= 0
-      ? `${code(race, o)} ${where} ${Math.abs(gap(race, o) - gap(race, r)).toFixed(1)}`
-      : "";
-  const gaps = [by(run[k - 1], "ahead"), by(run[k + 1], "behind")].filter(Boolean);
-  if (gaps.length) radio(race, pick(LINES.gaps)(gaps.join(", ")), true);
+  const e = race.eng;
+  const was = e.gaps;
+  e.gaps = {};
+  const by = (o: Racer | undefined, ahead: boolean) => {
+    if (!o || o.out || o.cp < 0 || r.cp < 0) return "";
+    const g = Math.abs(gap(race, o) - gap(race, r));
+    e.gaps[o.id] = g;
+    const then = was[o.id];
+    const how = then === undefined ? "" : trend(ahead, then, g, r.laps - e.gapLap);
+    return `${code(race, o)} ${ahead ? "ahead" : "behind"} ${g.toFixed(1)}${how}`;
+  };
+  const gaps = [by(run[k - 1], true), by(run[k + 1], false)].filter(Boolean);
+  e.gapLap = r.laps;
+  if (gaps.length) radio(race, pick(LINES.gaps)(gaps.join("; ")), true);
+}
+// How a gap's moved since the last gaps call `laps` ago, a tenth a lap or more, from your side:
+// to the car ahead you're taking time or it's pulling away, to the one behind it's closing or
+// you're pulling away.
+export function trend(ahead: boolean, then: number, now: number, laps: number) {
+  const per = (now - then) / Math.max(1, laps);
+  if (Math.abs(per) < 0.1) return "";
+  const by = `${Math.abs(per).toFixed(1)} a lap`;
+  if (ahead) return per < 0 ? `, you're taking ${by}` : `, pulling away ${by}`;
+  return per < 0 ? `, closing ${by}` : `, you're pulling ${by}`;
 }
 
 // The tyre that's worn most.
@@ -1805,12 +1891,17 @@ function neutralise(race: Race, dt: number) {
       }
     if (!near) {
       r.close = 0;
+      if (r.id === 0) race.eng.blue = -1;
       continue;
     }
     r.close += (near.car.v - r.car.v - r.close) * Math.min(1, dt / CLOSE_T);
     if (r.close <= 0) continue;
     const side = lateral(r.car.x, r.car.y, r.p) - lateral(near.car.x, near.car.y, near.p);
     r.blue = Math.sign(side) || 1;
+    if (r.id === 0 && race.eng.blue !== near.id) {
+      race.eng.blue = near.id;
+      radio(race, pick(LINES.blue)(code(race, near)));
+    }
     r.cap = Math.min(r.cap, Math.max(BLUE_V, near.car.v - 6));
   }
 }
