@@ -87,6 +87,8 @@ const DIST = "drive-distance";
 const LAPS = "monza-laps";
 // The tower's gap column and the map's size, as indices into MODES and MAPS.
 const TOWER = "drive-tower";
+// The classification's gap column: to the car ahead, or to the leader.
+const GAPS = "drive-gaps";
 const MAP = "drive-map";
 const MODES = ["Interval", "Leader", "Tyres"] as const;
 // Small and medium are the 600 m round you; large is the whole circuit.
@@ -253,11 +255,11 @@ const plus = (s: number, dp = 3) => {
 };
 const lapsDown = (n: number) => `+${n} lap${n > 1 ? "s" : ""}`;
 
-// A race's classification, or qualifying's, where each row's time is its lap (0 for none), and
-// the team's word on it.
+// A race's classification, or qualifying's, where each row's time is its lap (0 for none) with
+// its sectors, and the team's word on it.
 type Result = {
   quali: boolean;
-  table: ReturnType<typeof results>;
+  table: (ReturnType<typeof results>[number] & { sectors?: number[] })[];
   fastest: number | null;
   level: Level;
   laps: number;
@@ -997,7 +999,7 @@ export default function Drive() {
             for (let n = 0; n < (skipping ? 300 : 1) && !q.done; n++)
               tick(q, still, skipping ? 1 / 30 : dt);
           if (!over && quali.every((q) => q.done)) {
-            const table = qualiOrder(quali).map(({ id, best }) => ({
+            const table = qualiOrder(quali).map(({ id, best, sectors }) => ({
               id,
               time: best,
               down: 0,
@@ -1005,9 +1007,12 @@ export default function Drive() {
               penalty: 0,
               paid: 0,
               stints: [],
+              stintLaps: [],
               stops: 0,
               out: null,
               dsq: false,
+              grid: 0,
+              sectors,
             }));
             nextGrid = table.map((r) => r.id);
             const k = table.findIndex((r) => !r.id);
@@ -1331,6 +1336,15 @@ export default function Drive() {
 
   const shown = status === "ready" ? "" : "opacity-0";
   const leader = result?.table[0]?.time ?? 0;
+  const [toCar, setToCar] = useState(() => read(GAPS, false));
+  const flipGaps = () => {
+    setToCar(!toCar);
+    write(GAPS, !toCar);
+  };
+  // Qualifying's best sectors, purple in the table.
+  const bestSectors = [0, 1, 2].map((s) =>
+    Math.min(...(result?.table ?? []).map((r) => r.sectors?.[s] || Infinity)),
+  );
 
   return (
     <main
@@ -2193,7 +2207,41 @@ export default function Drive() {
                     <tr>
                       <th className="w-8 py-1 font-normal">Pos</th>
                       <th className="py-1 font-normal">Driver</th>
-                      <th className="py-1 text-right font-normal">Time</th>
+                      {!result.quali && (
+                        <th className="py-1 pl-3 text-right font-normal">
+                          <span className="hidden md:inline">Grid</span>
+                          <span className="md:hidden">+/−</span>
+                        </th>
+                      )}
+                      <th className="py-1 text-right font-normal">
+                        {result.quali ? (
+                          "Time"
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={flipGaps}
+                            className="min-h-8 underline decoration-dotted underline-offset-2"
+                          >
+                            {toCar ? "Interval" : "Leader"}
+                          </button>
+                        )}
+                      </th>
+                      {result.quali && (
+                        <>
+                          <th className="py-1 pl-3 text-right font-normal">Gap</th>
+                          <th className="hidden py-1 pl-3 text-right font-normal md:table-cell">
+                            Int
+                          </th>
+                          {["S1", "S2", "S3"].map((s) => (
+                            <th
+                              key={s}
+                              className="hidden py-1 pl-3 text-right font-normal md:table-cell"
+                            >
+                              {s}
+                            </th>
+                          ))}
+                        </>
+                      )}
                       {!result.quali && (
                         <>
                           <th className="py-1 pl-3 text-right font-normal">Pts</th>
@@ -2209,6 +2257,10 @@ export default function Drive() {
                   <tbody>
                     {result.table.map((r, k) => {
                       const who = LEVELS[result.level].drivers[r.id]!;
+                      const ahead = result.table[k - 1];
+                      // Places gained from the grid, and the gap: to the leader or the car ahead.
+                      const gained = r.grid - (k + 1);
+                      const from = toCar && ahead ? ahead.time : leader;
                       return (
                         <tr
                           key={r.id}
@@ -2227,6 +2279,9 @@ export default function Drive() {
                               <span className="font-semibold">{who.code}</span>
                               <span className="hidden truncate text-soft md:inline">
                                 {who.name}
+                                <span className="ml-2 text-xs text-soft/70">
+                                  {LEVELS[result.level].teams[r.id >> 1]}
+                                </span>
                               </span>
                               {r.penalty ? (
                                 <span className="rounded-sm bg-slow px-1 text-xs font-semibold text-ink">
@@ -2238,9 +2293,21 @@ export default function Drive() {
                               ) : null}
                             </span>
                           </td>
+                          {!result.quali && (
+                            <td className="py-1 pl-3 text-right">
+                              <span className="hidden text-soft md:inline">P{r.grid} </span>
+                              <span
+                                className={`text-xs ${gained > 0 ? "text-go" : gained < 0 ? "text-accent" : "text-soft"}`}
+                              >
+                                {gained > 0 ? `▲${gained}` : gained < 0 ? `▼${-gained}` : "–"}
+                              </span>
+                            </td>
+                          )}
                           <td className="py-1 pr-2 text-right">
-                            {result.quali && !r.time
-                              ? "No time"
+                            {result.quali
+                              ? r.time
+                                ? fmt(r.time)
+                                : "No time"
                               : r.dsq
                                 ? "DSQ"
                                 : r.out
@@ -2248,9 +2315,32 @@ export default function Drive() {
                                   : r.down
                                     ? lapsDown(r.down)
                                     : k
-                                      ? plus((r.time - leader) / 1000)
+                                      ? plus((r.time - from) / 1000)
                                       : fmt(r.time)}
                           </td>
+                          {result.quali && (
+                            <>
+                              <td className="py-1 pl-3 text-right">
+                                {k && r.time ? plus((r.time - leader) / 1000) : ""}
+                              </td>
+                              <td className="hidden py-1 pl-3 text-right md:table-cell">
+                                {k && r.time && ahead?.time
+                                  ? plus((r.time - ahead.time) / 1000)
+                                  : ""}
+                              </td>
+                              {[0, 1, 2].map((s) => {
+                                const ms = r.sectors?.[s] ?? 0;
+                                return (
+                                  <td
+                                    key={s}
+                                    className={`hidden py-1 pl-3 text-right md:table-cell ${ms && ms === bestSectors[s] ? "text-fl" : ""}`}
+                                  >
+                                    {ms ? secs(ms) : ""}
+                                  </td>
+                                );
+                              })}
+                            </>
+                          )}
                           {!result.quali && (
                             <>
                               <td className="py-1 pl-3 text-right">
@@ -2260,11 +2350,16 @@ export default function Drive() {
                               <td className="py-1 pl-3">
                                 <span
                                   className="flex gap-1 font-semibold"
-                                  aria-label={r.stints.map((t) => TYRES[t].name).join(", then ")}
+                                  aria-label={r.stints
+                                    .map((t, i) => `${TYRES[t].name}, ${r.stintLaps[i]} laps`)
+                                    .join(", then ")}
                                 >
                                   {r.stints.map((t, i) => (
                                     <span key={i} className={TYRE_INK[t]} aria-hidden>
                                       {letter(t)}
+                                      <span className="text-xs font-normal text-soft">
+                                        {r.stintLaps[i]}
+                                      </span>
                                     </span>
                                   ))}
                                 </span>
