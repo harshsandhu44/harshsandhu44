@@ -370,6 +370,26 @@ const pitStop = (track: Track) => {
 };
 for (const def of TRACKS) pitStop(getTrack(def.id));
 {
+  // A penalty's served at the stop, first: 5 s owed is a 7.5 s stop, and nothing left for the flag.
+  const race = solo(2, (r) => {
+    r.stops = [1];
+    r.penalty = 5000;
+  });
+  const r = race.racers[0]!;
+  race.slips = false;
+  let stopped = 0;
+  run(race, 400, () => {
+    if (r.stop > 0) stopped += DT;
+    return r.laps >= 2;
+  });
+  assert.ok(Math.abs(stopped - STOP - 5) < 0.1, `serves 5 s at the box (${stopped.toFixed(2)})`);
+  assert.deepEqual([r.penalty, r.paid], [0, 5000], "and owes nothing at the flag");
+  assert.ok(
+    race.msgs.some((m) => m.text.startsWith("5 s penalty served")),
+    "Race Control says so",
+  );
+}
+{
   // Straight at the pit wall from the track.
   const [x, y] = pointAt(-150, HALF[0]! - 1);
   const race = solo(1);

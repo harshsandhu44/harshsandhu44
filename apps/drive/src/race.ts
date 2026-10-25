@@ -575,11 +575,13 @@ export type Racer = {
   cp: number;
   cpT: number;
   wrong: number;
-  // Track limits: excursions so far, whether off now, time added (ms), and
-  // the last contact with another car, which excuses the next excursion for a second.
+  // Track limits: excursions so far, whether off now, time still to serve (ms; added at the flag
+  // if not at a stop), time served at the box, and the last contact with another car, which
+  // excuses the next excursion for a second.
   strikes: number;
   off: boolean;
   penalty: number;
+  paid: number;
   touchT: number;
   // 2026 power: whether the wings are flat (Straight Mode); the battery (MJ), what it's harvested
   // this lap, and whether it's super clipping; Overtake Mode for the zone it was last eligible in
@@ -744,6 +746,7 @@ export function newRace(
       strikes: 0,
       off: false,
       penalty: 0,
+      paid: 0,
       touchT: -Infinity,
       straight: false,
       charge: CAP,
@@ -816,6 +819,7 @@ export function newRace(
       spun: false,
       worn: 0,
       stopped: -1,
+      owed: 0,
     },
   };
 }
@@ -1074,7 +1078,8 @@ const toBox = (b: Track["BOXES"][number], car: Car) =>
   (b.x - car.x) * Math.cos(b.h) + (b.y - car.y) * Math.sin(b.h);
 // The limiter in the lane and the stop at the box, for any car. Teammates share a box, so one
 // that gets there second waits 8 m short of it until the first has gone (a double stack). A car
-// that rolls a little past its marks still stops there.
+// that rolls a little past its marks still stops there. A time penalty is served first, like F1:
+// the car sits out its seconds before the crew touches it.
 function pitStop(race: Race, r: Racer, dt: number) {
   const { car } = r;
   const { BOXES } = race.track;
@@ -1108,7 +1113,12 @@ function pitStop(race: Race, r: Racer, dt: number) {
   // A car that limped in broken down retires here.
   if (!wait && d < 0.25) {
     if (r.dist >= r.failAt) retire(race, r, r.fault);
-    else r.stop = STOP;
+    else {
+      r.stop = STOP + r.penalty / 1000;
+      if (r.penalty)
+        say(race, "penalty", r.id, `${r.penalty / 1000} s penalty served · ${code(race, r)}`);
+      [r.paid, r.penalty] = [r.paid + r.penalty, 0];
+    }
   }
 }
 
@@ -1221,6 +1231,11 @@ const LINES = {
     "Great stop from the boys,",
     "Smooth stop,",
   ],
+  served: [
+    (s: string) => `${s} with the penalty. Go get it back.`,
+    (s: string) => `Penalty served, ${s}. Clean from here, please.`,
+    (s: string) => `${s}, penalty's done. Let's not do that again.`,
+  ],
   held: [
     (s: string) => `${s} there. Traffic in the lane, sorry.`,
     (s: string) => `Held for traffic, ${s}. Go get it back.`,
@@ -1316,7 +1331,8 @@ const LINES = {
 // What the engineer's said, so each call's made once: when it next looks at the order, the place
 // it last called, the place now and since when, the cars either side, the lap you went last (-1
 // when you're not, -2 once it's said so), the lap of the last slow-lap call, whether you're
-// spun, the stint the worn-tyres call was for, and when you stopped at the box (-1 when not).
+// spun, the stint the worn-tyres call was for, when you stopped at the box (-1 when not) and the
+// seconds of penalty that stop served.
 type Engineer = {
   next: number;
   pos: number;
@@ -1328,6 +1344,7 @@ type Engineer = {
   spun: boolean;
   worn: number;
   stopped: number;
+  owed: number;
 };
 // Every tick in a race: a spin, the stop, tyres going off, and twice a second the order, for
 // places won and lost (once held for two seconds, not side by side) and a long time last. Places
@@ -1339,15 +1356,17 @@ function engineer(race: Race) {
   const spun = me.wrong > 0.5;
   if (spun && !e.spun) radio(race, pick(LINES.spun), true);
   e.spun = spun;
-  if (me.stop > 0 && e.stopped < 0) e.stopped = race.t;
+  if (me.stop > 0 && e.stopped < 0) [e.stopped, e.owed] = [race.t, Math.round(me.stop - STOP)];
   if (me.served && e.stopped >= 0 && me.car.v > 2) {
     const secs = ((race.t - e.stopped) / 1000).toFixed(1);
     const corner = race.track.nextCorner(me.p);
     radio(
       race,
-      +secs > STOP + 1.5
+      +secs > STOP + e.owed + 1.5
         ? pick(LINES.held)(secs)
-        : `${pick(LINES.stop)} ${secs}. Cold tyres, careful into ${corner}.`,
+        : e.owed
+          ? pick(LINES.served)(secs)
+          : `${pick(LINES.stop)} ${secs}. Cold tyres, careful into ${corner}.`,
     );
     e.stopped = -1;
   }
@@ -1503,7 +1522,8 @@ function boxCall(race: Race, r: Racer, why: string) {
   const k = r.stops.indexOf(firstChance(race, r));
   r.fit ??= (k >= 0 && r.plan[k + 1]) || nextSet(race, r);
   r.boxCall = true;
-  radio(race, `${why} ${TYRES[r.fit].name} ready.`);
+  const owed = r.penalty ? ` ${r.penalty / 1000} seconds to serve first.` : "";
+  radio(race, `${why} ${TYRES[r.fit].name} ready.${owed}`);
 }
 
 // One more excursion: the lap's deleted (lapTick does that), the third brings the black and
@@ -1991,9 +2011,9 @@ export function results(race: Race) {
       const run = r.finish ?? race.t + (total - r.dist) / (Math.max(r.dist, 1) / race.t);
       const time = run + r.penalty;
       const down = race.laps - r.laps;
-      const { id, best, penalty, stints, out } = r;
+      const { id, best, penalty, paid, stints, out } = r;
       const dsq = r.finish !== null && !sprint(race.laps) && new Set(stints).size < 2;
-      return { id, time, down, best, penalty, stints, stops: stints.length - 1, out, dsq };
+      return { id, time, down, best, penalty, paid, stints, stops: stints.length - 1, out, dsq };
     })
     .sort((a, b) => +a.dsq - +b.dsq || +!!a.out - +!!b.out || a.down - b.down || a.time - b.time);
 }
