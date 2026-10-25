@@ -1802,6 +1802,8 @@ function replan(race: Race, r: Racer, cheap = 1) {
 // The set for a stop now: the next in the best plan that stops here, or this late in the race,
 // a compound the car hasn't run yet. In the sprint, the quickest set to the flag.
 function nextSet(race: Race, r: Racer): Tyre {
+  // Qualifying runs softs, and its race is a lap long.
+  if (race.session) return "soft";
   if (sprint(race.laps)) return strategies(race.laps - r.laps, race.track)[0]?.tyres[0] ?? "soft";
   let best: Plan | null = null;
   walkPlans(race.laps, race.track, nowOf(race, r, r.laps, 1), (p) => {
