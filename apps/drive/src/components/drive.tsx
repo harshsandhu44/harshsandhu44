@@ -47,8 +47,10 @@ import {
   results,
   sprint,
   stintLaps,
+  teamDriving,
   teamPlan,
   tick,
+  toggleBox,
   towShare,
   wingGrip,
   wingTop,
@@ -180,6 +182,7 @@ const CONTROLS: [string[], string][] = [
   [["1–3"], "Tyres"],
   [["[ ]"], "Wing"],
   [["Space"], "Overtake"],
+  [["B"], "Box (Safety Car)"],
   [["P"], "Pause"],
   [["R"], "Restart"],
   [["T"], "Timing"],
@@ -200,7 +203,7 @@ const RULES: [string, string][] = [
   ],
   [
     "Safety Car & failures",
-    "Cars break down (about one in twenty-five a race, yours too), crash out on a big hit, take lasting damage from smaller ones, and puncture from contact or a set run to nothing; a puncture costs grip, not top speed, until you box, its wheel blinking red. A car stopped off the track brings the Virtual Safety Car: everyone is held to the same speed. A crash, or a car stopped on the track, brings the Safety Car: the field queues behind it with no passing, and racing starts again at the line once it's gone in. Your car is held to both for you, and a stop under either costs less. With more than three laps to go, lapped cars are waved past the queue to its back first (the team drives you through), and the Safety Car comes in once the last is back. When a car a lap up catches you, the blue flag lets it by; pass it again and pull away, and you've unlapped yourself.",
+    "Cars break down (about one in twenty-five a race, yours too), crash out on a big hit, take lasting damage from smaller ones, and puncture from contact or a set run to nothing; a puncture costs grip, not top speed, until you box, its wheel blinking red. A car stopped off the track brings the Virtual Safety Car: everyone is held to the same speed. A crash, or a car stopped on the track, brings the Safety Car: the field queues behind it with no passing, and racing starts again at the line once it's gone in. The team drives your car under both and hands it back as either ends: press B (or Box) to have it take you in, as a stop under either costs less. With more than three laps to go, lapped cars are waved past the queue to its back first (the team drives you through), and the Safety Car comes in once the last is back. When a car a lap up catches you, the blue flag lets it by; pass it again and pull away, and you've unlapped yourself.",
   ],
   [
     "Track limits",
@@ -463,6 +466,7 @@ export default function Drive() {
   const quit = useRef<() => void>(() => {});
   const fit = useRef<(t: Tyre) => void>(() => {});
   const fitWing = useRef<(by: number) => void>(() => {});
+  const boxIt = useRef<() => void>(() => {});
   const wingNext = useRef<HTMLSpanElement>(null);
   const wingEl = useRef<HTMLSpanElement>(null);
   const tyreEls = useRef<HTMLSpanElement[]>([]);
@@ -515,6 +519,8 @@ export default function Drive() {
   const scEl = useRef<HTMLSpanElement>(null);
   const blueEl = useRef<HTMLSpanElement>(null);
   const unlapEl = useRef<HTMLSpanElement>(null);
+  const teamEl = useRef<HTMLSpanElement>(null);
+  const boxPad = useRef<HTMLButtonElement>(null);
   const otPad = useRef<HTMLButtonElement>(null);
   const batEl = useRef<HTMLSpanElement>(null);
   const batText = useRef<HTMLSpanElement>(null);
@@ -643,6 +649,7 @@ export default function Drive() {
           return drawBoard();
         }
         if (e.key === "[" || e.key === "]") return fitWing.current(e.key === "]" ? 1 : -1);
+        if (l === "b") return boxIt.current();
         if (l === "m") {
           const k = (mapSizeRef.current + 1) % MAPS.length;
           mapSizeRef.current = k;
@@ -932,6 +939,11 @@ export default function Drive() {
         me.nextWing = clamp(me.nextWing);
     };
 
+    // Under a Safety Car or VSC, asking the team driving you to box, or not.
+    boxIt.current = () => {
+      if (phase === "racing" && !quali && !paused) toggleBox(race);
+    };
+
     let raf = 0;
     let last = performance.now();
     const ro = new ResizeObserver(() => {
@@ -1190,6 +1202,16 @@ export default function Drive() {
         sc.lastChild!.textContent = n.toUpperCase();
       blueEl.current!.hidden = !me.blue;
       unlapEl.current!.hidden = !me.unlap;
+      const driven = !quali && teamDriving(race, me);
+      const team = teamEl.current!;
+      team.hidden = !driven;
+      // The team's suggesting a stop: B (or Box) takes it.
+      const boxing = me.box ? "Boxing" : me.boxCall ? "Box? B" : "Team driving";
+      if (team.lastChild!.textContent !== boxing) team.lastChild!.textContent = boxing;
+      const bp = boxPad.current!;
+      bp.hidden = !driven || me.pit || !p.touch;
+      if (bp.textContent !== (me.box ? "Stay out" : "Box"))
+        bp.textContent = me.box ? "Stay out" : "Box";
       const otChip = otEl.current!;
       otChip.hidden = !me.ot;
       otChip.classList.toggle("bg-lamp", me.ot === "ready");
@@ -1699,6 +1721,10 @@ export default function Drive() {
               <Car className="size-3.5" />
               <span>SC</span>
             </span>
+            <span ref={teamEl} hidden className={`${chip} bg-paper text-ink`}>
+              <Headset className="size-3.5" />
+              <span>Team driving</span>
+            </span>
             <span ref={unlapEl} hidden className={`${chip} bg-go text-ink`}>
               <Flag className="size-3.5" />
               Unlapping
@@ -1875,6 +1901,15 @@ export default function Drive() {
               </button>
             ))}
           </div>
+          <button
+            ref={boxPad}
+            type="button"
+            hidden
+            onClick={() => boxIt.current()}
+            className={`${padKey} px-4 text-sm font-semibold tracking-wide uppercase`}
+          >
+            Box
+          </button>
           <button
             ref={otPad}
             type="button"

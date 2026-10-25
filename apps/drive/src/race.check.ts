@@ -29,7 +29,9 @@ import {
   qualiDelta,
   qualiOrder,
   results,
+  teamDriving,
   tick,
+  toggleBox,
   WINGS,
   wrongWay,
   type Level,
@@ -1240,6 +1242,46 @@ for (const id of [11, 0]) {
     rest.every((r) => r === me || r.dist > me.dist),
     "at the back of the queue",
   );
+}
+// Under the Safety Car the team drives your car, whatever you're pressing: no track limits, no
+// hit, in the queue, until it hands the car back as the Safety Car comes in. Asked to box, it
+// takes you in under it, and drives on until the stop's done.
+for (const boxing of [false, true]) {
+  const race = incident([0, 2, 4, 6, 8, 10, 12, 14]);
+  const me = race.racers.find((r) => r.id === 0)!;
+  const flat = { gas: true, brake: false, steer: 1, ot: false };
+  const drive = (secs: number, until = () => false) => {
+    for (let f = 0; f < secs / DT && !until(); f++)
+      tick(race, teamDriving(race, me) ? flat : aiInput(me, race), DT);
+  };
+  drive(90);
+  const x = race.racers.find((r) => r.id === 14)!;
+  const [px, py] = pointAt(-150, HALF[0]! - 1);
+  Object.assign(x.car, { x: px, y: py, h: dirAt(nearest(px, py).p) + Math.PI / 2, v: 60 });
+  x.launch = Infinity;
+  drive(1, () => x.out !== null);
+  assert.equal(race.neutral?.kind, "sc", "a crash brings the Safety Car");
+  assert.ok(teamDriving(race, me), "and the team takes your car");
+  if (boxing) toggleBox(race);
+  const [strikes, stints] = [me.strikes, me.stints.length];
+  let queued = false;
+  drive(600, () => {
+    queued ||= me.held;
+    return !teamDriving(race, me);
+  });
+  const said = race.msgs.filter((m) => m.kind === "radio").map((m) => m.text);
+  assert.ok(queued && me.strikes === strikes && me.damage === 0, "driven clean in the queue");
+  assert.ok(!me.out && race.neutral?.ending, "and handed back as it ends");
+  if (boxing) {
+    assert.equal(me.stints.length, stints + 1, "asked to box, it stops under the Safety Car");
+    assert.equal(me.box, false, "and the request's done");
+  } else {
+    assert.equal(me.stints.length, stints, "not asked, it stays out");
+    assert.ok(
+      said.some((t) => t.startsWith("Safety Car's in this lap.")),
+      "with a word on the radio",
+    );
+  }
 }
 // With incidents on, every race still gets done, and close walls don't take the field: about four
 // crash-outs a race at most, the street circuits included.

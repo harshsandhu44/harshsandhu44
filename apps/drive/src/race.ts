@@ -605,8 +605,10 @@ export type Racer = {
   // What the steering asked of the grip last frame, over 1 at the limit (track.ts step): the
   // tyres' squeal.
   slide: number;
-  // You: whether the team has already called you in on these tyres.
+  // You: whether the team has already called you in on these tyres, and whether you've asked to
+  // box while it drives you (see teamDriving).
   boxCall: boolean;
+  box: boolean;
   // In the lane with no stop planned on this visit: a computer car that strayed in, or any car
   // after the flag. It drives straight through in the fast lane.
   through: boolean;
@@ -763,6 +765,7 @@ export function newRace(
       dirty: 0,
       slide: 0,
       boxCall: false,
+      box: false,
       through: false,
       warm: 1,
       wear: [1, 1, 1, 1],
@@ -859,7 +862,8 @@ export function aiInput(r: Racer, race: Race): Input {
   if (k >= 0 && r.rolled !== k) {
     r.rolled = k;
     // Nobody overcooks one under a Safety Car or VSC.
-    const risk = race.slips && r.slip > 0 && r.cap === Infinity;
+    // Nor does the team, driving yours.
+    const risk = race.slips && r.slip > 0 && r.cap === Infinity && r.id > 0;
     r.mistake = risk && race.rand() < r.slip + 0.08 * (1 - r.life) ? k : -1;
   }
   if (r.mistake >= 0 && fwd(CORNERS[r.mistake]!.at, m) < 200) r.mistake = -1;
@@ -1087,7 +1091,7 @@ function pitStop(race: Race, r: Racer, dt: number) {
     car.v = 0;
     r.stop -= dt;
     if (r.stop <= 0) {
-      [r.life, r.served, r.boxCall, r.warm, r.puncture] = [1, true, false, 0, false];
+      [r.life, r.served, r.boxCall, r.box, r.warm, r.puncture] = [1, true, false, false, 0, false];
       [r.tyre, r.fit] = [r.fit ?? nextSet(race, r), null];
       r.stints.push(r.tyre);
       [r.set, r.wear, r.wing] = [r.laps, [1, 1, 1, 1], r.nextWing];
@@ -1153,6 +1157,18 @@ const LINES = {
     "You're lapped, we'll take you through to the back of the queue.",
     "Lapped cars may overtake. We'll take you round to the back of the queue.",
     "You can unlap yourself. We've got it, back of the queue.",
+  ],
+  // Under a Safety Car or VSC the team drives you (see teamDriving): taking the car, unless it's
+  // calling you in, and handing it back as it ends.
+  drive: [
+    (k: string) => `${k}. We've got the car, the box is your call.`,
+    (k: string) => `${k}. Leave it with us. Say if you want to box.`,
+    (k: string) => `${k}, we'll drive. Box is there if you want it.`,
+  ],
+  handover: [
+    (k: string) => `${k}. Your car.`,
+    (k: string) => `${k}. Over to you, get ready.`,
+    (k: string) => `${k}. It's yours, tyres up to temperature.`,
   ],
   rejoin: [
     "Back of the queue. It's yours.",
@@ -1491,6 +1507,7 @@ function deploy(race: Race, kind: "sc" | "vsc") {
   const rs = race.racers.filter((r) => !r.out && r.finish === null);
   if (rs.length < race.racers.filter((r) => !r.out).length || !rs.length) return;
   const n = race.neutral;
+  const k = kind === "sc" ? "Safety Car" : "VSC";
   const lap = race.fastest?.ms ?? 90_000;
   if (kind === "vsc") {
     if (n?.kind === "sc") return;
@@ -1513,8 +1530,10 @@ function deploy(race: Race, kind: "sc" | "vsc") {
   }
   for (const r of rs) {
     const busy = r.dist >= r.failAt || r.puncture || r.pitting;
-    if (busy || !replan(race, r, kind === "sc" ? SC_STOP : VSC_STOP)) continue;
-    if (r.id === 0) boxCall(race, r, pick(LINES.neutral)(kind === "sc" ? "Safety Car" : "VSC"));
+    const stop = !busy && replan(race, r, kind === "sc" ? SC_STOP : VSC_STOP);
+    if (r.id) continue;
+    if (stop) boxCall(race, r, pick(LINES.neutral)(k));
+    else if (race.neutral !== n && teamDriving(race, r)) radio(race, pick(LINES.drive)(k));
   }
 }
 // The radio calls you in, with the set the team has out (yours if you've picked one).
@@ -1681,6 +1700,24 @@ function green(race: Race) {
   for (const r of race.racers) [r.wreck, r.unlap] = [false, false];
   say(race, "sc", -1, "Green flag");
 }
+// Under a Safety Car or VSC the team drives your car, until it's ending (the Safety Car's in this
+// lap, or the VSC's last seconds) or, if you've asked to box, until the stop's done.
+export const teamDriving = (race: Race, r: Racer) =>
+  r.id === 0 && r.finish === null && !r.out && (r.box || (!!race.neutral && !race.neutral.ending));
+// Asking the team to box, or not, while it drives you: until you're in the lane.
+export function toggleBox(race: Race) {
+  const me = race.racers.find((r) => r.id === 0);
+  if (!me || me.pit || !teamDriving(race, me)) return;
+  me.box = !me.box;
+  if (!me.box) me.pitting = false;
+}
+// The Safety Car or VSC is ending: the team hands your car back, unless it's taking you in.
+function handover(race: Race, why: string) {
+  const me = race.racers.find((r) => r.id === 0);
+  const driving = me && teamDriving(race, me) && !me.box;
+  race.neutral!.ending = true;
+  if (driving) radio(race, pick(LINES.handover)(why));
+}
 // The Safety Car, VSC and blue flags for a frame: drives the Safety Car, ends a VSC, and sets
 // every car's cap and blue flag.
 function neutralise(race: Race, dt: number) {
@@ -1692,7 +1729,7 @@ function neutralise(race: Race, dt: number) {
   const pace = (m: number) => Math.min(SC_TOP, SC_PACE * limitAt(atDist(m + 5), 1));
   if (n?.kind === "vsc") {
     if (!n.ending && race.t > n.end - 5000) {
-      n.ending = true;
+      handover(race, "VSC ending");
       say(race, "sc", -1, "VSC ending");
     }
     if (race.t >= n.end) green(race);
@@ -1730,7 +1767,7 @@ function neutralise(race: Race, dt: number) {
       }
     }
     if (!n.ending && sc.run > 0.75 * LENGTH && !rs.some((r) => r.unlap)) {
-      n.ending = true;
+      handover(race, "Safety Car's in this lap");
       say(race, "sc", -1, "Safety Car in this lap");
     }
     // ponytail: it's gone at the pit entry rather than drive down the lane.
@@ -1840,6 +1877,11 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
       if (r.id && race.eng.near.includes(r.id) && r.fit)
         radio(race, pick(LINES.rival)(code(race, r), TYRES[r.fit].name), true);
     }
+    // You, boxing while the team drives you, with the set the crew has out.
+    if (r.id === 0 && r.box && s > PIT_IN - 200 && s < PIT_IN && !r.pitting) {
+      r.pitting = true;
+      r.fit ??= nextSet(race, r);
+    }
     if (s > PIT_OUT || s < PIT_IN - 200) r.pitting = false;
 
     // Anyone in the lane is driven down it: you to your box when the team takes over, and a
@@ -1849,7 +1891,9 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     else if (!r.pitting && (r.id || r.finish !== null)) r.through = true;
     if (r.pit) r.pitting = true;
     const input =
-      r.id === 0 && !r.pitting && !r.unlap && r.finish === null && !failed ? you : aiInput(r, race);
+      r.id === 0 && !r.pitting && !r.unlap && r.finish === null && !failed && !teamDriving(race, r)
+        ? you
+        : aiInput(r, race);
     const moved = Math.abs(dp) < 0.02 && dp > 0;
     // Over the line once the Safety Car's in: racing again, the first across bringing the green.
     if (r.held && !race.sc && moved && p * LENGTH < from) {
