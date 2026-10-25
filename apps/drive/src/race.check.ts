@@ -40,6 +40,8 @@ import {
   CUTS,
   RUBBER,
   bestSet,
+  standings,
+  simInput,
   type Session,
   toggleBox,
   trend,
@@ -1443,6 +1445,59 @@ assert.equal(trend(false, 1.0, 1.05, 1), "", "a steady gap goes unsaid");
   assert.deepEqual(sessionGrid(fake), [1, 2, 3, 0, 4], "three places down the grid");
   fake.drop = 9;
   assert.equal(sessionGrid(fake).at(-1), 0, "no further than the back");
+}
+// Career: the championships. Points as F1's, sprint points for a sprint, none for a car out or
+// disqualified, teams on their drivers' points together, and a tie split on countback.
+{
+  const rest = (...first: number[]) => [
+    ...first,
+    ...[...Array(CARS).keys()].filter((id) => !first.includes(id)),
+  ];
+  const rounds = [
+    // 2 wins, 5 is 9th; then 5 is 3rd, 2 is 4th, and 3 is out of the race though placed 2nd.
+    { order: rest(2, 3, 9, 10, 11, 12, 13, 14, 5), none: [] },
+    { order: rest(4, 3, 5, 2), none: [3] },
+  ];
+  const { drivers, teams } = standings(rounds, false);
+  const pts = (id: number) => drivers.find((r) => r.k === id)!.points;
+  assert.equal(pts(2), 25 + 12, "a win and a 4th");
+  assert.equal(pts(5), 2 + 15, "a 9th and a 3rd");
+  assert.equal(pts(3), 18, "nothing for a car out of the race");
+  assert.equal(teams.find((t) => t.k === 1)!.points, pts(2) + pts(3), "a team's drivers together");
+  const even = standings(
+    [
+      { order: rest(7, 1, 4, 6, 9, 10, 11, 12, 13), none: [] },
+      { order: rest(1, 2, 3, 4, 5, 6, 8, 9, 7), none: [] },
+    ],
+    false,
+  ).drivers;
+  // 7: 25 + 2 = 27, 4: 15 + 12 = 27; 7 has the win.
+  const at = (id: number) => even.findIndex((r) => r.k === id);
+  assert.equal(even[at(7)]!.points, even[at(4)]!.points, "level on points");
+  assert.ok(at(7) < at(4), "and a win puts 7 ahead on countback");
+  assert.equal(standings([{ order: rest(9), none: [] }], true).drivers[0]!.points, 8, "sprint");
+}
+// A simulated Grand Prix: your car driven by the computer to the flag, stopping as the team
+// planned, so it runs two compounds and is classified.
+{
+  const laps = lapsOf(DISTANCES[1]!, monza);
+  const race = newRace(monza, GRID, seeded(11), "medium", "pro", laps, false);
+  const me = race.racers[0]!;
+  const plan = teamPlan(laps, monza, "medium");
+  [me.stops, me.plan] = [plan.at, plan.tyres];
+  for (let f = 0; f < 3600 / DT && !race.done; f++) tick(race, simInput(race), DT);
+  assert.ok(race.done, "a simulated race gets done");
+  const row = results(race).find((r) => r.id === 0)!;
+  assert.ok(row.stops > 0 && !row.dsq && !row.out, `you stop and are classified (${row.stints})`);
+}
+// A simulated full qualifying: the team runs your car's session as the computer's.
+{
+  const race = newSession(monza, "pro", seeded(4), undefined, true);
+  const s = race.session!;
+  const me = race.racers[0]!;
+  for (let f = 0; f < 1200 / DT && s.state === "running"; f++)
+    tickSession(race, aiInput(me, race), DT);
+  assert.ok(s.best[0]![0]! > 0, "you set a time");
 }
 // With incidents on, every race still gets done, and close walls don't take the field: about four
 // crash-outs a race at most, the street circuits included.

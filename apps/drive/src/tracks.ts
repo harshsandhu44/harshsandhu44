@@ -418,6 +418,19 @@ export const TRACKS: TrackDef[] = [
 // Each circuit is built the first time it's picked: the racing line, the speed profiles and the
 // park take tens of milliseconds.
 const built = new Map<string, Track>();
+// A career season's rounds, in 2026's calendar order: Yas Marina is the finale.
+export const CALENDAR = [
+  "monaco",
+  "redbullring",
+  "silverstone",
+  "spa",
+  "monza",
+  "austin",
+  "interlagos",
+  "lasvegas",
+  "lusail",
+  "yasmarina",
+];
 export const getTrack = (id: string) => {
   const def = TRACKS.find((t) => t.id === id) ?? TRACKS[0]!;
   let t = built.get(def.id);

@@ -30,6 +30,8 @@ import {
   DISTANCES,
   GRID,
   LEVELS,
+  POINTS,
+  SPRINT_POINTS,
   TYRES,
   STOP,
   WINGS,
@@ -49,6 +51,8 @@ import {
   pickSet,
   segmentOrder,
   sessionGrid,
+  simInput,
+  standings,
   tickSession,
   order,
   qualiDelta,
@@ -68,10 +72,11 @@ import {
   type Phase,
   type Race,
   type Racer,
+  type Round,
   type Tyre,
 } from "@/race";
 import { KERB_R, TOP, fmt, gear } from "@/track";
-import { TRACKS, getTrack } from "@/tracks";
+import { CALENDAR, TRACKS, getTrack } from "@/tracks";
 
 // Your record per track. v2: Monza's real-length track; the v1 keys hold bests from the old short
 // one. ponytail: the old `-sectors-v2` keys are left in storage, unread.
@@ -234,6 +239,10 @@ const RULES: [string, string][] = [
     "Cars break down (about one in twenty-five a race, yours too), crash out on a big hit, take lasting damage from smaller ones, and puncture from contact or a set run to nothing; a puncture costs grip, not top speed, until you box, its wheel blinking red. A car stopped off the track brings the Virtual Safety Car: everyone is held to the same speed. A crash, or a car stopped on the track, brings the Safety Car: the field queues behind it with no passing, and racing starts again at the line once it's gone in. The team drives your car under both and hands it back as either ends: press B (or Box) to have it take you in, as a stop under either costs less. With more than three laps to go, lapped cars are waved past the queue to its back first (the team drives you through), and the Safety Car comes in once the last is back. When a car a lap up catches you, the blue flag lets it by; pass it again and pull away, and you've unlapped yourself.",
   ],
   [
+    "Career",
+    "A season with BMW in one series, ten rounds from Monaco to Yas Marina, at the distance and qualifying you pick when it starts. Points as in F1 (the sprint's in a sprint season) for drivers and teams, ties split on countback. Qualify or not, race, or simulate either: the team drives your car at your level's pace. Restart any session; quit a race and it's a retirement. The season's saved as you go.",
+  ],
+  [
     "Track limits",
     "All four wheels off the track deletes the lap. The third time brings the black and white flag, then 5 s and 10 s penalties, served at your next stop (sitting them out before the crew starts) or added at the flag.",
   ],
@@ -286,6 +295,8 @@ const lapsDown = (n: number) => `+${n} lap${n > 1 ? "s" : ""}`;
 type Result = {
   quali: boolean;
   table: (ReturnType<typeof results>[number] & { sectors?: number[]; drop?: number })[];
+  // A career round's points scale (F1's by default).
+  points?: number[];
   // Full qualifying: the segment (0 for Q1), how many go through, and whether another follows.
   seg?: number;
   cut?: number;
@@ -323,8 +334,19 @@ type Timing = {
   sets: { life: number; used: boolean }[];
   pick: number;
 };
-// F1's points, P1 to P10, for a classified finish.
-const POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
+// Career: a season in one series, at one distance and qualifying format, round by round through
+// the CALENDAR; and whether the grid screen's on it or on a single race.
+const CAREER = "drive-career";
+const MODE = "drive-mode";
+type Career = { series: Level; dist: number; full: boolean; rounds: Round[] };
+const sprints = (c: Career) => DISTANCES[c.dist]!.share === 0;
+const trackName = (id: string) => TRACKS.find((t) => t.id === id)!.name;
+const live = (c: Career | null) => !!c && c.rounds.length < CALENDAR.length;
+// The season under way, if the grid screen was left on the career.
+const careerNow = (): Career | null => {
+  const c: Career | null = read(CAREER, null);
+  return read(MODE, false) && live(c) ? c : null;
+};
 
 // The team's word at the flag, picked once. Last, or behind your teammate, earns a jab.
 const pick = <T,>(xs: T[]) => xs[Math.floor(Math.random() * xs.length)]!;
@@ -400,6 +422,16 @@ const qualiWord = (pos: number, timed: boolean) =>
               `P${pos}. We can work with that.`,
               `P${pos}. Race pace is what matters.`,
             ]);
+// And in a career, where that leaves the championship: `pos`, `gap` points to the leader (or from
+// P1, the lead), and at the season's end, the verdict.
+const titleWord = (pos: number, gap: number, over: boolean) =>
+  over
+    ? pos === 1
+      ? pick(["Champions! Get in there!", "That's the title! Champions!"])
+      : pick([`We finish P${pos} in the championship.`, `P${pos} in the championship. Next year.`])
+    : pos === 1
+      ? pick([`Leading the championship, ${gap} clear.`, `P1 in the championship by ${gap}.`])
+      : pick([`P${pos} in the championship, ${gap} behind.`, `${gap} off the lead, P${pos}.`]);
 // Out of the race or disqualified, there's no position to talk about.
 const raceWord = (table: Result["table"]) => {
   const k = table.findIndex((r) => !r.id);
@@ -479,6 +511,8 @@ export default function Drive() {
   // The grid screen's pick, and what it and the pit lane's chips call into the race.
   const [grid, setGrid] = useState(true);
   const [trackId, setTrackId] = useState(() => {
+    const c = careerNow();
+    if (c) return CALENDAR[c.rounds.length]!;
     const id: string = read(TRACK, TRACKS[0]!.id);
     return TRACKS.some((t) => t.id === id) ? id : TRACKS[0]!.id;
   });
@@ -498,10 +532,14 @@ export default function Drive() {
     setWing(w);
   };
   const [level, setLevel] = useState<Level>(() => {
+    const c = careerNow();
+    if (c) return c.series;
     const l: string = read(LEVEL, "intermediate");
     return l in LEVELS ? (l as Level) : "intermediate";
   });
   const [dist, setDist] = useState(() => {
+    const c = careerNow();
+    if (c) return c.dist;
     const old: Record<number, number> = { 10: 1, 15: 1, 20: 2 };
     const k: number = read(DIST, old[read(LAPS, 5)] ?? 0);
     return DISTANCES[k] ? k : 0;
@@ -518,11 +556,28 @@ export default function Drive() {
     setLineup(GRID);
   };
   const levelRef = useRef(level);
+  const [career, setCareer] = useState<Career | null>(() => read(CAREER, null));
+  const careerRef = useRef(career);
+  const [inCareer, setInCareer] = useState(() => read(MODE, false));
+  const inCareerRef = useRef(inCareer);
+  const [setup, setSetup] = useState<Omit<Career, "rounds">>(() => ({
+    series: "intermediate",
+    dist: 0,
+    full: false,
+  }));
+  const [abandoning, setAbandoning] = useState(false);
+  const simulate = useRef<(t: Tyre | null) => void>(() => {});
+  const saveCareer = (c: Career | null) => {
+    careerRef.current = c;
+    setCareer(c);
+    write(CAREER, c);
+  };
+
   const distRef = useRef(dist);
   const regrid = useRef<() => void>(() => {});
   const go = useRef<(t: Tyre) => void>(() => {});
   const qualify = useRef<() => void>(() => {});
-  const [full, setFull] = useState(() => read(QUALI, false));
+  const [full, setFull] = useState(() => careerNow()?.full ?? read(QUALI, false));
   const fullRef = useRef(full);
   const [timing, setTiming] = useState<Timing | null>(null);
   const leaveGarage = useRef<() => void>(() => {});
@@ -608,6 +663,40 @@ export default function Drive() {
     };
   };
 
+  // Onto a career round: its track, and the season's series, distance and qualifying, none of
+  // them saved as the single race's picks. `now` is the track loaded.
+  const enterRound = (c: Career, now: string) => {
+    const id = CALENDAR[Math.min(c.rounds.length, CALENDAR.length - 1)]!;
+    [levelRef.current, distRef.current, fullRef.current] = [c.series, c.dist, c.full];
+    setLevel(c.series);
+    setDist(c.dist);
+    setFull(c.full);
+    unqualify();
+    if (id === now) return regrid.current();
+    setStatus("loading");
+    setTrackId(id);
+  };
+  // Between the single race and the career: back to the picks saved for the single race.
+  const pickMode = (on: boolean) => {
+    if (on === inCareer) return;
+    setInCareer(on);
+    inCareerRef.current = on;
+    write(MODE, on);
+    setAbandoning(false);
+    if (on && live(career)) return enterRound(career!, trackId);
+    const l: Level = read(LEVEL, "intermediate");
+    const k: number = read(DIST, 0);
+    const id: string = read(TRACK, TRACKS[0]!.id);
+    [levelRef.current, distRef.current, fullRef.current] = [l, k, read(QUALI, false)];
+    setLevel(l);
+    setDist(k);
+    setFull(fullRef.current);
+    unqualify();
+    if (id === trackId) return regrid.current();
+    setStatus("loading");
+    setTrackId(id);
+  };
+
   const aid = (change: Partial<Settings>) => {
     const next = { ...aids, ...change };
     setAids(next);
@@ -686,6 +775,8 @@ export default function Drive() {
     // classification's been shown.
     let fast = 0;
     let shown = -1;
+    // Simulating the session: the team drives your car, SKIP frames a frame.
+    let simming = false;
     let paused = false;
     const still = { gas: false, brake: false, steer: 0 };
     const keys = new Set<string>();
@@ -893,7 +984,7 @@ export default function Drive() {
       quali = null;
       towerEl.current!.hidden = false;
       lapName.current!.textContent = "Lap";
-      [fast, shown] = [0, -1];
+      [fast, shown, simming] = [0, -1, false];
       setTiming(null);
       posEl.current!.classList.remove("text-go");
       scene?.paint(LEVELS[race.level].colors, LEVELS[race.level].liveries);
@@ -933,8 +1024,23 @@ export default function Drive() {
       race.racers[0]!.finish = race.t;
       togglePause.current();
     };
-    // Out of a race to the grid screen, on the same grid: a slot you qualified for is kept.
-    quit.current = start;
+    // Out of a race to the grid screen, on the same grid: a slot you qualified for is kept. In a
+    // career a race you quit is a retirement, the rest simulated to the flag.
+    quit.current = () => {
+      if (!inCareerRef.current || quali || race.session || race.done) return start();
+      const me = race.racers[0]!;
+      [me.out, me.car.v] = ["Retired", 0];
+      simming = true;
+      togglePause.current(false);
+    };
+    // The session simulated: qualifying (no tyre), or the race on tyre `t`, no lights.
+    simulate.current = (t) => {
+      simming = true;
+      if (t) go.current(t);
+      else qualify.current();
+      phase = "racing";
+      lightsEl.current!.hidden = true;
+    };
     // Out of qualifying onto its grid; out of a race, back to the back.
     again.current = () => {
       if (race.session?.state === "break") {
@@ -1006,7 +1112,7 @@ export default function Drive() {
     };
     // Full qualifying: no lights, you start in the garage.
     const session = () => {
-      race = newSession(track, levelRef.current);
+      race = newSession(track, levelRef.current, Math.random, undefined, simming);
       weekend = race.cars;
       qualiWing.current = wingRef.current;
       [race.racers[0]!.wing, race.racers[0]!.nextWing] = [wingRef.current, wingRef.current];
@@ -1046,7 +1152,7 @@ export default function Drive() {
       const last = cut && s.best[s.seg]![order[cut - 1]!];
       nearEl.current!.textContent = last ? `Cut P${cut} ${fmt(last)}` : "";
       setTiming(
-        s.state === "running" && inGarage(me)
+        s.state === "running" && inGarage(me) && !simming
           ? {
               seg: s.seg,
               left: s.left,
@@ -1160,8 +1266,27 @@ export default function Drive() {
         // read as over, and the classification would never come.
         const over = quali?.every((q) => q.done);
         const raw = { gas, brake, steer, ot };
-        const input = aidsRef.current.assist ? assist(race, me, raw) : raw;
         const sess = race.session;
+        // Simulating: the team drives your car through SKIP frames first.
+        if (simming)
+          for (let n = 0; n < SKIP; n++) {
+            if (sess) {
+              if (sess.state !== "running") break;
+              tickSession(race, simInput(race), 1 / 30);
+            } else if (quali) {
+              if (quali.every((q) => q.done)) break;
+              if (!race.done) tick(race, simInput(race), 1 / 30);
+              for (const q of quali.slice(1)) if (!q.done) tick(q, still, 1 / 30);
+            } else {
+              if (race.done) break;
+              tick(race, simInput(race), 1 / 30);
+            }
+          }
+        const input = simming
+          ? simInput(race)
+          : aidsRef.current.assist
+            ? assist(race, me, raw)
+            : raw;
         const split = sess ? tickSession(race, input, dt) : tick(race, input, dt);
         if (sess)
           for (let n = 0; n < fast && sess.state === "running" && inGarage(me); n++)
@@ -1227,7 +1352,23 @@ export default function Drive() {
         }
         if (race.done && !wasDone && !quali) {
           const table = results(race);
-          const text = raceWord(table);
+          let text = raceWord(table);
+          // A career round: into the championship, and the engineer's word on it.
+          const c = careerRef.current;
+          let points: number[] | undefined;
+          if (inCareerRef.current && live(c)) {
+            const order = table.map((r) => r.id);
+            const none = table.filter((r) => r.out || r.dsq).map((r) => r.id);
+            const next = { ...c!, rounds: [...c!.rounds, { order, none }] };
+            saveCareer(next);
+            const { drivers } = standings(next.rounds, sprints(next));
+            const k = drivers.findIndex((r) => r.k === 0);
+            const gap = k
+              ? drivers[0]!.points - drivers[k]!.points
+              : drivers[0]!.points - drivers[1]!.points;
+            text = `${text} ${titleWord(k + 1, gap, !live(next))}`;
+            points = sprints(next) ? SPRINT_POINTS : POINTS;
+          }
           race.msgs.push({ kind: "radio", id: 0, text });
           const { level, laps, fastest } = race;
           setResult({
@@ -1237,6 +1378,7 @@ export default function Drive() {
             laps,
             fastest: fastest?.id ?? null,
             radio: text,
+            points,
           });
         }
         if (t - board > 500) {
@@ -1516,6 +1658,120 @@ export default function Drive() {
   }, [trackId]);
 
   const shown = status === "ready" ? "" : "opacity-0";
+  // The championships, in a career.
+  const champs = career && standings(career.rounds, sprints(career));
+  const standingsList = (
+    name: string,
+    rows: { k: number; points: number }[],
+    nameOf: (k: number) => string,
+    color: (k: number) => string,
+    mine: (k: number) => boolean,
+  ) => (
+    <div>
+      <p className={label}>{name}</p>
+      <ol className="mt-1 max-h-40 overflow-y-auto text-sm tabular-nums">
+        {rows.map((r, i) => (
+          <li
+            key={r.k}
+            className={`flex items-center gap-2 px-1 py-0.5 ${mine(r.k) ? "bg-lamp" : ""}`}
+          >
+            <span className="w-5 text-soft">{i + 1}</span>
+            <span className="h-3 w-1 shrink-0 rounded-full" style={{ background: color(r.k) }} />
+            <span className="truncate">{nameOf(r.k)}</span>
+            <span className="ml-auto font-semibold">{r.points}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+  const champTables = (c: Career) => {
+    const lv = LEVELS[c.series];
+    return (
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        {standingsList(
+          "Drivers",
+          champs!.drivers,
+          (id) => lv.drivers[id]!.code,
+          (id) => lv.colors[id >> 1]!,
+          (id) => id === 0,
+        )}
+        {standingsList(
+          "Teams",
+          champs!.teams,
+          (k) => lv.teams[k]!,
+          (k) => lv.colors[k]!,
+          (k) => k === 0,
+        )}
+      </div>
+    );
+  };
+  const careerStart = () =>
+    career ? (
+      // The season's done: the champions, where you finished, and another season.
+      <>
+        <p className="disp text-xl">Season over</p>
+        <p className={`${label} mt-1`}>
+          {LEVELS[career.series].series} champion{" "}
+          <span className="text-paper">
+            {LEVELS[career.series].drivers[champs!.drivers[0]!.k]!.name}
+          </span>
+          , teams{" "}
+          <span className="text-paper">{LEVELS[career.series].teams[champs!.teams[0]!.k]}</span>.
+          You finished P{champs!.drivers.findIndex((r) => r.k === 0) + 1}.
+        </p>
+        {champTables(career)}
+        <button
+          type="button"
+          autoFocus
+          onClick={() => saveCareer(null)}
+          className="mt-4 min-h-11 w-full rounded-md bg-paper font-semibold text-ink active:scale-[.98]"
+        >
+          New season
+        </button>
+      </>
+    ) : (
+      // A new season: its series, distance and qualifying, set for all ten rounds.
+      <>
+        <p className="disp text-xl">New season</p>
+        <p className={`${label} mt-1`}>
+          Ten rounds with BMW, Monaco to Yas Marina. The series, distance and qualifying are set for
+          the season.
+        </p>
+        <Choice
+          name="Series"
+          value={setup.series}
+          options={STEPS.map(([l, name]) => [l, name])}
+          pick={(series) => setSetup({ ...setup, series })}
+        />
+        <Choice
+          name="Distance"
+          value={String(setup.dist)}
+          options={DISTANCES.map((d, k) => [String(k), d.name])}
+          pick={(k) => setSetup({ ...setup, dist: +k })}
+        />
+        <Choice
+          name="Qualifying"
+          value={setup.full}
+          options={[
+            [false, "Quick"],
+            [true, "Full"],
+          ]}
+          pick={(full) => setSetup({ ...setup, full })}
+        />
+        <button
+          type="button"
+          autoFocus
+          onClick={() => {
+            const c = { ...setup, rounds: [] };
+            saveCareer(c);
+            enterRound(c, trackId);
+          }}
+          className="mt-4 min-h-11 w-full rounded-md bg-paper font-semibold text-ink active:scale-[.98]"
+        >
+          Start season
+        </button>
+      </>
+    );
   const leader = result?.table[0]?.time ?? 0;
   const [toCar, setToCar] = useState(() => read(GAPS, false));
   const flipGaps = () => {
@@ -2218,189 +2474,295 @@ export default function Drive() {
             <div
               className={`${panel} max-h-full w-full max-w-sm overflow-y-auto p-4 md:max-w-lg md:p-5`}
             >
-              <p className="disp text-xl">Grid P{slot}</p>
-              <p className={`${label} mt-1`}>
-                {qualified
-                  ? "Qualified. A new track, field or distance means qualifying again."
-                  : "Pick the track, the field, the distance and your tyres. Qualify for a better slot."}
-              </p>
-              {trackRecord ? (
-                <p className={`${label} mt-1`}>
-                  Your record <span className="text-paper">{fmt(trackRecord)}</span>
-                </p>
-              ) : null}
-              <div
-                role="radiogroup"
-                aria-label="Track"
-                className="mt-4 grid grid-cols-3 gap-2 md:grid-cols-5"
-              >
-                {TRACKS.map((t) => {
-                  const { box2: b, thumb } = SHAPES.get(t.id)!;
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={trackId === t.id}
-                      onClick={() => {
-                        if (t.id === trackId) return;
-                        write(TRACK, t.id);
-                        unqualify();
-                        setStatus("loading");
-                        setTrackId(t.id);
+              <div role="radiogroup" aria-label="Mode" className="mb-3 grid grid-cols-2 gap-2">
+                {(
+                  [
+                    [false, "Race"],
+                    [true, "Career"],
+                  ] as const
+                ).map(([on, name]) => (
+                  <button
+                    key={name}
+                    type="button"
+                    role="radio"
+                    aria-checked={inCareer === on}
+                    onClick={() => pickMode(on)}
+                    className={`min-h-11 rounded-md text-sm font-semibold ring-1 active:scale-[.98] ${inCareer === on ? "bg-lamp ring-paper" : "ring-paper/25"}`}
+                  >
+                    {name}
+                  </button>
+                ))}
+              </div>
+              {inCareer && !live(career) ? (
+                careerStart()
+              ) : (
+                <>
+                  {inCareer && career && (
+                    <>
+                      <p className="disp text-xl">
+                        Round {career.rounds.length + 1}/{CALENDAR.length} · {def.name}
+                      </p>
+                      <p className={`${label} mt-1`}>
+                        {LEVELS[career.series].series} season, {DISTANCES[career.dist]!.name}
+                        {career.full ? ", full qualifying" : ""}. Grid P{slot}
+                        {qualified ? ", qualified." : ": qualify for a better slot."}
+                      </p>
+                      <ol className="mt-3 grid grid-cols-5 gap-1 md:grid-cols-10">
+                        {CALENDAR.map((id, k) => {
+                          const r = career.rounds[k];
+                          return (
+                            <li
+                              key={id}
+                              className={`rounded-sm px-1 py-1 text-center text-[11px] ring-1 ${k === career.rounds.length ? "bg-lamp ring-paper" : "ring-paper/25"}`}
+                            >
+                              <span className="block truncate text-soft">
+                                {trackName(id).split(" ")[0]}
+                              </span>
+                              <span className="block font-semibold">
+                                {!r
+                                  ? "–"
+                                  : r.none.includes(0)
+                                    ? "DNF"
+                                    : `P${r.order.indexOf(0) + 1}`}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ol>
+                      {champTables(career)}
+                    </>
+                  )}
+                  {!inCareer && (
+                    <>
+                      <p className="disp text-xl">Grid P{slot}</p>
+                      <p className={`${label} mt-1`}>
+                        {qualified
+                          ? "Qualified. A new track, field or distance means qualifying again."
+                          : "Pick the track, the field, the distance and your tyres. Qualify for a better slot."}
+                      </p>
+                      {trackRecord ? (
+                        <p className={`${label} mt-1`}>
+                          Your record <span className="text-paper">{fmt(trackRecord)}</span>
+                        </p>
+                      ) : null}
+                      <div
+                        role="radiogroup"
+                        aria-label="Track"
+                        className="mt-4 grid grid-cols-3 gap-2 md:grid-cols-5"
+                      >
+                        {TRACKS.map((t) => {
+                          const { box2: b, thumb } = SHAPES.get(t.id)!;
+                          return (
+                            <button
+                              key={t.id}
+                              type="button"
+                              role="radio"
+                              aria-checked={trackId === t.id}
+                              onClick={() => {
+                                if (t.id === trackId) return;
+                                write(TRACK, t.id);
+                                unqualify();
+                                setStatus("loading");
+                                setTrackId(t.id);
+                              }}
+                              className={`rounded-md p-2 text-left ring-1 active:scale-[.98] ${trackId === t.id ? "bg-lamp ring-paper" : "ring-paper/25"}`}
+                            >
+                              <svg
+                                viewBox={`0 0 ${b.w} ${b.h}`}
+                                aria-hidden="true"
+                                className="h-9 w-full"
+                              >
+                                <path
+                                  d={thumb}
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.5"
+                                  strokeLinejoin="round"
+                                  vectorEffect="non-scaling-stroke"
+                                />
+                              </svg>
+                              <span className="mt-1.5 block truncate text-xs">{t.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div
+                        role="radiogroup"
+                        aria-label="Field"
+                        className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4"
+                      >
+                        {STEPS.map(([l, name, field]) => (
+                          <button
+                            key={l}
+                            type="button"
+                            role="radio"
+                            aria-checked={level === l}
+                            onClick={() => {
+                              setLevel(l);
+                              write(LEVEL, l);
+                              unqualify();
+                              levelRef.current = l;
+                              regrid.current();
+                            }}
+                            className={`rounded-md p-2.5 text-left ring-1 active:scale-[.98] ${level === l ? "bg-lamp ring-paper" : "ring-paper/25"}`}
+                          >
+                            <span className="block text-sm font-semibold">{name}</span>
+                            <span className="block text-xs text-soft">{field}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <div
+                        role="radiogroup"
+                        aria-label="Race distance"
+                        className="mt-2 grid grid-cols-5 gap-2"
+                      >
+                        {DISTANCES.map((d, k) => (
+                          <button
+                            key={d.name}
+                            type="button"
+                            role="radio"
+                            aria-checked={dist === k}
+                            onClick={() => {
+                              setDist(k);
+                              write(DIST, k);
+                              unqualify();
+                              distRef.current = k;
+                              regrid.current();
+                            }}
+                            className={`min-h-11 rounded-md px-1 text-sm ring-1 active:scale-[.98] ${dist === k ? "bg-lamp font-semibold ring-paper" : "ring-paper/25"}`}
+                          >
+                            <span className="block">{d.name}</span>
+                            <span className="block text-xs font-normal text-soft">
+                              {lapsOf(d, built)} laps
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  <div role="radiogroup" aria-label="Tyres" className="mt-2 grid grid-cols-3 gap-2">
+                    {COMPOUNDS.map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        role="radio"
+                        aria-checked={tyre === t}
+                        onClick={() => setTyre(t)}
+                        className={`rounded-md p-2.5 text-left ring-1 active:scale-[.98] ${tyre === t ? "bg-lamp ring-paper" : "ring-paper/25"}`}
+                      >
+                        <span className={`disp block text-xl leading-none ${TYRE_INK[t]}`}>
+                          {letter(t)}
+                        </span>
+                        <span className="mt-1.5 block text-sm">{TYRES[t].name.slice(0, -1)}</span>
+                        <span className="block text-xs text-soft">
+                          {blurb(t, stintLaps(t, laps, built))}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  <div
+                    role="radiogroup"
+                    aria-label="Rear wing"
+                    className="mt-2 grid grid-cols-5 gap-2"
+                  >
+                    {WING_STEPS.map((w) => (
+                      <button
+                        key={w}
+                        type="button"
+                        role="radio"
+                        aria-checked={wing === w}
+                        disabled={qualified && wing !== w}
+                        onClick={() => pickWing(w)}
+                        className={`min-h-11 rounded-md px-1 text-sm ring-1 active:scale-[.98] disabled:opacity-40 ${wing === w ? "bg-lamp font-semibold ring-paper" : "ring-paper/25"}`}
+                      >
+                        <span className="block">Wing {w}</span>
+                        {w === built.WING ? (
+                          <span className="block text-xs font-normal text-soft">Team</span>
+                        ) : null}
+                      </button>
+                    ))}
+                  </div>
+                  <p className={`${label} mt-2`}>
+                    {qualified ? "Parc fermé: your qualifying wing. " : ""}
+                    <span className="text-paper">{wingText(wing)}</span>
+                  </p>
+                  <p className={`${label} mt-1`}>
+                    Team plan{" "}
+                    <span className="text-paper">{planText(teamPlan(laps, built, tyre))}</span>
+                  </p>
+                  {!qualified && !inCareer && (
+                    <Choice
+                      name="Qualifying"
+                      value={full}
+                      options={[
+                        [false, "Quick: one lap"],
+                        [true, "Full: Q1, Q2, Q3"],
+                      ]}
+                      pick={(v) => {
+                        setFull(v);
+                        fullRef.current = v;
+                        write(QUALI, v);
                       }}
-                      className={`rounded-md p-2 text-left ring-1 active:scale-[.98] ${trackId === t.id ? "bg-lamp ring-paper" : "ring-paper/25"}`}
+                    />
+                  )}
+                  <div className="mt-4 flex gap-2">
+                    {!qualified && (
+                      <button
+                        type="button"
+                        onClick={() => qualify.current()}
+                        className="min-h-11 flex-1 rounded-md font-semibold ring-1 ring-paper/25 active:scale-[.98]"
+                      >
+                        Qualify
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      autoFocus
+                      onClick={() => go.current(tyre)}
+                      className="min-h-11 flex-1 rounded-md bg-paper font-semibold text-ink active:scale-[.98]"
                     >
-                      <svg viewBox={`0 0 ${b.w} ${b.h}`} aria-hidden="true" className="h-9 w-full">
-                        <path
-                          d={thumb}
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinejoin="round"
-                          vectorEffect="non-scaling-stroke"
-                        />
-                      </svg>
-                      <span className="mt-1.5 block truncate text-xs">{t.name}</span>
+                      {inCareer ? "Race" : "Line up"}
                     </button>
-                  );
-                })}
-              </div>
-              <div
-                role="radiogroup"
-                aria-label="Field"
-                className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-4"
-              >
-                {STEPS.map(([l, name, field]) => (
-                  <button
-                    key={l}
-                    type="button"
-                    role="radio"
-                    aria-checked={level === l}
-                    onClick={() => {
-                      setLevel(l);
-                      write(LEVEL, l);
-                      unqualify();
-                      levelRef.current = l;
-                      regrid.current();
-                    }}
-                    className={`rounded-md p-2.5 text-left ring-1 active:scale-[.98] ${level === l ? "bg-lamp ring-paper" : "ring-paper/25"}`}
-                  >
-                    <span className="block text-sm font-semibold">{name}</span>
-                    <span className="block text-xs text-soft">{field}</span>
-                  </button>
-                ))}
-              </div>
-              <div
-                role="radiogroup"
-                aria-label="Race distance"
-                className="mt-2 grid grid-cols-5 gap-2"
-              >
-                {DISTANCES.map((d, k) => (
-                  <button
-                    key={d.name}
-                    type="button"
-                    role="radio"
-                    aria-checked={dist === k}
-                    onClick={() => {
-                      setDist(k);
-                      write(DIST, k);
-                      unqualify();
-                      distRef.current = k;
-                      regrid.current();
-                    }}
-                    className={`min-h-11 rounded-md px-1 text-sm ring-1 active:scale-[.98] ${dist === k ? "bg-lamp font-semibold ring-paper" : "ring-paper/25"}`}
-                  >
-                    <span className="block">{d.name}</span>
-                    <span className="block text-xs font-normal text-soft">
-                      {lapsOf(d, built)} laps
-                    </span>
-                  </button>
-                ))}
-              </div>
-              <div role="radiogroup" aria-label="Tyres" className="mt-2 grid grid-cols-3 gap-2">
-                {COMPOUNDS.map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    role="radio"
-                    aria-checked={tyre === t}
-                    onClick={() => setTyre(t)}
-                    className={`rounded-md p-2.5 text-left ring-1 active:scale-[.98] ${tyre === t ? "bg-lamp ring-paper" : "ring-paper/25"}`}
-                  >
-                    <span className={`disp block text-xl leading-none ${TYRE_INK[t]}`}>
-                      {letter(t)}
-                    </span>
-                    <span className="mt-1.5 block text-sm">{TYRES[t].name.slice(0, -1)}</span>
-                    <span className="block text-xs text-soft">
-                      {blurb(t, stintLaps(t, laps, built))}
-                    </span>
-                  </button>
-                ))}
-              </div>
-              <div role="radiogroup" aria-label="Rear wing" className="mt-2 grid grid-cols-5 gap-2">
-                {WING_STEPS.map((w) => (
-                  <button
-                    key={w}
-                    type="button"
-                    role="radio"
-                    aria-checked={wing === w}
-                    disabled={qualified && wing !== w}
-                    onClick={() => pickWing(w)}
-                    className={`min-h-11 rounded-md px-1 text-sm ring-1 active:scale-[.98] disabled:opacity-40 ${wing === w ? "bg-lamp font-semibold ring-paper" : "ring-paper/25"}`}
-                  >
-                    <span className="block">Wing {w}</span>
-                    {w === built.WING ? (
-                      <span className="block text-xs font-normal text-soft">Team</span>
-                    ) : null}
-                  </button>
-                ))}
-              </div>
-              <p className={`${label} mt-2`}>
-                {qualified ? "Parc fermé: your qualifying wing. " : ""}
-                <span className="text-paper">{wingText(wing)}</span>
-              </p>
-              <p className={`${label} mt-1`}>
-                Team plan{" "}
-                <span className="text-paper">{planText(teamPlan(laps, built, tyre))}</span>
-              </p>
-              {!qualified && (
-                <Choice
-                  name="Qualifying"
-                  value={full}
-                  options={[
-                    [false, "Quick: one lap"],
-                    [true, "Full: Q1, Q2, Q3"],
-                  ]}
-                  pick={(v) => {
-                    setFull(v);
-                    fullRef.current = v;
-                    write(QUALI, v);
-                  }}
-                />
+                  </div>
+                  {inCareer && (
+                    // Either session simulated: the team drives your car, at your level's pace.
+                    <div className="mt-2 flex gap-2">
+                      {!qualified && (
+                        <button
+                          type="button"
+                          onClick={() => simulate.current(null)}
+                          className="min-h-11 flex-1 rounded-md text-sm ring-1 ring-paper/25 active:scale-[.98]"
+                        >
+                          Sim qualifying
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => simulate.current(tyre)}
+                        className="min-h-11 flex-1 rounded-md text-sm ring-1 ring-paper/25 active:scale-[.98]"
+                      >
+                        Sim race
+                      </button>
+                    </div>
+                  )}
+                  <p className="mt-2 text-xs text-soft pointer-coarse:hidden">
+                    1, 2 or 3 to pick tyres, [ and ] the wing, Enter to line up.
+                  </p>
+                  {inCareer && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!abandoning) return setAbandoning(true);
+                        saveCareer(null);
+                        setAbandoning(false);
+                      }}
+                      className="mt-3 min-h-11 w-full rounded-md text-sm text-soft ring-1 ring-paper/25 active:scale-[.98]"
+                    >
+                      {abandoning ? "Really abandon the season?" : "Abandon season"}
+                    </button>
+                  )}
+                </>
               )}
-              <div className="mt-4 flex gap-2">
-                {!qualified && (
-                  <button
-                    type="button"
-                    onClick={() => qualify.current()}
-                    className="min-h-11 flex-1 rounded-md font-semibold ring-1 ring-paper/25 active:scale-[.98]"
-                  >
-                    Qualify
-                  </button>
-                )}
-                <button
-                  type="button"
-                  autoFocus
-                  onClick={() => go.current(tyre)}
-                  className="min-h-11 flex-1 rounded-md bg-paper font-semibold text-ink active:scale-[.98]"
-                >
-                  Line up
-                </button>
-              </div>
-              <p className="mt-2 text-xs text-soft pointer-coarse:hidden">
-                1, 2 or 3 to pick tyres, [ and ] the wing, Enter to line up.
-              </p>
             </div>
           </div>
         )}
@@ -2485,14 +2847,20 @@ export default function Drive() {
                 <button
                   type="button"
                   autoFocus
-                  onClick={() => again.current()}
+                  onClick={() => {
+                    again.current();
+                    // A career race done: on to the next round.
+                    if (inCareer && career && !result.quali) enterRound(career, trackId);
+                  }}
                   className="min-h-11 w-full rounded-md bg-paper px-6 font-semibold text-ink active:scale-[.98] md:w-auto"
                 >
                   {result.next
                     ? `Continue to Q${result.seg! + 2}`
                     : result.quali
                       ? "To the grid"
-                      : "Race again"}
+                      : inCareer
+                        ? "Continue"
+                        : "Race again"}
                 </button>
               </div>
               <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
@@ -2643,7 +3011,7 @@ export default function Drive() {
                           {!result.quali && (
                             <>
                               <td className="py-1 pl-3 text-right">
-                                {(!r.out && !r.dsq && POINTS[k]) || ""}
+                                {(!r.out && !r.dsq && (result.points ?? POINTS)[k]) || ""}
                               </td>
                               <td className="py-1 pl-3 text-right">{r.stops}</td>
                               <td className="py-1 pl-3">
