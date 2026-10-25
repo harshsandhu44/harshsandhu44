@@ -204,7 +204,7 @@ const RULES: [string, string][] = [
   ],
   [
     "Track limits",
-    "All four wheels off the track deletes the lap. The third time brings the black and white flag, then 5 s and 10 s penalties.",
+    "All four wheels off the track deletes the lap. The third time brings the black and white flag, then 5 s and 10 s penalties, served at your next stop (sitting them out before the crew starts) or added at the flag.",
   ],
   [
     "2026 power",
@@ -991,6 +991,7 @@ export default function Drive() {
               down: 0,
               best,
               penalty: 0,
+              paid: 0,
               stints: [],
               stops: 0,
               out: null,
@@ -1137,10 +1138,19 @@ export default function Drive() {
         });
       limiterEl.current!.hidden = !me.pit;
       const banner = bannerEl.current!;
-      const say = me.stop > 0 ? me.stop.toFixed(1) : wrongWay(me) ? "Wrong way" : "";
+      // A penalty's served first, before the stop's own STOP seconds.
+      const serving = me.stop > STOP;
+      const say =
+        me.stop > 0
+          ? serving
+            ? `Penalty ${(me.stop - STOP).toFixed(1)}`
+            : me.stop.toFixed(1)
+          : wrongWay(me)
+            ? "Wrong way"
+            : "";
       if (banner.textContent !== say) banner.textContent = say;
       banner.hidden = !say;
-      banner.classList.toggle("text-accent", me.stop <= 0);
+      banner.classList.toggle("text-accent", me.stop <= 0 || serving);
 
       // Race Control: one message at a time for 3.5 s. A backlog drops other cars' track-limit
       // notes first, so yours and the flags always get through.
@@ -1194,8 +1204,9 @@ export default function Drive() {
       batText.current!.classList.toggle("text-accent", me.clipping);
       batText.current!.classList.toggle("text-paper", !me.clipping);
       // What you hear (audio.ts): your engine, the three nearest cars, the stands and the tyres.
-      if (me.stop > 0 && !stopped) audio.current?.stop(STOP);
-      stopped = me.stop > 0;
+      // The guns go once any penalty's served.
+      if (me.stop > 0 && me.stop <= STOP && !stopped) audio.current?.stop(STOP);
+      stopped = me.stop > 0 && me.stop <= STOP;
       if (audio.current && (paused || me.out)) audio.current.frame(null);
       else if (audio.current) {
         const { edge, p: at } = nearest(car.x, car.y);
@@ -1246,10 +1257,15 @@ export default function Drive() {
         brakes && brakeIn !== null && brakeIn > 15 ? m + brakeIn : null,
       );
 
-      // Each team's crew: out for a car in the lane, at the car while it's stopped.
+      // Each team's crew: out for a car in the lane, at the car while it's stopped (standing back
+      // while it sits out a penalty).
       const crews = new Array<number>(CARS / 2).fill(0);
       for (const r of race.racers)
-        if (!r.out) crews[r.id >> 1] = Math.max(crews[r.id >> 1]!, r.stop > 0 ? 2 : r.pit ? 1 : 0);
+        if (!r.out)
+          crews[r.id >> 1] = Math.max(
+            crews[r.id >> 1]!,
+            r.stop > 0 && r.stop <= STOP ? 2 : r.pit ? 1 : 0,
+          );
       scene!.frame(
         race.racers.map((r) => r.car),
         race.racers.map(towShare),
@@ -2181,6 +2197,9 @@ export default function Drive() {
                                 <span className="rounded-sm bg-slow px-1 text-xs font-semibold text-ink">
                                   +{r.penalty / 1000}s
                                 </span>
+                              ) : null}
+                              {r.paid ? (
+                                <span className="text-xs text-soft">{r.paid / 1000}s served</span>
                               ) : null}
                             </span>
                           </td>
