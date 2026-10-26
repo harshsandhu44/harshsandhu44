@@ -118,13 +118,13 @@ export const aim = (car: Car, [x, y]: [number, number]) => {
 export const edgeOf = ({ level: lv, track }: Race) =>
   (lv === "pro" ? track.PRO_EDGE : lv === "legends" ? track.LEGENDS_EDGE : undefined) ??
   LEVELS[lv].edge;
-// A car's grip on its tyres, wing and car: a computer car's scaled by its edge. Close behind another car its
+// A car's grip on its tyres, wing and car: a computer car's (or your simulated one's) scaled by its edge. Close behind another car its
 // dirty air takes some of that, and so do cold tyres and damage; on a puncture it has little.
 export const carGrip = (race: Race, r: Racer) => {
   const g =
     grip(r.life, r.tyre) *
     wingGrip(r.wing) *
-    (r.id ? edgeOf(race) : 1) *
+    (r.id || race.sim ? edgeOf(race) : 1) *
     (1 - r.dirty) *
     (1 - COLD * (1 - r.warm)) *
     (1 - r.damage) *
@@ -720,6 +720,8 @@ export type Race = {
   // Full qualifying (see newSession), or null, and the grip the track's rubbered in by.
   session: Session | null;
   rubber: number;
+  // Your car simulated: the team drives it, with a computer car's edge.
+  sim?: boolean;
 };
 
 export function newRace(
@@ -1183,6 +1185,8 @@ export type Session = {
   // Your speed as a share of the car's limit, smoothed over a couple of seconds: under SLOW you're
   // on a slow lap, whatever the timing says.
   effort: number;
+  // Simulated: the team runs your car's session as the computer's.
+  auto: boolean;
   warned: boolean;
   drop: number;
 };
@@ -1191,7 +1195,7 @@ const pushing = (race: Race, r: Racer) => race.session!.phase[r.id] === "push";
 // On a push lap for traffic and impeding: yours only while you're on the pace.
 const SLOW = 0.85;
 const onPush = (race: Race, r: Racer) =>
-  pushing(race, r) && (r.id > 0 || race.session!.effort >= SLOW);
+  pushing(race, r) && (r.id > 0 || race.session!.auto || race.session!.effort >= SLOW);
 const lifeOf = (set: TyreSet) => set.wear.reduce((a, b) => a + b, 0) / set.wear.length;
 // The set to go out on: a new one while there's one left, else the one with the most life.
 export const bestSet = (sets: TyreSet[]) => {
@@ -1203,7 +1207,13 @@ export const bestSet = (sets: TyreSet[]) => {
 // leave out the time a car takes to get up to them, so 4% on, as pole at Monza comes out.
 const lapGuess = ({ CUM, PATH, limitAt }: Track) =>
   1040 * PATH.reduce((t, _, i) => t + (CUM[i + 1]! - CUM[i]!) / limitAt(i, grip(1, "soft"), 1), 0);
-export function newSession(track: Track, lv: Level, rand = Math.random, cars = drawCars(lv, rand)) {
+export function newSession(
+  track: Track,
+  lv: Level,
+  rand = Math.random,
+  cars = drawCars(lv, rand),
+  auto = false,
+) {
   const race = newRace(track, GRID, rand, "soft", lv, 1, true, cars);
   const ids = race.racers.map((r) => r.id);
   const lap = lapGuess(track);
@@ -1229,6 +1239,7 @@ export function newSession(track: Track, lv: Level, rand = Math.random, cars = d
     lifting: false,
     held: 0,
     effort: 1,
+    auto,
     warned: false,
     drop: 0,
   };
@@ -1243,7 +1254,7 @@ function plan(race: Race, from: number) {
   const end = SEGMENTS[s.seg]! * s.lap;
   s.go = s.go.map(() => []);
   for (const id of s.in) {
-    if (!id || end - from < 1.3 * s.lap) continue;
+    if ((!id && !s.auto) || end - from < 1.3 * s.lap) continue;
     const last = Math.max(
       from + 0.3 * race.rand() * s.lap,
       end - (1.35 + 0.6 * race.rand()) * s.lap,
@@ -1331,7 +1342,7 @@ function timeLap(race: Race, r: Racer, split: Split | null, started: boolean) {
     started = true;
   }
   if (!started || phase[r.id] === "in") return;
-  if (s.left <= 0 || (r.id && pushing(race, r))) goIn(race, r);
+  if (s.left <= 0 || ((r.id || s.auto) && pushing(race, r))) goIn(race, r);
   else [phase[r.id], r.pace] = ["push", s.pace[r.id]!];
 }
 // The in-lap: back to the box at the first chance, the team driving yours.
@@ -1352,7 +1363,8 @@ function redFlag(race: Race) {
 // Whether a computer car on a push lap is lifting for you, from aiInput: you're the car ahead
 // it's held to, within 30 m, not on a push lap yourself.
 function impeding(race: Race, r: Racer, front: Racer, gap: number) {
-  if (front.id === 0 && r.id && gap < 30 && pushing(race, r) && !onPush(race, front))
+  const { auto } = race.session!;
+  if (front.id === 0 && r.id && !auto && gap < 30 && pushing(race, r) && !onPush(race, front))
     race.session!.lifting = true;
 }
 // The segment's ids, quickest first and no time last.
@@ -1397,7 +1409,7 @@ export function tickSession(race: Race, you: Input, dt: number) {
   race.rubber = (RUBBER * Math.min(all, done + at)) / all;
   for (const r of race.racers) {
     const go = s.go[r.id]!;
-    if (r.id && s.left > 0 && inGarage(r) && go.length && at >= go[0]!) {
+    if ((r.id || s.auto) && s.left > 0 && inGarage(r) && go.length && at >= go[0]!) {
       if (leave(race, r, bestSet(s.sets[r.id]!))) go.shift();
     }
   }
@@ -2179,6 +2191,13 @@ function green(race: Race) {
 // lap, or the VSC's last seconds) or, if you've asked to box, until the stop's done.
 export const teamDriving = (race: Race, r: Racer) =>
   r.id === 0 && r.finish === null && !r.out && (r.box || (!!race.neutral && !race.neutral.ending));
+// A simulated session: the team drives your car as the computer drives its own, boxing on the
+// laps the plan stops at.
+export function simInput(race: Race) {
+  const me = race.racers[0]!;
+  if (me.stops.includes(me.laps + 1) && !me.pitting) me.box = true;
+  return aiInput(me, race);
+}
 // Asking the team to box, or not, while it drives you: until you're in the lane.
 export function toggleBox(race: Race) {
   const me = race.racers.find((r) => r.id === 0);
@@ -2294,8 +2313,9 @@ function neutralise(race: Race, dt: number) {
       race.eng.blue = near.id;
       radio(race, pick(race.session ? LINES.push : LINES.blue)(code(race, near)));
     }
-    // In qualifying getting out of the way is up to you.
-    if (r.id || !race.session) r.cap = Math.min(r.cap, Math.max(BLUE_V, near.car.v - 6));
+    // In qualifying getting out of the way is up to you, unless the team's driving.
+    if (r.id || !race.session || race.session.auto)
+      r.cap = Math.min(r.cap, Math.max(BLUE_V, near.car.v - 6));
   }
 }
 
@@ -2559,4 +2579,34 @@ export function results(race: Race) {
       return { id, time, down, best, penalty, paid, stints, stintLaps, stops, out, dsq, grid };
     })
     .sort((a, b) => +a.dsq - +b.dsq || +!!a.out - +!!b.out || a.down - b.down || a.time - b.time);
+}
+
+// F1's points, P1 to P10 in a Grand Prix and P1 to P8 in a sprint, for a classified finish.
+export const POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
+export const SPRINT_POINTS = [8, 7, 6, 5, 4, 3, 2, 1];
+// A round of a season: the classification as driver ids, and those with no points (out of the
+// race or disqualified).
+export type Round = { order: number[]; none: number[] };
+// The championships after `rounds`: drivers, and teams (by team index, its drivers' points
+// together), most points first, ties broken on countback (most wins, then seconds, and so on).
+export function standings(rounds: Round[], sprints: boolean) {
+  const pts = sprints ? SPRINT_POINTS : POINTS;
+  const table = (n: number, of: (id: number) => number) => {
+    const rows = [...Array(n).keys()].map((k) => ({
+      k,
+      points: 0,
+      places: Array<number>(CARS).fill(0),
+    }));
+    for (const { order, none } of rounds)
+      order.forEach((id, place) => {
+        if (none.includes(id)) return;
+        const row = rows[of(id)]!;
+        row.points += pts[place] ?? 0;
+        row.places[place]!++;
+      });
+    const countback = (a: (typeof rows)[number], b: (typeof rows)[number]) =>
+      a.places.reduce((d, _, i) => d || b.places[i]! - a.places[i]!, 0);
+    return rows.sort((a, b) => b.points - a.points || countback(a, b) || a.k - b.k);
+  };
+  return { drivers: table(CARS, (id) => id), teams: table(CARS / 2, (id) => id >> 1) };
 }
