@@ -722,6 +722,8 @@ export type Race = {
   rubber: number;
   // Your car simulated: the team drives it, with a computer car's edge.
   sim?: boolean;
+  // The team handing your car back: Infinity while it drives, then the countdown's ms (see HAND).
+  hand: number;
 };
 
 export function newRace(
@@ -855,6 +857,7 @@ export function newRace(
     sc: null,
     session: null,
     rubber: 0,
+    hand: 0,
     eng: {
       next: 0,
       pos: 0,
@@ -1185,8 +1188,10 @@ export type Session = {
   // Your speed as a share of the car's limit, smoothed over a couple of seconds: under SLOW you're
   // on a slow lap, whatever the timing says.
   effort: number;
-  // Simulated: the team runs your car's session as the computer's.
+  // Simulated: the team runs your car's session as the computer's. And the team driving your
+  // out-lap, asked for (see toggleTeam) and handed back at the line.
   auto: boolean;
+  team: boolean;
   warned: boolean;
   drop: number;
 };
@@ -1217,8 +1222,8 @@ export function newSession(
   const race = newRace(track, GRID, rand, "soft", lv, 1, true, cars);
   const ids = race.racers.map((r) => r.id);
   const lap = lapGuess(track);
-  // A breakdown comes somewhere in the session's dozen-odd laps, not on the first.
-  for (const r of race.racers) r.failAt *= 12;
+  // Half a race's breakdowns, each somewhere in the session's dozen-odd laps, not on the first.
+  for (const r of race.racers) r.failAt *= rand() < 0.5 ? 12 : Infinity;
   race.session = {
     seg: 0,
     left: SEGMENTS[0]! * lap,
@@ -1240,6 +1245,7 @@ export function newSession(
     held: 0,
     effort: 1,
     auto,
+    team: false,
     warned: false,
     drop: 0,
   };
@@ -1248,16 +1254,18 @@ export function newSession(
   return race;
 }
 // The computer's runs from `from` ms into the segment: its last to push just before the flag (or
-// straight away, if that's past), and an early one where a whole run fits before it.
+// straight away, if that's past), and an early one where a whole run fits before it. None that
+// can't reach the line before the flag: OUT average laps from the garage, with a little to spare.
+const OUT = 1.6;
 function plan(race: Race, from: number) {
   const s = race.session!;
   const end = SEGMENTS[s.seg]! * s.lap;
   s.go = s.go.map(() => []);
   for (const id of s.in) {
-    if ((!id && !s.auto) || end - from < 1.3 * s.lap) continue;
-    const last = Math.max(
-      from + 0.3 * race.rand() * s.lap,
-      end - (1.35 + 0.6 * race.rand()) * s.lap,
+    if ((!id && !s.auto) || end - from < OUT * s.lap) continue;
+    const last = Math.min(
+      end - OUT * s.lap,
+      Math.max(from + 0.3 * race.rand() * s.lap, end - (OUT + 0.6 * race.rand()) * s.lap),
     );
     const early = last - RUN * s.lap;
     s.go[id] = early > from ? [from + race.rand() * (early - from), last] : [last];
@@ -1308,6 +1316,7 @@ function leave(race: Race, r: Racer, k: number) {
     life: lifeOf(set),
     warm: 0,
     charge: CAP,
+    harvested: 0,
     damage: 0,
     puncture: false,
     pace: s.pace[r.id]! * COOL,
@@ -1326,6 +1335,18 @@ export function goOut(race: Race) {
   const me = race.racers[0]!;
   if (s.state === "running" && !s.red && s.left > 0 && inGarage(me) && s.in.includes(0))
     leave(race, me, s.pick);
+}
+// E: the team drives your out-lap to the line (asked in the garage, for the next run), or takes
+// you in off a push lap; again to take it back.
+export function toggleTeam(race: Race) {
+  const s = race.session;
+  const me = race.racers[0];
+  if (!s || !me || s.state !== "running" || s.auto) return;
+  const phase = s.phase[0];
+  if (phase === "garage" || phase === "out") s.team = !s.team;
+  else if (phase === "push") goIn(race, me);
+  else if (s.left > 0 && !me.pit)
+    [s.phase[0], me.pace, me.box, me.pitting] = ["push", s.pace[0]!, false, false];
 }
 // A lap's sectors as they come, and at the line its time if it was a push lap. A lap starting
 // after the flag, or the computer's push lap done, is the in-lap: you're driven in.
@@ -1350,7 +1371,7 @@ function goIn(race: Race, r: Racer) {
   const s = race.session!;
   [s.phase[r.id], r.pace] = ["in", s.pace[r.id]! * COOL];
   if (r.id) r.stops = [firstChance(race, r)];
-  else r.box = true;
+  else [r.box, s.team] = [true, false];
 }
 // A car stopped on track before the flag: the red flag. Every car's back in its garage.
 function redFlag(race: Race) {
@@ -1364,7 +1385,8 @@ function redFlag(race: Race) {
 // it's held to, within 30 m, not on a push lap yourself.
 function impeding(race: Race, r: Racer, front: Racer, gap: number) {
   const { auto } = race.session!;
-  if (front.id === 0 && r.id && !auto && gap < 30 && pushing(race, r) && !onPush(race, front))
+  const yours = !auto && !teamDriving(race, front);
+  if (front.id === 0 && r.id && yours && gap < 30 && pushing(race, r) && !onPush(race, front))
     race.session!.lifting = true;
 }
 // The segment's ids, quickest first and no time last.
@@ -1414,8 +1436,11 @@ export function tickSession(race: Race, you: Input, dt: number) {
     }
   }
   s.lifting = false;
-  const split = tick(race, you, dt);
+  // Your out-lap: the team hands it back to be yours from the line.
   const me = race.racers[0]!;
+  const short = (1 - me.p) * race.track.LENGTH < (me.car.v * HAND) / 1000;
+  if (s.team && s.phase[0] === "out" && me.lap.halfway && short) s.team = false;
+  const split = tick(race, you, dt);
   if (!me.out) {
     const { LENGTH, atDist, limitAt } = race.track;
     const limit = Math.min(TOP, limitAt(atDist(me.p * LENGTH), carGrip(race, me), 1));
@@ -1551,6 +1576,7 @@ const LINES = {
     (k: string) => `${k}, we'll drive. Box is there if you want it.`,
     (k: string) => `${k}. Staying out. Say the word and we'll box.`,
   ],
+  yours: ["Your car in three.", "Handing it back in three.", "Three seconds, then it's yours."],
   handover: [
     (k: string) => `${k}. Your car.`,
     (k: string) => `${k}. Over to you, get ready.`,
@@ -2028,13 +2054,15 @@ function boxCall(race: Race, r: Racer, why: string) {
   radio(race, `${why} ${TYRES[r.fit].name} ready.${owed}`);
 }
 
-// One more excursion: the lap's deleted (lapTick does that), the third brings the black and
-// white flag, and every one after that costs time, 5 s and then 10 s each, like F1.
+// One more excursion: the lap's deleted (lapTick does that), and in a race the third brings the
+// black and white flag, and every one after that costs time, 5 s and then 10 s each, like F1.
 function strike(race: Race, r: Racer) {
   const who = driver(race, r.id).code;
   const at = race.track.cornerAt(r.p);
-  r.strikes++;
   say(race, "limits", r.id, `Track limits · ${who} · ${at} · Lap ${r.laps + 1} time deleted`);
+  // In qualifying that's all: no strikes, no flag, no penalty.
+  if (race.laps === 1) return;
+  r.strikes++;
   if (r.strikes === 3) say(race, "flag", r.id, `Black and white flag · ${who} · Track limits`);
   if (r.id === 0 && race.laps > 1) radio(race, pick(LINES.limits[Math.min(r.strikes, 4) - 1]!)(at));
   if (r.strikes < 4) return;
@@ -2080,8 +2108,9 @@ function battery(race: Race, r: Racer, input: Input, dt: number) {
     r.charge += got;
     r.harvested += got;
   };
-  // Clipping until back to CLIP_TO, unless the lap's allowance runs out first.
-  const flat = input.gas && v > 40;
+  // Clipping until back to CLIP_TO, unless the lap's allowance runs out first. In qualifying the
+  // battery only deploys on a push lap: out and in laps save it, harvesting still.
+  const flat = input.gas && v > 40 && (!race.session || race.session.phase[r.id] === "push");
   if (!flat || r.charge >= CLIP_TO || room <= 0) r.clipping = false;
   else if (r.charge <= 0) r.clipping = true;
   if (r.clipping) {
@@ -2188,9 +2217,16 @@ function green(race: Race) {
   say(race, "sc", -1, "Green flag");
 }
 // Under a Safety Car or VSC the team drives your car, until it's ending (the Safety Car's in this
-// lap, or the VSC's last seconds) or, if you've asked to box, until the stop's done.
+// lap, or the VSC's last seconds) or, if you've asked to box, until the stop's done; in qualifying
+// your out-lap if you've asked, and the in-lap. Then HAND ms more, counting down, as it hands
+// your car back; down the pit lane too.
+const HAND = 3000;
+const teamHas = (race: Race, r: Racer) =>
+  r.box || !!race.session?.team || (!!race.neutral && !race.neutral.ending);
 export const teamDriving = (race: Race, r: Racer) =>
-  r.id === 0 && r.finish === null && !r.out && (r.box || (!!race.neutral && !race.neutral.ending));
+  r.id === 0 && r.finish === null && !r.out && (teamHas(race, r) || race.hand > 0);
+// The seconds to go before your car's yours, or 0.
+export const handingBack = (race: Race) => (race.hand < Infinity ? Math.ceil(race.hand / 1000) : 0);
 // A simulated session: the team drives your car as the computer drives its own, boxing on the
 // laps the plan stops at.
 export function simInput(race: Race) {
@@ -2314,7 +2350,7 @@ function neutralise(race: Race, dt: number) {
       radio(race, pick(race.session ? LINES.push : LINES.blue)(code(race, near)));
     }
     // In qualifying getting out of the way is up to you, unless the team's driving.
-    if (r.id || !race.session || race.session.auto)
+    if (r.id || !race.session || race.session.auto || teamDriving(race, r))
       r.cap = Math.min(r.cap, Math.max(BLUE_V, near.car.v - 6));
   }
 }
@@ -2394,10 +2430,16 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     if (!r.pit) r.through = false;
     else if (!r.pitting && (r.id || r.finish !== null)) r.through = true;
     if (r.pit) r.pitting = true;
+    if (r.id === 0) {
+      if (r.pitting || r.unlap || teamHas(race, r)) race.hand = Infinity;
+      else if (race.hand === Infinity) {
+        race.hand = HAND;
+        // The Safety Car's or VSC's ending has its own call (see handover).
+        if (r.finish === null && !failed && !race.neutral?.ending) radio(race, pick(LINES.yours));
+      } else race.hand = Math.max(0, race.hand - dt * 1000);
+    }
     const input =
-      r.id === 0 && !r.pitting && !r.unlap && r.finish === null && !failed && !teamDriving(race, r)
-        ? you
-        : aiInput(r, race);
+      r.id === 0 && race.hand <= 0 && r.finish === null && !failed ? you : aiInput(r, race);
     const moved = Math.abs(dp) < 0.02 && dp > 0;
     // Over the line once the Safety Car's in: racing again, the first across bringing the green.
     if (r.held && !race.sc && moved && p * LENGTH < from) {

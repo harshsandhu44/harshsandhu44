@@ -269,6 +269,10 @@ export function createAudio(mix: Mix) {
       tone(groups.radio, t + 0.1, 0.08, 1250, 0.15);
       tone(groups.radio, t + 0.19, 0.09, 950, 0.15);
     },
+    // A handover's countdown: a pip each second.
+    pip() {
+      tone(groups.radio, now(), 0.12, 880, 0.2);
+    },
     close() {
       void ctx.close();
     },

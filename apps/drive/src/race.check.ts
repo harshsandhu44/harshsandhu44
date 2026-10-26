@@ -33,6 +33,9 @@ import {
   tick,
   tickSession,
   newSession,
+  handingBack,
+  toggleTeam,
+  CAP,
   nextSegment,
   sessionGrid,
   goOut,
@@ -1257,8 +1260,8 @@ for (const id of [11, 0]) {
   );
 }
 // Under the Safety Car the team drives your car, whatever you're pressing: no track limits, no
-// hit, in the queue, until it hands the car back as the Safety Car comes in. Asked to box, it
-// takes you in under it, and drives on until the stop's done.
+// hit, in the queue, until it hands the car back, three seconds' countdown after the Safety Car's
+// called in. Asked to box, it takes you in under it, and drives on until the stop's done.
 for (const boxing of [false, true]) {
   const race = incident([0, 2, 4, 6, 8, 10, 12, 14]);
   const me = race.racers.find((r) => r.id === 0)!;
@@ -1277,14 +1280,16 @@ for (const boxing of [false, true]) {
   assert.ok(teamDriving(race, me), "and the team takes your car");
   if (boxing) toggleBox(race);
   const [strikes, stints] = [me.strikes, me.stints.length];
-  let queued = false;
+  let [queued, counted] = [false, false];
   drive(600, () => {
     queued ||= me.held;
+    counted ||= handingBack(race) > 0;
     return !teamDriving(race, me);
   });
   const said = race.msgs.filter((m) => m.kind === "radio").map((m) => m.text);
   assert.ok(queued && me.strikes === strikes && me.damage === 0, "driven clean in the queue");
-  assert.ok(!me.out && race.neutral?.ending, "and handed back as it ends");
+  assert.ok(!me.out && counted, "and handed back after a countdown");
+  if (!boxing) assert.ok(race.neutral?.ending, "as the Safety Car comes in");
   if (boxing) {
     assert.equal(me.stints.length, stints + 1, "asked to box, it stops under the Safety Car");
     assert.equal(me.box, false, "and the request's done");
@@ -1500,6 +1505,55 @@ assert.equal(trend(false, 1.0, 1.05, 1), "", "a steady gap goes unsaid");
   assert.ok(race.done, "a simulated race gets done");
   const row = results(race).find((r) => r.id === 0)!;
   assert.ok(row.stops > 0 && !row.dsq && !row.out, `you stop and are classified (${row.stints})`);
+}
+// Full qualifying with the team driving: asked in the garage, it drives your out-lap whatever
+// you're pressing, saving the battery, and hands it back with a countdown just short of the line;
+// E on a push lap and it takes you in. Laps it drives yield to push laps, so however slowly it
+// goes you're never warned for impeding in Q1's traffic at Monaco, and each run harvests from
+// scratch.
+{
+  const race = newSession(getTrack("monaco"), "intermediate", seeded(7));
+  const s = race.session!;
+  const me = race.racers[0]!;
+  const flat = { gas: true, brake: false, steer: 1, ot: false };
+  let [runs, counted, saved, mine] = [0, false, true, true];
+  for (let f = 0; f < 1200 / DT && s.state === "running"; f++) {
+    if (inGarage(me) && s.left > 2 * s.lap && !s.red) {
+      if (!s.team) toggleTeam(race);
+      me.harvested = 12;
+      goOut(race);
+      if (!inGarage(me)) {
+        runs++;
+        assert.equal(me.harvested, 0, "a run harvests from scratch");
+      }
+    }
+    const was = s.phase[0];
+    // The team crawling, so push laps catch it.
+    me.pace = teamDriving(race, me) ? 0.45 : s.pace[0]!;
+    tickSession(race, teamDriving(race, me) ? flat : aiInput(me, race), DT);
+    counted ||= handingBack(race) > 0;
+    if (s.phase[0] === "out" && !me.pit) saved &&= me.charge === CAP;
+    if (was === "out" && s.phase[0] === "push") mine &&= race.hand < 500;
+    if (s.phase[0] === "push" && me.p > 0.5) toggleTeam(race);
+  }
+  assert.ok(runs >= 2 && counted && mine, `handed back for the push lap (${runs} runs)`);
+  assert.ok(saved, "no battery spent on the out-lap");
+  assert.ok(!s.warned && s.drop === 0, "the team's laps never impede");
+}
+// Track limits in qualifying only delete the lap: no strikes, no flag, no penalty.
+{
+  const [q] = newQuali(monza, "pro", seeded(5));
+  const me = q!.racers[0]!;
+  for (let f = 0; f < 20 / DT; f++) tick(q!, aiInput(me, q!), DT);
+  const m = me.p * monza.LENGTH;
+  const [x, y] = monza.pointAt(m, monza.HALF[monza.atDist(m)]! + 4);
+  Object.assign(me.car, { x, y });
+  run(q!, 1);
+  assert.ok(
+    q!.msgs.some((m) => m.kind === "limits"),
+    "off the track, the lap's deleted",
+  );
+  assert.ok(me.strikes === 0 && me.penalty === 0, "and that's all");
 }
 // A simulated full qualifying: the team runs your car's session as the computer's, through all
 // three segments at Monaco, yielding to push laps like the computer, so never warned or dropped.
