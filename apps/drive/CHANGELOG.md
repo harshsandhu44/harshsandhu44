@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.8.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.7.0...drive-v1.8.0) (2026-10-26)
+
+
+### Features
+
+* **drive:** career mode, single-series seasons with BMW ([#76](https://github.com/harshsandhu44/harshsandhu44/issues/76)) ([1595dcd](https://github.com/harshsandhu44/harshsandhu44/commit/1595dcd81753b39eb1056d9d794871d2010ab411))
+* **drive:** classification with grid, team, stint laps and gap modes ([#73](https://github.com/harshsandhu44/harshsandhu44/issues/73)) ([90d8aa5](https://github.com/harshsandhu44/harshsandhu44/commit/90d8aa57b076e2cde9d8047464a86f5788d7ed08))
+* **drive:** full qualifying tyre sets, track evolution, red flags, impeding ([#75](https://github.com/harshsandhu44/harshsandhu44/issues/75)) ([2d86b34](https://github.com/harshsandhu44/harshsandhu44/commit/2d86b3428cbc84b3609391b2fa07faac8c875dd5))
+* **drive:** full qualifying, Q1 Q2 Q3 on a shared track ([#74](https://github.com/harshsandhu44/harshsandhu44/issues/74)) ([2846f27](https://github.com/harshsandhu44/harshsandhu44/commit/2846f27a3882193d88db46e97ddf953e361fc1d7))
+* **drive:** radio calls for blue flags, damage and lap one, gap trends ([#72](https://github.com/harshsandhu44/harshsandhu44/issues/72)) ([e2764b1](https://github.com/harshsandhu44/harshsandhu44/commit/e2764b1976c7b2f8f22936be91cf32d5a3d0fb76))
+* **drive:** serve time penalties at the next pit stop ([#69](https://github.com/harshsandhu44/harshsandhu44/issues/69)) ([5225610](https://github.com/harshsandhu44/harshsandhu44/commit/52256105748c05842245c2be5fb83dbe37052874))
+* **drive:** the team drives you under the Safety Car and VSC, B to box ([#71](https://github.com/harshsandhu44/harshsandhu44/issues/71)) ([fb32670](https://github.com/harshsandhu44/harshsandhu44/commit/fb326709204c094593d4576dad29986ffc939645))
+
 ## [1.7.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.6.1...drive-v1.7.0) (2026-10-24)
 
 
