@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.9.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.8.0...drive-v1.9.0) (2026-10-26)
+
+
+### Features
+
+* **drive:** team-driven quali laps, handover countdown, qualifying fixes ([#77](https://github.com/harshsandhu44/harshsandhu44/issues/77)) ([06741e2](https://github.com/harshsandhu44/harshsandhu44/commit/06741e2424f2954252be7977dbccfdc2c4e92c92))
+
 ## [1.8.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.7.0...drive-v1.8.0) (2026-10-26)
 
 
