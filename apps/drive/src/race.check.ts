@@ -32,6 +32,7 @@ import {
   teamDriving,
   tick,
   toggleBox,
+  trend,
   WINGS,
   wrongWay,
   type Level,
@@ -1283,6 +1284,26 @@ for (const boxing of [false, true]) {
     );
   }
 }
+// The radio: at Monza the boxes are before the line, so a stop ends inside the in-lap, and the
+// out-lap after it is slow but no lap to call slow. Gap trends read from your side.
+{
+  const race = incident([0, 4]);
+  const me = race.racers.find((r) => r.id === 0)!;
+  const drive = (until: () => boolean) => {
+    for (let f = 0; f < 600 / DT && !until(); f++) tick(race, aiInput(me, race), DT);
+  };
+  drive(() => me.laps >= 3);
+  me.box = true;
+  drive(() => me.stints.length > 1);
+  const out = me.laps + 1;
+  drive(() => me.laps > out);
+  const slow = race.msgs.filter((m) => /cool-down|dropping|was slow|Slow lap/.test(m.text));
+  assert.equal(slow.length, 0, "the out-lap isn't called slow");
+}
+assert.equal(trend(true, 1.5, 1.2, 1), ", you're taking 0.3 a lap", "catching the car ahead");
+assert.equal(trend(true, 1.0, 1.6, 3), ", pulling away 0.2 a lap", "dropped by the car ahead");
+assert.equal(trend(false, 2.0, 1.4, 2), ", closing 0.3 a lap", "caught by the car behind");
+assert.equal(trend(false, 1.0, 1.05, 1), "", "a steady gap goes unsaid");
 // With incidents on, every race still gets done, and close walls don't take the field: about four
 // crash-outs a race at most, the street circuits included.
 for (const { id, name } of TRACKS) {
