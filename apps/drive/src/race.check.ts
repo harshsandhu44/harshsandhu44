@@ -31,6 +31,13 @@ import {
   results,
   teamDriving,
   tick,
+  tickSession,
+  newSession,
+  nextSegment,
+  sessionGrid,
+  goOut,
+  inGarage,
+  CUTS,
   toggleBox,
   trend,
   WINGS,
@@ -1324,6 +1331,49 @@ assert.equal(trend(false, 1.0, 1.05, 1), "", "a steady gap goes unsaid");
     table.some((r) => r.stops > 0),
     "a Grand Prix distance has stops",
   );
+}
+// Full qualifying at Monza: the whole field on track, every computer car sets a time in Q1, 16
+// go through to Q2 and 10 to Q3, and nobody knocked out goes out again. You go out in Q1 and
+// push until the flag, then the team brings you in. Traffic and out-laps cost pole little
+// against the quick lap on the same cars.
+{
+  const race = newSession(monza, "pro", seeded(5));
+  const s = race.session!;
+  const me = race.racers[0]!;
+  goOut(race);
+  assert.ok(!inGarage(me), "you go out when you ask");
+  for (let seg = 0; seg < 3; seg++) {
+    let most = 0;
+    for (let f = 0; f < 1200 / DT && s.state === "running"; f++) {
+      tickSession(race, teamDriving(race, me) || me.pitting ? still : aiInput(me, race), DT);
+      most = Math.max(most, race.racers.filter((r) => !inGarage(r)).length);
+    }
+    assert.ok(most <= s.reached[seg]!.length, `only Q${seg + 1}'s cars go out (${most})`);
+    if (seg === 0) {
+      const timed = s.reached[0]!.filter((id) => s.best[0]![id]);
+      assert.equal(timed.length, CARS, "every car sets a Q1 time, yours too");
+      assert.ok(inGarage(me) && !me.box, "and you're brought in after the flag");
+    }
+    nextSegment(race);
+  }
+  assert.equal(s.state, "done", "Q3 ends it");
+  assert.deepEqual(
+    s.reached.map((ids) => ids.length),
+    [CARS, ...CUTS],
+    "22, then 16, then 10",
+  );
+  const grid = sessionGrid(s);
+  assert.deepEqual(
+    grid.slice().sort((a, b) => a - b),
+    [...Array(CARS).keys()],
+    "a full grid",
+  );
+  const pole = s.best[2]![grid[0]!]!;
+  const quick = newQuali(monza, "pro", seeded(5), race.cars);
+  for (const q of quick.slice(1)) run(q, 200, () => q.done);
+  const quickPole = qualiOrder(quick.slice(1))[0]!.best;
+  console.log(`Full qualifying: pole ${fmt(pole)}, quick ${fmt(quickPole)}`);
+  assert.ok(Math.abs(pole - quickPole) < 500, "pole about the quick lap's");
 }
 // With incidents on, every race still gets done, and close walls don't take the field: about four
 // crash-outs a race at most, the street circuits included.

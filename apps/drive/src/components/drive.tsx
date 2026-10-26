@@ -39,8 +39,16 @@ import {
   gap,
   grip,
   lapsOf,
+  CUTS,
+  goOut,
+  inGarage,
   newQuali,
   newRace,
+  newSession,
+  nextSegment,
+  segmentOrder,
+  sessionGrid,
+  tickSession,
   order,
   qualiDelta,
   qualiOrder,
@@ -56,6 +64,7 @@ import {
   wingTop,
   wrongWay,
   type Level,
+  type Phase,
   type Race,
   type Racer,
   type Tyre,
@@ -89,6 +98,22 @@ const LAPS = "monza-laps";
 const TOWER = "drive-tower";
 // The classification's gap column: to the car ahead, or to the leader.
 const GAPS = "drive-gaps";
+// Qualifying: quick (one lap) or full (Q1, Q2 and Q3).
+const QUALI = "drive-quali";
+// How many frames a fast-forward runs per frame in the garage, and to skip to the end once you're out.
+const FAST = 20;
+const SKIP = 300;
+const PHASE_NAMES: Record<Phase, string> = {
+  garage: "Garage",
+  out: "Out lap",
+  push: "Push",
+  in: "In lap",
+};
+// A session clock: m:ss.
+const clock = (ms: number) => {
+  const sec = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+};
 const MAP = "drive-map";
 const MODES = ["Interval", "Leader", "Tyres"] as const;
 // Small and medium are the 600 m round you; large is the whole circuit.
@@ -193,7 +218,7 @@ const CONTROLS: [string[], string][] = [
 const RULES: [string, string][] = [
   [
     "Start",
-    "You start at the back, or qualify for your slot: one flying lap on softs from a rolling start, and the grid lines up by lap time. Track limits, the pit lane or abandoning the lap leaves you without a time, still at the back. Go when the lights go out. Amateur races the F3 grid, intermediate F2 and pro F1: on the racing line, with the fewest mistakes and a little more grip than your car. Legends is the world champions: no mistakes, and a perfect race only just keeps up.",
+    "You start at the back, or qualify for your slot. Quick qualifying is one flying lap on softs from a rolling start, and the grid lines up by lap time. Track limits, the pit lane or abandoning the lap leaves you without a time, still at the back. Full qualifying is Q1, Q2 and Q3 on the clock with the whole field on track: go out from the garage when you like, on new softs, and only a lap started before the flag counts. The slowest six go out after Q1 and Q2, and the last ten fight for pole. Cars on a push lap get room; in the garage you can fast-forward the clock. Go when the lights go out. Amateur races the F3 grid, intermediate F2 and pro F1: on the racing line, with the fewest mistakes and a little more grip than your car. Legends is the world champions: no mistakes, and a perfect race only just keeps up.",
   ],
   [
     "Tyres & pits",
@@ -260,10 +285,38 @@ const lapsDown = (n: number) => `+${n} lap${n > 1 ? "s" : ""}`;
 type Result = {
   quali: boolean;
   table: (ReturnType<typeof results>[number] & { sectors?: number[] })[];
+  // Full qualifying: the segment (0 for Q1), how many go through, and whether another follows.
+  seg?: number;
+  cut?: number;
+  next?: boolean;
   fastest: number | null;
   level: Level;
   laps: number;
   radio: string;
+};
+// A qualifying classification row: its lap (0 for none) and that lap's sectors.
+const qualiRow = (id: number, best: number, sectors: number[]): Result["table"][number] => ({
+  id,
+  time: best,
+  down: 0,
+  best,
+  penalty: 0,
+  paid: 0,
+  stints: [],
+  stintLaps: [],
+  stops: 0,
+  out: null,
+  dsq: false,
+  grid: 0,
+  sectors,
+});
+// The garage screen in full qualifying, from the frame loop a couple of times a second.
+type Timing = {
+  seg: number;
+  left: number;
+  through: boolean;
+  fast: boolean;
+  rows: { id: number; best: number; phase: Phase }[];
 };
 // F1's points, P1 to P10, for a classified finish.
 const POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
@@ -464,6 +517,11 @@ export default function Drive() {
   const regrid = useRef<() => void>(() => {});
   const go = useRef<(t: Tyre) => void>(() => {});
   const qualify = useRef<() => void>(() => {});
+  const [full, setFull] = useState(() => read(QUALI, false));
+  const fullRef = useRef(full);
+  const [timing, setTiming] = useState<Timing | null>(null);
+  const leaveGarage = useRef<() => void>(() => {});
+  const fastForward = useRef<() => void>(() => {});
   const abandon = useRef<() => void>(() => {});
   const quit = useRef<() => void>(() => {});
   const fit = useRef<(t: Tyre) => void>(() => {});
@@ -618,6 +676,10 @@ export default function Drive() {
     if (!MODES[mode]) mode = 0;
     let revs = -1;
     let skipping = false;
+    // Full qualifying: frames run per frame while you're in the garage, and the segment whose
+    // classification's been shown.
+    let fast = 0;
+    let shown = -1;
     let paused = false;
     const still = { gas: false, brake: false, steer: 0 };
     const keys = new Set<string>();
@@ -825,6 +887,8 @@ export default function Drive() {
       quali = null;
       towerEl.current!.hidden = false;
       lapName.current!.textContent = "Lap";
+      [fast, shown] = [0, -1];
+      setTiming(null);
       posEl.current!.classList.remove("text-go");
       scene?.paint(LEVELS[race.level].colors, LEVELS[race.level].liveries);
       phase = "grid";
@@ -867,6 +931,11 @@ export default function Drive() {
     quit.current = start;
     // Out of qualifying onto its grid; out of a race, back to the back.
     again.current = () => {
+      if (race.session?.state === "break") {
+        nextSegment(race);
+        fast = 0;
+        return setResult(null);
+      }
       const g = nextGrid ?? GRID;
       nextGrid = null;
       lineupRef.current = g;
@@ -885,6 +954,11 @@ export default function Drive() {
         return qualify.current();
       }
       if (!paused) return;
+      if (race.session) {
+        start();
+        pickWing(w);
+        return qualify.current();
+      }
       const t = race.racers[0]!.stints[0]!;
       start();
       pickWing(w);
@@ -912,6 +986,7 @@ export default function Drive() {
       launch();
     };
     qualify.current = () => {
+      if (fullRef.current) return session();
       quali = newQuali(track, levelRef.current);
       race = quali[0]!;
       weekend = race.cars;
@@ -923,10 +998,90 @@ export default function Drive() {
       showDelta();
       launch();
     };
+    // Full qualifying: no lights, you start in the garage.
+    const session = () => {
+      race = newSession(track, levelRef.current);
+      weekend = race.cars;
+      qualiWing.current = wingRef.current;
+      [race.racers[0]!.wing, race.racers[0]!.nextWing] = [wingRef.current, wingRef.current];
+      towerEl.current!.hidden = true;
+      nearEl.current!.textContent = "";
+      lapName.current!.textContent = "";
+      launch();
+      phase = "racing";
+      lightsEl.current!.hidden = true;
+      showSession();
+    };
+    leaveGarage.current = () => {
+      if (race.session) goOut(race);
+      fast = 0;
+    };
+    // Fast-forward in the garage, and once you're knocked out, skip to the end.
+    fastForward.current = () => {
+      const s = race.session;
+      if (!s) return;
+      fast = !s.in.includes(0) ? SKIP : fast ? 0 : FAST;
+    };
+    // Full qualifying's HUD: the clock, your place in the segment and the cut, and the garage
+    // screen's timing.
+    const showSession = () => {
+      const s = race.session!;
+      const order = segmentOrder(s, s.seg).filter((id) => s.in.includes(id));
+      const me = race.racers[0]!;
+      const pos = order.indexOf(0) + 1;
+      posEl.current!.textContent = s.best[s.seg]![0] ? `P${pos}` : "–";
+      lapEl.current!.textContent = `Q${s.seg + 1} ${clock(s.left)}`;
+      const cut = CUTS[s.seg];
+      const last = cut && s.best[s.seg]![order[cut - 1]!];
+      nearEl.current!.textContent = last ? `Cut P${cut} ${fmt(last)}` : "";
+      setTiming(
+        s.state === "running" && inGarage(me)
+          ? {
+              seg: s.seg,
+              left: s.left,
+              through: s.in.includes(0),
+              fast: fast > 0,
+              rows: order.map((id) => ({ id, best: s.best[s.seg]![id]!, phase: s.phase[id]! })),
+            }
+          : null,
+      );
+    };
+    // A segment's classification as it ends, and at the end of Q3 the grid.
+    const showSegment = () => {
+      const s = race.session!;
+      const done = s.state === "done";
+      const segOf = (id: number) => s.reached.reduce((k, ids, i) => (ids.includes(id) ? i : k), 0);
+      const ids = done ? sessionGrid(s) : segmentOrder(s, s.seg);
+      const table = ids.map((id) =>
+        qualiRow(id, s.best[segOf(id)]![id]!, s.sectors[segOf(id)]![id]!),
+      );
+      const k = ids.indexOf(0);
+      const q = `Q${s.seg + 1}`;
+      const text = done
+        ? qualiWord(k + 1, !!table[k]!.best)
+        : k < CUTS[s.seg]!
+          ? pick([`Through to Q${s.seg + 2}. P${k + 1}.`, `P${k + 1}, we're through. Next one.`])
+          : pick([`Out in ${q}. P${k + 1}.`, `P${k + 1}, that's ${q} done for us. Sorry.`]);
+      race.msgs.push({ kind: "radio", id: 0, text });
+      nextGrid = done ? ids : null;
+      fast = 0;
+      setResult({
+        quali: true,
+        table,
+        level: race.level,
+        laps: 1,
+        fastest: null,
+        radio: text,
+        seg: s.seg,
+        cut: done ? undefined : CUTS[s.seg],
+        next: !done,
+      });
+    };
     // The set for your next stop, any time until it's on.
     fit.current = (t) => {
       const me = race.racers[0]!;
-      if (!quali && me.finish === null && !me.out && !(me.pit && me.served)) me.fit = t;
+      if (!quali && !race.session && me.finish === null && !me.out && !(me.pit && me.served))
+        me.fit = t;
     };
     // The wing: on the grid screen for the session (not once qualified), in a race for your next
     // stop, as the set is.
@@ -937,13 +1092,13 @@ export default function Drive() {
         return;
       }
       const me = race.racers[0]!;
-      if (!quali && me.finish === null && !me.out && !(me.pit && me.served))
+      if (!quali && !race.session && me.finish === null && !me.out && !(me.pit && me.served))
         me.nextWing = clamp(me.nextWing);
     };
 
     // Under a Safety Car or VSC, asking the team driving you to box, or not.
     boxIt.current = () => {
-      if (phase === "racing" && !quali && !paused) toggleBox(race);
+      if (phase === "racing" && !quali && !race.session && !paused) toggleBox(race);
     };
 
     let raf = 0;
@@ -987,7 +1142,16 @@ export default function Drive() {
         // read as over, and the classification would never come.
         const over = quali?.every((q) => q.done);
         const raw = { gas, brake, steer, ot };
-        const split = tick(race, aidsRef.current.assist ? assist(race, me, raw) : raw, dt);
+        const input = aidsRef.current.assist ? assist(race, me, raw) : raw;
+        const sess = race.session;
+        const split = sess ? tickSession(race, input, dt) : tick(race, input, dt);
+        if (sess)
+          for (let n = 0; n < fast && sess.state === "running" && inGarage(me); n++)
+            tickSession(race, still, 1 / 30);
+        if (sess && sess.state !== "running" && shown !== sess.seg) {
+          shown = sess.seg;
+          showSegment();
+        }
         // After your flag, Skip runs the rest of the field to theirs a few hundred frames at a time.
         if (skipping) for (let n = 0; n < 300 && !race.done; n++) tick(race, still, 1 / 30);
         if (quali) {
@@ -999,21 +1163,9 @@ export default function Drive() {
             for (let n = 0; n < (skipping ? 300 : 1) && !q.done; n++)
               tick(q, still, skipping ? 1 / 30 : dt);
           if (!over && quali.every((q) => q.done)) {
-            const table = qualiOrder(quali).map(({ id, best, sectors }) => ({
-              id,
-              time: best,
-              down: 0,
-              best,
-              penalty: 0,
-              paid: 0,
-              stints: [],
-              stintLaps: [],
-              stops: 0,
-              out: null,
-              dsq: false,
-              grid: 0,
-              sectors,
-            }));
+            const table = qualiOrder(quali).map(({ id, best, sectors }) =>
+              qualiRow(id, best, sectors),
+            );
             nextGrid = table.map((r) => r.id);
             const k = table.findIndex((r) => !r.id);
             const text = qualiWord(k + 1, !!table[k]!.best);
@@ -1072,11 +1224,12 @@ export default function Drive() {
         if (t - board > 500) {
           board = t;
           if (quali) showDelta();
+          else if (race.session) showSession();
           else drawBoard();
           showFastest();
         }
         // The classification waits for the whole field to take the flag, or retire.
-        const waiting = !quali && (me.finish !== null || !!me.out) && !race.done;
+        const waiting = !quali && !race.session && (me.finish !== null || !!me.out) && !race.done;
         waitEl.current!.hidden = !waiting;
         if (waiting) {
           const left = race.racers.filter((r) => r.finish === null && !r.out).length;
@@ -1086,7 +1239,10 @@ export default function Drive() {
         }
       }
 
-      lapEl.current!.textContent = quali ? "" : `${Math.min(me.laps + 1, race.laps)}/${race.laps}`;
+      if (!race.session)
+        lapEl.current!.textContent = quali
+          ? ""
+          : `${Math.min(me.laps + 1, race.laps)}/${race.laps}`;
       const time = timeEl.current!;
       // Zero until a rolling start reaches the line.
       const { start: from } = me.lap;
@@ -1142,7 +1298,12 @@ export default function Drive() {
       nextWing.classList.toggle("text-accent", me.nextWing !== me.wing);
       // The next set: on track to pick ahead, in the lane what's going on.
       const fitting =
-        phase === "racing" && !quali && me.finish === null && !me.out && !(me.pit && me.served);
+        phase === "racing" &&
+        !quali &&
+        !race.session &&
+        me.finish === null &&
+        !me.out &&
+        !(me.pit && me.served);
       fitWrap.current!.hidden = !fitting;
       fitLabel.current!.textContent = me.pit ? "Fitting" : "Next set";
       if (fitting)
@@ -1302,7 +1463,9 @@ export default function Drive() {
         race.racers.map((r) => !!r.out && !r.wreck),
         race.sc?.car ?? null,
         // Yas Marina's sunset follows the leader round; qualifying there is after dark.
-        quali ? 1 : Math.max(0, ...race.racers.map((r) => r.dist)) / (race.laps * LENGTH),
+        quali || race.session
+          ? 1
+          : Math.max(0, ...race.racers.map((r) => r.dist)) / (race.laps * LENGTH),
       );
       drawMap();
       raf = requestAnimationFrame(frame);
@@ -1942,6 +2105,70 @@ export default function Drive() {
           </button>
         </div>
 
+        {timing && !result && (
+          // Full qualifying, in the garage: the clock, the timing, and out you go.
+          <div className="absolute inset-x-0 bottom-0 grid place-items-center p-4">
+            <div className={`${panel} w-full max-w-md p-4`}>
+              <div className="flex items-baseline justify-between gap-4">
+                <p className="disp text-xl">
+                  Q{timing.seg + 1} · {clock(timing.left)}
+                </p>
+                <p className={label}>
+                  {timing.through
+                    ? `${timing.rows.length} cars, ${CUTS[timing.seg] ? `top ${CUTS[timing.seg]} through` : "pole"}`
+                    : `Out in Q${timing.seg}`}
+                </p>
+              </div>
+              <ol className="mt-2 max-h-48 overflow-y-auto text-sm tabular-nums">
+                {timing.rows.map((r, k) => (
+                  <li
+                    key={r.id}
+                    className={`flex items-center gap-2 px-1 py-0.5 ${r.id ? "" : "bg-lamp"} ${k + 1 === CUTS[timing.seg] ? "border-b border-accent" : ""}`}
+                  >
+                    <span className="w-6 text-soft">{k + 1}</span>
+                    <span
+                      className="h-3 w-1 shrink-0 rounded-full"
+                      style={{ background: LEVELS[level].colors[r.id >> 1] }}
+                    />
+                    <span className="font-semibold">{LEVELS[level].drivers[r.id]!.code}</span>
+                    <span className="ml-auto text-xs text-soft">{PHASE_NAMES[r.phase]}</span>
+                    <span className="w-20 text-right">
+                      {!r.best
+                        ? DASH
+                        : k
+                          ? plus((r.best - timing.rows[0]!.best) / 1000)
+                          : fmt(r.best)}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+              <div className="mt-3 flex gap-2">
+                {timing.through && (
+                  <button
+                    type="button"
+                    autoFocus
+                    onClick={() => leaveGarage.current()}
+                    className="min-h-11 flex-1 rounded-md bg-paper font-semibold text-ink active:scale-[.98]"
+                  >
+                    Go out
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => fastForward.current()}
+                  className={`min-h-11 flex-1 rounded-md font-semibold ring-1 active:scale-[.98] ${timing.fast ? "bg-lamp ring-paper" : "ring-paper/25"}`}
+                >
+                  {timing.through
+                    ? timing.fast
+                      ? "Fast-forwarding"
+                      : "Fast-forward"
+                    : "Skip to the end"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {grid && status === "ready" && !result && (
           <div className="absolute inset-0 grid place-items-center bg-ink/40 p-4">
             <div
@@ -2093,6 +2320,21 @@ export default function Drive() {
                 Team plan{" "}
                 <span className="text-paper">{planText(teamPlan(laps, built, tyre))}</span>
               </p>
+              {!qualified && (
+                <Choice
+                  name="Qualifying"
+                  value={full}
+                  options={[
+                    [false, "Quick: one lap"],
+                    [true, "Full: Q1, Q2, Q3"],
+                  ]}
+                  pick={(v) => {
+                    setFull(v);
+                    fullRef.current = v;
+                    write(QUALI, v);
+                  }}
+                />
+              )}
               <div className="mt-4 flex gap-2">
                 {!qualified && (
                   <button
@@ -2175,7 +2417,11 @@ export default function Drive() {
               >
                 <div>
                   <p className="disp text-[28px] leading-none md:text-[36px]">
-                    {result.quali ? "Qualifying" : "Classification"}
+                    {result.next
+                      ? `Q${result.seg! + 1}`
+                      : result.quali
+                        ? "Qualifying"
+                        : "Classification"}
                   </p>
                   <p className="mt-2 text-sm text-soft">
                     {result.quali ? "Your lap" : "Your fastest lap"}{" "}
@@ -2198,7 +2444,11 @@ export default function Drive() {
                   onClick={() => again.current()}
                   className="min-h-11 w-full rounded-md bg-paper px-6 font-semibold text-ink active:scale-[.98] md:w-auto"
                 >
-                  {result.quali ? "To the grid" : "Race again"}
+                  {result.next
+                    ? `Continue to Q${result.seg! + 2}`
+                    : result.quali
+                      ? "To the grid"
+                      : "Race again"}
                 </button>
               </div>
               <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
@@ -2264,7 +2514,7 @@ export default function Drive() {
                       return (
                         <tr
                           key={r.id}
-                          className={`motion-safe:animate-rowin ${r.id ? "" : "bg-lamp"}`}
+                          className={`motion-safe:animate-rowin ${r.id ? "" : "bg-lamp"} ${k + 1 === result.cut ? "border-b border-accent" : ""}`}
                           style={{ animationDelay: `${1.1 + k * 0.05}s` }}
                         >
                           <td className="py-1 pl-2 text-soft">{k + 1}</td>

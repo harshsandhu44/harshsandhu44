@@ -716,6 +716,8 @@ export type Race = {
   sc: { car: Car; p: number; run: number } | null;
   // What your engineer last said, so it's said once (see engineer).
   eng: Engineer;
+  // Full qualifying (see newSession), or null.
+  session: Session | null;
 };
 
 export function newRace(
@@ -847,6 +849,7 @@ export function newRace(
     incidents,
     neutral: null,
     sc: null,
+    session: null,
     eng: {
       next: 0,
       pos: 0,
@@ -1118,6 +1121,194 @@ export function qualiDelta([mine, ...rest]: Race[]) {
   return null;
 }
 
+// Full qualifying, as the F1 games run it: Q1, Q2 and Q3 on the clock, the whole field on track
+// together. Each segment's clock runs SEGMENTS average laps; the slowest go out after Q1 and Q2,
+// leaving CUTS through, and the grid is Q3's order, then Q2's and Q1's for those out. A lap
+// counts only if it starts before the flag. Every car waits in its garage (out of the race as
+// GARAGE, so nothing on track sees it), goes out on new softs, drives an out-lap at COOL of its
+// pace, pushes, and back in at its box is in the garage again. The computer goes out at times
+// planned per segment: its last run to push just before the flag, and an early one where a whole
+// run (RUN average laps) fits before that.
+export const SEGMENTS = [6, 5, 4];
+export const CUTS = [16, 10];
+export const GARAGE = "Garage";
+const COOL = 0.85;
+const RUN = 3.1;
+export type Phase = "garage" | "out" | "push" | "in";
+export type Session = {
+  // The segment (0 for Q1), the clock (ms; under 0 after the flag), an average lap (ms), and
+  // whether it's running, between segments or over.
+  seg: number;
+  left: number;
+  lap: number;
+  state: "running" | "break" | "done";
+  // The cars in each segment so far, and in this one; by id, each car's phase, when (ms into the
+  // segment) the computer goes out, its pace on a push lap, and the sectors of the lap it's on.
+  reached: number[][];
+  in: number[];
+  phase: Phase[];
+  go: number[][];
+  pace: number[];
+  now: number[][];
+  // By segment and id, each car's best lap (0 for none) and that lap's sectors.
+  best: number[][];
+  sectors: number[][][];
+};
+export const inGarage = (r: Racer) => r.out === GARAGE;
+const pushing = (race: Race, r: Racer) => race.session!.phase[r.id] === "push";
+// About a lap on new softs on the racing line, from the track's speed limits. ponytail: they
+// leave out the time a car takes to get up to them, so 4% on, as pole at Monza comes out.
+const lapGuess = ({ CUM, PATH, limitAt }: Track) =>
+  1040 * PATH.reduce((t, _, i) => t + (CUM[i + 1]! - CUM[i]!) / limitAt(i, grip(1, "soft"), 1), 0);
+export function newSession(track: Track, lv: Level, rand = Math.random, cars = drawCars(lv, rand)) {
+  const race = newRace(track, GRID, rand, "soft", lv, 1, false, cars);
+  const ids = race.racers.map((r) => r.id);
+  const lap = lapGuess(track);
+  race.session = {
+    seg: 0,
+    left: SEGMENTS[0]! * lap,
+    lap,
+    state: "running",
+    reached: [ids],
+    in: ids,
+    phase: ids.map(() => "garage"),
+    go: ids.map(() => []),
+    pace: race.racers.map((r) => r.pace),
+    now: ids.map(() => []),
+    best: SEGMENTS.map(() => ids.map(() => 0)),
+    sectors: SEGMENTS.map(() => ids.map(() => [])),
+  };
+  for (const r of race.racers) toGarage(race, r);
+  plan(race);
+  return race;
+}
+function plan(race: Race) {
+  const s = race.session!;
+  const n = SEGMENTS[s.seg]!;
+  s.go = s.go.map(() => []);
+  for (const id of s.in) {
+    if (!id) continue;
+    const last = (n - 1.35 - 0.6 * race.rand()) * s.lap;
+    const early = last - RUN * s.lap;
+    s.go[id] = early > 0 ? [race.rand() * early, last] : [last];
+  }
+}
+function toGarage(race: Race, r: Racer) {
+  const b = race.track.BOXES[r.id >> 1]!;
+  Object.assign(r.car, { x: b.x, y: b.y, h: b.h, v: 0 });
+  Object.assign(r, {
+    out: GARAGE,
+    p: race.track.nearest(b.x, b.y).p,
+    pit: true,
+    pitting: false,
+    stop: 0,
+    served: false,
+    stops: [],
+    box: false,
+    lap: newLap(),
+    cap: Infinity,
+    blue: 0,
+  });
+  race.session!.phase[r.id] = "garage";
+  race.session!.now[r.id] = [];
+}
+// Out of the garage on new softs and a full battery, the team driving down the lane. Not while
+// the teammate's still pulling out of the shared box.
+function leave(race: Race, r: Racer) {
+  const s = race.session!;
+  const box = race.track.BOXES[r.id >> 1]!;
+  const mate = race.racers[r.id ^ 1];
+  if (mate && !inGarage(mate) && mate.pit && Math.abs(toBox(box, mate.car)) < 15) return false;
+  Object.assign(r, {
+    out: null,
+    pitting: true,
+    served: true,
+    tyre: "soft",
+    life: 1,
+    wear: [1, 1, 1, 1],
+    warm: 0,
+    charge: CAP,
+    pace: s.pace[r.id]! * COOL,
+  });
+  s.phase[r.id] = "out";
+  return true;
+}
+// You, out of the garage: while the clock's running and you're still in.
+export function goOut(race: Race) {
+  const s = race.session!;
+  const me = race.racers[0]!;
+  if (s.state === "running" && s.left > 0 && inGarage(me) && s.in.includes(0)) leave(race, me);
+}
+// A lap's sectors as they come, and at the line its time if it was a push lap. A lap starting
+// after the flag, or the computer's push lap done, is the in-lap: you're driven in.
+function timeLap(race: Race, r: Racer, split: Split | null, started: boolean) {
+  const s = race.session!;
+  const { phase, now, best, sectors, seg } = s;
+  if (split && split.lap === null) now[r.id]!.push(split.valid ? split.ms : 0);
+  if (split?.lap) {
+    const secs = [...now[r.id]!, split.valid ? split.ms : 0];
+    now[r.id] = [];
+    const b = best[seg]![r.id]!;
+    if (pushing(race, r) && split.valid && (!b || split.lap < b))
+      [best[seg]![r.id], sectors[seg]![r.id]] = [split.lap, secs];
+    started = true;
+  }
+  if (!started || phase[r.id] === "in") return;
+  if (s.left <= 0 || (r.id && pushing(race, r))) {
+    phase[r.id] = "in";
+    r.pace = s.pace[r.id]! * COOL;
+    if (r.id) r.stops = [r.laps + 1];
+    else r.box = true;
+  } else [phase[r.id], r.pace] = ["push", s.pace[r.id]!];
+}
+// The segment's ids, quickest first and no time last.
+export const segmentOrder = (s: Session, seg: number) =>
+  s.reached[seg]!.slice().sort(
+    (a, b) => (s.best[seg]![a] || Infinity) - (s.best[seg]![b] || Infinity) || a - b,
+  );
+// The grid: Q3's order, then the rest of Q2's, then of Q1's.
+export function sessionGrid(s: Session) {
+  const grid: number[] = [];
+  for (let seg = s.reached.length - 1; seg >= 0; seg--)
+    for (const id of segmentOrder(s, seg)) if (!grid.includes(id)) grid.push(id);
+  return grid;
+}
+// A frame of qualifying: the clock, the computer's runs, then every car. Once the flag's out and
+// nobody's on a lap that can still count (or three laps on, should one never finish), the
+// segment's done and every car's back in its garage, as the F1 games skip the in-laps.
+export function tickSession(race: Race, you: Input, dt: number) {
+  const s = race.session!;
+  if (s.state !== "running") return null;
+  const was = s.left;
+  s.left -= dt * 1000;
+  if (was > 0 && s.left <= 0) say(race, "flag", -1, `Chequered flag · Q${s.seg + 1}`);
+  const at = SEGMENTS[s.seg]! * s.lap - s.left;
+  for (const r of race.racers) {
+    const go = s.go[r.id]!;
+    if (r.id && s.left > 0 && inGarage(r) && go.length && at >= go[0]! && leave(race, r))
+      go.shift();
+  }
+  const split = tick(race, you, dt);
+  const running = race.racers.some((r) => !inGarage(r) && s.phase[r.id] !== "in");
+  if (s.left <= 0 && (!running || -s.left > 3 * s.lap)) {
+    for (const r of race.racers) if (!inGarage(r)) toGarage(race, r);
+    if (s.seg < CUTS.length) {
+      s.in = segmentOrder(s, s.seg).slice(0, CUTS[s.seg]);
+      s.state = "break";
+    } else s.state = "done";
+  }
+  return split;
+}
+// On to the next segment, everyone in the garage.
+export function nextSegment(race: Race) {
+  const s = race.session!;
+  if (s.state !== "break") return;
+  s.seg++;
+  [s.left, s.state] = [SEGMENTS[s.seg]! * s.lap, "running"];
+  s.reached.push(s.in);
+  plan(race);
+}
+
 // How far a car is short of a box, down the box's heading: exact at the box, where the lane can
 // be far enough out on a bend that the distance round the lap is off by a metre or two.
 const toBox = (b: Track["BOXES"][number], car: Car) =>
@@ -1230,6 +1421,13 @@ const LINES = {
     "Damage on the car. We'll keep an eye on it.",
     "That cost us some downforce. Drive round it.",
     "Damage. Bit less grip from here.",
+  ],
+  // Qualifying: a car on a push lap closing on you.
+  push: [
+    (c: string) => `${c} behind on a push lap. Let them by.`,
+    (c: string) => `Push lap coming, ${c}. Give them room.`,
+    (c: string) => `${c} on a flyer behind. Off the line, please.`,
+    (c: string) => `Car behind on a push lap, ${c}. Don't impede.`,
   ],
   blue: [
     (c: string) => `Blue flags. Let ${c} through.`,
@@ -1604,6 +1802,8 @@ function replan(race: Race, r: Racer, cheap = 1) {
 // The set for a stop now: the next in the best plan that stops here, or this late in the race,
 // a compound the car hasn't run yet. In the sprint, the quickest set to the flag.
 function nextSet(race: Race, r: Racer): Tyre {
+  // Qualifying runs softs, and its race is a lap long.
+  if (race.session) return "soft";
   if (sprint(race.laps)) return strategies(race.laps - r.laps, race.track)[0]?.tyres[0] ?? "soft";
   let best: Plan | null = null;
   walkPlans(race.laps, race.track, nowOf(race, r, r.laps, 1), (p) => {
@@ -1922,7 +2122,10 @@ function neutralise(race: Race, dt: number) {
     let gap = 60;
     if (!r.pit && r.finish === null)
       for (const o of rs) {
-        const up = o.dist - r.dist > LENGTH / 2;
+        // In qualifying, any car on a push lap when this one isn't.
+        const up = race.session
+          ? pushing(race, o) && !pushing(race, r)
+          : o.dist - r.dist > LENGTH / 2;
         const d = fwd(o.p * LENGTH, r.p * LENGTH);
         if (up && !o.pit && o.finish === null && d <= gap) [near, gap] = [o, d];
       }
@@ -1937,9 +2140,10 @@ function neutralise(race: Race, dt: number) {
     r.blue = Math.sign(side) || 1;
     if (r.id === 0 && race.eng.blue !== near.id) {
       race.eng.blue = near.id;
-      radio(race, pick(LINES.blue)(code(race, near)));
+      radio(race, pick(race.session ? LINES.push : LINES.blue)(code(race, near)));
     }
-    r.cap = Math.min(r.cap, Math.max(BLUE_V, near.car.v - 6));
+    // In qualifying getting out of the way is up to you.
+    if (r.id || !race.session) r.cap = Math.min(r.cap, Math.max(BLUE_V, near.car.v - 6));
   }
 }
 
@@ -2047,6 +2251,8 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     if (car.v > r.cap) car.v = Math.max(0, r.cap, Math.min(car.v, v0 - brakeAt(v0) * g * dt));
     if (failed && car.v > LIMP_V) car.v = Math.max(LIMP_V, Math.min(car.v, v0 - LIMP_BRAKE * dt));
     pitStop(race, r, dt);
+    // In qualifying a car at its box is back in the garage.
+    if (race.session && r.stop > 0) toGarage(race, r);
     if (r.out) continue;
     const hit = car.v;
     collide(car);
@@ -2055,7 +2261,10 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     if (failed && !r.out && !r.pit && car.v < 0.5) retire(race, r, r.fault);
     if (r.out) continue;
     const v = Math.abs(car.v);
-    wearTyres(race, r, input, turn, edge, dt * v);
+    // ponytail: in qualifying only a push lap wears the set, so the push starts on the new set the
+    // quick lap was tuned on (QUALI_WEAR); out-laps really do cost little.
+    if (!race.session || race.session.phase[r.id] === "push")
+      wearTyres(race, r, input, turn, edge, dt * v);
     r.warm = Math.min(1, r.warm + (dt * v) / (TYRES[r.tyre].warm * LENGTH));
     if (race.incidents && r.life <= 0 && r.finish === null && race.rand() < 0.05 * dt)
       puncture(race, r, true);
@@ -2080,6 +2289,9 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
     }
 
     // Laps after the flag are cool-down laps and count for nothing.
+    // A qualifying out-lap from the garage: past halfway, the line starts its clock.
+    if (race.session && r.lap.start === null && r.p > 0.5 && r.p < 0.75) r.lap.halfway = true;
+    const unstarted = r.lap.start === null;
     const split = r.finish === null ? lapTick(r.lap, p, edge, race.t, dt * 1000) : null;
     const sec = split?.sector ?? 0;
     if (split?.valid && (!race.sectors[sec] || split.ms < race.sectors[sec]!))
@@ -2095,10 +2307,11 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
       }
       if (r.id === 0) lapCall(race, r, split.lap, split.valid);
       const leaderDone = race.racers.some((o) => o.finish !== null);
-      if (r.finish === null && (r.laps >= race.laps || leaderDone)) r.finish = race.t;
+      if (r.finish === null && !race.session && (r.laps >= race.laps || leaderDone))
+        r.finish = race.t;
       // The team re-plans at the line (not with the car on its way to a stop), and calls you in on
       // the lap you're to stop.
-      if (r.finish === null && !failed && !r.puncture && !r.pitting) {
+      if (r.finish === null && !race.session && !failed && !r.puncture && !r.pitting) {
         replan(race, r);
         if (r.id) cover(race, r);
         else if (r.stops.includes(r.laps + 1))
@@ -2111,6 +2324,7 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
           );
       }
     }
+    if (race.session) timeLap(race, r, split, unstarted && r.lap.start !== null);
     if (r.id === 0) mine = split;
     const cp = Math.floor(r.dist / CP);
     if (cp > r.cp && r.finish === null) {
@@ -2134,6 +2348,7 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
   // Done once every car has taken the flag or is out, or, should one never get there, three
   // average laps after the winner.
   const won = Math.min(...rs.map((r) => r.finish ?? Infinity));
+  if (race.session) return mine;
   if (rs.every((r) => r.finish !== null || r.out) || race.t - won > (3 * won) / race.laps)
     race.done = true;
   return mine;
