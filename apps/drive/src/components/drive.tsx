@@ -64,6 +64,8 @@ import {
   teamPlan,
   tick,
   toggleBox,
+  toggleTeam,
+  handingBack,
   towShare,
   wingGrip,
   wingTop,
@@ -216,6 +218,7 @@ const CONTROLS: [string[], string][] = [
   [["[ ]"], "Wing"],
   [["Space"], "Overtake"],
   [["B"], "Box (Safety Car)"],
+  [["E"], "Team drives (qualifying)"],
   [["P"], "Pause"],
   [["R"], "Restart"],
   [["T"], "Timing"],
@@ -224,11 +227,11 @@ const CONTROLS: [string[], string][] = [
 const RULES: [string, string][] = [
   [
     "Start",
-    "You start at the back, or qualify for your slot. Quick qualifying is one flying lap on softs from a rolling start, and the grid lines up by lap time. Track limits, the pit lane or abandoning the lap leaves you without a time, still at the back. Full qualifying is Q1, Q2 and Q3 on the clock with the whole field on track: go out from the garage when you like, on new softs, and only a lap started before the flag counts. The slowest six go out after Q1 and Q2, and the last ten fight for pole. Each car has five sets of softs for the session: go out on a new one or a used one, as worn as you left it. The track rubbers in and gets quicker. Cars on a push lap get room, and holding one up is impeding: a warning, then three places on the grid each time. A car stopped on track brings the red flag: the clock stops and everyone's back in the garage. In the garage you can fast-forward the clock. Go when the lights go out. Amateur races the F3 grid, intermediate F2 and pro F1: on the racing line, with the fewest mistakes and a little more grip than your car. Legends is the world champions: no mistakes, and a perfect race only just keeps up.",
+    "You start at the back, or qualify for your slot. Quick qualifying is one flying lap on softs from a rolling start, and the grid lines up by lap time. Track limits, the pit lane or abandoning the lap leaves you without a time, still at the back. Full qualifying is Q1, Q2 and Q3 on the clock with the whole field on track: go out from the garage when you like, on new softs, and only a lap started before the flag counts. The slowest six go out after Q1 and Q2, and the last ten fight for pole. Each car has five sets of softs for the session: go out on a new one or a used one, as worn as you left it. The track rubbers in and gets quicker. Track limits only cost you the lap. Press E (or Team) and the team drives your out-lap, handing the car back with a countdown just before the line; on a push lap, E brings you in. The battery only deploys on push laps, so every one starts full. Cars on a push lap get room, and holding one up is impeding: a warning, then three places on the grid each time. A car stopped on track brings the red flag: the clock stops and everyone's back in the garage. In the garage you can fast-forward the clock. Go when the lights go out. Amateur races the F3 grid, intermediate F2 and pro F1: on the racing line, with the fewest mistakes and a little more grip than your car. Legends is the world champions: no mistakes, and a perfect race only just keeps up.",
   ],
   [
     "Tyres & pits",
-    "Softs grip most, hards last longest, and a set lasts the same share of the race at any Grand Prix distance, less on tracks hard on tyres like Silverstone and Spa. Grip fades slowly, then falls off a cliff in the last quarter of a set's life, and all four wheels on the grass wears them faster. Each tyre wears on its own: the outside ones through the corners, the fronts on the brakes and the rears on the throttle. A new set is cold for its first half lap, shown blue. In a Grand Prix you must run two compounds, so everyone stops at least once: finish on one and you're disqualified. The sprint is one stint, as in F1: no stop needed and any compound, with softs quickest but fading before the flag. The team plans your race on the grid screen and calls you in, but when you box is up to you: press 1, 2 or 3 any time to pick the next set. The pit lane leaves the main straight before the line: turn in and the team drives you to your box and back out. Only your teammate can hold you up there.",
+    "Softs grip most, hards last longest, and a set lasts the same share of the race at any Grand Prix distance, less on tracks hard on tyres like Silverstone and Spa. Grip fades slowly, then falls off a cliff in the last quarter of a set's life, and all four wheels on the grass wears them faster. Each tyre wears on its own: the outside ones through the corners, the fronts on the brakes and the rears on the throttle. A new set is cold for its first half lap, shown blue. In a Grand Prix you must run two compounds, so everyone stops at least once: finish on one and you're disqualified. The sprint is one stint, as in F1: no stop needed and any compound, with softs quickest but fading before the flag. The team plans your race on the grid screen and calls you in, but when you box is up to you: press 1, 2 or 3 any time to pick the next set. The pit lane leaves the main straight before the line: turn in and the team drives you to your box and back out, counting down before it hands back. Only your teammate can hold you up there.",
   ],
   [
     "Wing",
@@ -236,7 +239,7 @@ const RULES: [string, string][] = [
   ],
   [
     "Safety Car & failures",
-    "Cars break down (about one in twenty-five a race, yours too), crash out on a big hit, take lasting damage from smaller ones, and puncture from contact or a set run to nothing; a puncture costs grip, not top speed, until you box, its wheel blinking red. A car stopped off the track brings the Virtual Safety Car: everyone is held to the same speed. A crash, or a car stopped on the track, brings the Safety Car: the field queues behind it with no passing, and racing starts again at the line once it's gone in. The team drives your car under both and hands it back as either ends: press B (or Box) to have it take you in, as a stop under either costs less. With more than three laps to go, lapped cars are waved past the queue to its back first (the team drives you through), and the Safety Car comes in once the last is back. When a car a lap up catches you, the blue flag lets it by; pass it again and pull away, and you've unlapped yourself.",
+    "Cars break down (about one in twenty-five a race, yours too), crash out on a big hit, take lasting damage from smaller ones, and puncture from contact or a set run to nothing; a puncture costs grip, not top speed, until you box, its wheel blinking red. A car stopped off the track brings the Virtual Safety Car: everyone is held to the same speed. A crash, or a car stopped on the track, brings the Safety Car: the field queues behind it with no passing, and racing starts again at the line once it's gone in. The team drives your car under both and hands it back as either ends, after a three-second countdown: press B (or Box) to have it take you in, as a stop under either costs less. With more than three laps to go, lapped cars are waved past the queue to its back first (the team drives you through), and the Safety Car comes in once the last is back. When a car a lap up catches you, the blue flag lets it by; pass it again and pull away, and you've unlapped yourself.",
   ],
   [
     "Career",
@@ -642,6 +645,7 @@ export default function Drive() {
   const unlapEl = useRef<HTMLSpanElement>(null);
   const teamEl = useRef<HTMLSpanElement>(null);
   const boxPad = useRef<HTMLButtonElement>(null);
+  const handEl = useRef<HTMLDivElement>(null);
   const otPad = useRef<HTMLButtonElement>(null);
   const batEl = useRef<HTMLSpanElement>(null);
   const batText = useRef<HTMLSpanElement>(null);
@@ -768,6 +772,7 @@ export default function Drive() {
     // sound.
     let place = 0;
     let stopped = false;
+    let counting = 0;
     if (!MODES[mode]) mode = 0;
     let revs = -1;
     let skipping = false;
@@ -810,7 +815,7 @@ export default function Drive() {
           return drawBoard();
         }
         if (e.key === "[" || e.key === "]") return fitWing.current(e.key === "]" ? 1 : -1);
-        if (l === "b") return boxIt.current();
+        if (l === "b" || l === "e") return boxIt.current();
         if (l === "m") {
           const k = (mapSizeRef.current + 1) % MAPS.length;
           mapSizeRef.current = k;
@@ -1221,9 +1226,12 @@ export default function Drive() {
         me.nextWing = clamp(me.nextWing);
     };
 
-    // Under a Safety Car or VSC, asking the team driving you to box, or not.
+    // Under a Safety Car or VSC, asking the team driving you to box, or not; in full qualifying,
+    // the team driving your out-lap or taking you in.
     boxIt.current = () => {
-      if (phase === "racing" && !quali && !race.session && !paused) toggleBox(race);
+      if (phase !== "racing" || quali || paused) return;
+      if (race.session) toggleTeam(race);
+      else toggleBox(race);
     };
 
     let raf = 0;
@@ -1530,15 +1538,43 @@ export default function Drive() {
       blueEl.current!.hidden = !me.blue;
       unlapEl.current!.hidden = !me.unlap;
       const driven = !quali && teamDriving(race, me);
+      const sess = race.session;
       const team = teamEl.current!;
       team.hidden = !driven;
-      // The team's suggesting a stop: B (or Box) takes it.
-      const boxing = me.box ? "Boxing" : me.boxCall ? "Box? B" : "Team driving";
+      // The team's suggesting a stop: B (or Box) takes it. In qualifying, E hands over the car.
+      const boxing = sess
+        ? me.box
+          ? "In lap"
+          : "Team driving · E"
+        : me.box
+          ? "Boxing"
+          : me.boxCall
+            ? "Box? B"
+            : "Team driving";
       if (team.lastChild!.textContent !== boxing) team.lastChild!.textContent = boxing;
       const bp = boxPad.current!;
-      bp.hidden = !driven || me.pit || !p.touch;
-      if (bp.textContent !== (me.box ? "Stay out" : "Box"))
-        bp.textContent = me.box ? "Stay out" : "Box";
+      bp.hidden = (sess ? !!me.out : !driven) || me.pit || !p.touch;
+      const pad = sess
+        ? me.box
+          ? "Push"
+          : sess.team
+            ? "Drive"
+            : sess.phase[0] === "push"
+              ? "In lap"
+              : "Team"
+        : me.box
+          ? "Stay out"
+          : "Box";
+      if (bp.textContent !== pad) bp.textContent = pad;
+      // Handing your car back: the seconds to go, a pip on each.
+      const back = me.out ? 0 : handingBack(race);
+      const hand = handEl.current!;
+      hand.hidden = !back;
+      if (back !== counting) {
+        counting = back;
+        hand.lastChild!.textContent = `${back}`;
+        if (back) audio.current?.pip();
+      }
       const otChip = otEl.current!;
       otChip.hidden = !me.ot;
       otChip.classList.toggle("bg-lamp", me.ot === "ready");
@@ -1909,6 +1945,16 @@ export default function Drive() {
           </div>
         </div>
 
+        <div
+          ref={handEl}
+          hidden
+          className="pointer-events-none absolute top-[22%] left-1/2 flex -translate-x-1/2 flex-col items-center rounded-md bg-pit px-5 py-2 shadow-[inset_0_0_0_2px_var(--color-paper)]"
+        >
+          <span className="text-xs font-semibold tracking-wide text-soft uppercase">
+            Your car in
+          </span>
+          <span className="text-5xl font-bold text-paper tabular-nums">3</span>
+        </div>
         <div
           ref={lightsEl}
           className={`pointer-events-none absolute top-[38%] left-1/2 flex -translate-x-1/2 gap-2 rounded-md bg-pit p-2.5 shadow-[inset_0_0_0_2px_var(--color-lamp)] md:top-4 md:gap-3 md:p-3 ${shown}`}
