@@ -1038,6 +1038,7 @@ export default function Drive() {
       simming = true;
       if (t) go.current(t);
       else qualify.current();
+      race.sim = true;
       phase = "racing";
       lightsEl.current!.hidden = true;
     };
@@ -2381,8 +2382,10 @@ export default function Drive() {
 
         {timing && !result && (
           // Full qualifying, in the garage: the clock, the timing, and out you go.
-          <div className="absolute inset-x-0 bottom-0 grid place-items-center p-4">
-            <div className={`${panel} w-full max-w-md p-4`}>
+          <div className="pointer-events-none absolute inset-0 flex items-end justify-center p-4">
+            <div
+              className={`${panel} pointer-events-auto flex max-h-full w-full max-w-md flex-col p-4`}
+            >
               <div className="flex items-baseline justify-between gap-4">
                 <p className={`disp text-xl ${timing.red ? "text-accent" : ""}`}>
                   {timing.red
@@ -2395,7 +2398,7 @@ export default function Drive() {
                     : `Out in Q${timing.seg}`}
                 </p>
               </div>
-              <ol className="mt-2 max-h-48 overflow-y-auto text-sm tabular-nums">
+              <ol className="mt-2 max-h-48 min-h-0 overflow-y-auto text-sm tabular-nums">
                 {timing.rows.map((r, k) => (
                   <li
                     key={r.id}

@@ -118,13 +118,13 @@ export const aim = (car: Car, [x, y]: [number, number]) => {
 export const edgeOf = ({ level: lv, track }: Race) =>
   (lv === "pro" ? track.PRO_EDGE : lv === "legends" ? track.LEGENDS_EDGE : undefined) ??
   LEVELS[lv].edge;
-// A car's grip on its tyres, wing and car: a computer car's scaled by its edge. Close behind another car its
+// A car's grip on its tyres, wing and car: a computer car's (or your simulated one's) scaled by its edge. Close behind another car its
 // dirty air takes some of that, and so do cold tyres and damage; on a puncture it has little.
 export const carGrip = (race: Race, r: Racer) => {
   const g =
     grip(r.life, r.tyre) *
     wingGrip(r.wing) *
-    (r.id ? edgeOf(race) : 1) *
+    (r.id || race.sim ? edgeOf(race) : 1) *
     (1 - r.dirty) *
     (1 - COLD * (1 - r.warm)) *
     (1 - r.damage) *
@@ -720,6 +720,8 @@ export type Race = {
   // Full qualifying (see newSession), or null, and the grip the track's rubbered in by.
   session: Session | null;
   rubber: number;
+  // Your car simulated: the team drives it, with a computer car's edge.
+  sim?: boolean;
 };
 
 export function newRace(
@@ -1193,7 +1195,7 @@ const pushing = (race: Race, r: Racer) => race.session!.phase[r.id] === "push";
 // On a push lap for traffic and impeding: yours only while you're on the pace.
 const SLOW = 0.85;
 const onPush = (race: Race, r: Racer) =>
-  pushing(race, r) && (r.id > 0 || race.session!.effort >= SLOW);
+  pushing(race, r) && (r.id > 0 || race.session!.auto || race.session!.effort >= SLOW);
 const lifeOf = (set: TyreSet) => set.wear.reduce((a, b) => a + b, 0) / set.wear.length;
 // The set to go out on: a new one while there's one left, else the one with the most life.
 export const bestSet = (sets: TyreSet[]) => {
@@ -1361,7 +1363,8 @@ function redFlag(race: Race) {
 // Whether a computer car on a push lap is lifting for you, from aiInput: you're the car ahead
 // it's held to, within 30 m, not on a push lap yourself.
 function impeding(race: Race, r: Racer, front: Racer, gap: number) {
-  if (front.id === 0 && r.id && gap < 30 && pushing(race, r) && !onPush(race, front))
+  const { auto } = race.session!;
+  if (front.id === 0 && r.id && !auto && gap < 30 && pushing(race, r) && !onPush(race, front))
     race.session!.lifting = true;
 }
 // The segment's ids, quickest first and no time last.
@@ -2310,8 +2313,9 @@ function neutralise(race: Race, dt: number) {
       race.eng.blue = near.id;
       radio(race, pick(race.session ? LINES.push : LINES.blue)(code(race, near)));
     }
-    // In qualifying getting out of the way is up to you.
-    if (r.id || !race.session) r.cap = Math.min(r.cap, Math.max(BLUE_V, near.car.v - 6));
+    // In qualifying getting out of the way is up to you, unless the team's driving.
+    if (r.id || !race.session || race.session.auto)
+      r.cap = Math.min(r.cap, Math.max(BLUE_V, near.car.v - 6));
   }
 }
 

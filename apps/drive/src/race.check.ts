@@ -1477,6 +1477,17 @@ assert.equal(trend(false, 1.0, 1.05, 1), "", "a steady gap goes unsaid");
   assert.ok(at(7) < at(4), "and a win puts 7 ahead on countback");
   assert.equal(standings([{ order: rest(9), none: [] }], true).drivers[0]!.points, 8, "sprint");
 }
+// A simulated quick qualifying lap has a computer car's edge, so it's on the pace of the field.
+{
+  const q = newQuali(monza, "pro", seeded(5));
+  q[0]!.sim = true;
+  for (let f = 0; f < 200 / DT; f++) for (const r of q) if (!r.done) tick(r, simInput(r), DT);
+  const [mine, ...rest] = q.map((r) => r.racers[0]!.best!);
+  assert.ok(
+    mine! < Math.min(...rest) * 1.02,
+    `simulated lap ${mine} near pole ${Math.min(...rest)}`,
+  );
+}
 // A simulated Grand Prix: your car driven by the computer to the flag, stopping as the team
 // planned, so it runs two compounds and is classified.
 {
@@ -1490,14 +1501,19 @@ assert.equal(trend(false, 1.0, 1.05, 1), "", "a steady gap goes unsaid");
   const row = results(race).find((r) => r.id === 0)!;
   assert.ok(row.stops > 0 && !row.dsq && !row.out, `you stop and are classified (${row.stints})`);
 }
-// A simulated full qualifying: the team runs your car's session as the computer's.
+// A simulated full qualifying: the team runs your car's session as the computer's, through all
+// three segments at Monaco, yielding to push laps like the computer, so never warned or dropped.
 {
-  const race = newSession(monza, "pro", seeded(4), undefined, true);
+  const race = newSession(getTrack("monaco"), "intermediate", seeded(7), undefined, true);
+  race.sim = true;
   const s = race.session!;
-  const me = race.racers[0]!;
-  for (let f = 0; f < 1200 / DT && s.state === "running"; f++)
-    tickSession(race, aiInput(me, race), DT);
-  assert.ok(s.best[0]![0]! > 0, "you set a time");
+  for (let seg = 0; seg < 3; seg++) {
+    for (let f = 0; f < 1200 / DT && s.state === "running"; f++)
+      tickSession(race, simInput(race), DT);
+    if (s.in.includes(0)) assert.ok(s.best[0]![seg]! > 0, `you set a Q${seg + 1} time`);
+    if (seg < 2) nextSegment(race);
+  }
+  assert.ok(!s.warned && s.drop === 0, `no impeding (drop ${s.drop})`);
 }
 // With incidents on, every race still gets done, and close walls don't take the field: about four
 // crash-outs a race at most, the street circuits included.
