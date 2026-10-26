@@ -1304,6 +1304,27 @@ assert.equal(trend(true, 1.5, 1.2, 1), ", you're taking 0.3 a lap", "catching th
 assert.equal(trend(true, 1.0, 1.6, 3), ", pulling away 0.2 a lap", "dropped by the car ahead");
 assert.equal(trend(false, 2.0, 1.4, 2), ", closing 0.3 a lap", "caught by the car behind");
 assert.equal(trend(false, 1.0, 1.05, 1), "", "a steady gap goes unsaid");
+// The classification: each car's grid slot, and its laps on each set adding up to its race.
+{
+  const race = newRace(monza, GRID, seeded(3), "medium", "pro", lapsOf(DISTANCES[1]!, monza));
+  race.racers = race.racers.filter((r) => r.id !== 0);
+  run(race, 3600, () => race.done);
+  const table = results(race);
+  for (const r of table) {
+    assert.equal(r.grid, GRID.indexOf(r.id) + 1, "the grid slot it started from");
+    assert.equal(r.stintLaps.length, r.stints.length, "a lap count for every set");
+    assert.ok(
+      r.stintLaps.every((n) => n > 0),
+      `no empty stint (${r.stintLaps})`,
+    );
+    const laps = r.stintLaps.reduce((a, b) => a + b, 0);
+    assert.equal(laps, race.laps - r.down, "its stints add up to its laps");
+  }
+  assert.ok(
+    table.some((r) => r.stops > 0),
+    "a Grand Prix distance has stops",
+  );
+}
 // With incidents on, every race still gets done, and close walls don't take the field: about four
 // crash-outs a race at most, the street circuits included.
 for (const { id, name } of TRACKS) {

@@ -140,7 +140,7 @@ export type Livery = [
   base: string,
   ...more: string[],
 ];
-type Team = [color: string, a: Seat, b: Seat, livery?: Livery];
+type Team = [name: string, color: string, a: Seat, b: Seat, livery?: Livery];
 // Your team, in every series: BMW, white with the M stripes, its box and crew in BMW blue.
 const BMW = "#1c69d4";
 const BMW_LIVERY: Livery = ["m", "#f2f2ef", "#5fb4ec", "#1c3f94", "#e2231a"];
@@ -165,20 +165,21 @@ const level = (
   mate: Seat,
   teams: Team[],
 ) => {
-  const all: Team[] = [[BMW, ["HAR", "You", 0], mate, BMW_LIVERY], ...teams];
+  const all: Team[] = [["BMW", BMW, ["HAR", "You", 0], mate, BMW_LIVERY], ...teams];
   return {
     series,
     line,
     pace,
     slip,
     edge,
-    colors: all.map(([c]) => c),
+    teams: all.map(([name]) => name),
+    colors: all.map(([, c]) => c),
     liveries: all.map(
-      ([c, , , livery], k): Livery =>
+      ([, c, , , livery], k): Livery =>
         livery ?? [AUTO[k % AUTO.length]!, c, shade(c), pale(c) ? "#15151e" : "#f2f2ef"],
     ),
     drivers: all
-      .flatMap(([, a, b]) => [a, b])
+      .flatMap(([, , a, b]) => [a, b])
       .map(([code, name, pace, aware = pace, star = false]) => ({ code, name, pace, aware, star })),
   };
 };
@@ -193,16 +194,21 @@ export const LEVELS: Record<Level, ReturnType<typeof level>> = {
     1,
     ["RIV", "Ernesto Rivera", 93],
     [
-      ["#ff6b1a", ["UGO", "Ugo Ugochukwu", 99], ["NAE", "Théophile Naël", 95]],
-      ["#1d3b8a", ["SLA", "Freddie Slater", 98], ["STR", "Noah Strømsted", 90]],
-      ["#f2c230", ["TAP", "Tuukka Taponen", 97], ["COL", "Mattia Colnaghi", 87]],
-      ["#f2f2ef", ["KAT", "Taito Kato", 96], ["GLA", "Maciej Gładysz", 88]],
-      ["#f070b2", ["YAM", "Hiyu Yamakoshi", 91], ["DEL", "Bruno del Pino", 89]],
-      ["#0d5c3a", ["CLE", "Pedro Clerot", 94], ["BAD", "Brando Badoer", 92]],
-      ["#b0122b", ["WHA", "James Wharton", 83], ["SHA", "Louis Sharp", 78]],
-      ["#b9bec4", ["NAK", "Jin Nakamura", 86], ["MCL", "Fionn McLaughlin", 79]],
-      ["#2f6df0", ["LAC", "Nicola Lacorte", 81], ["XIE", "Gerrard Xie", 77]],
-      ["#7a2bd6", ["DAV", "Yevan David", 82], ["BAR", "Fernando Barrichello", 76]],
+      ["Campos Racing", "#ff6b1a", ["UGO", "Ugo Ugochukwu", 99], ["NAE", "Théophile Naël", 95]],
+      ["Trident", "#1d3b8a", ["SLA", "Freddie Slater", 98], ["STR", "Noah Strømsted", 90]],
+      ["MP Motorsport", "#f2c230", ["TAP", "Tuukka Taponen", 97], ["COL", "Mattia Colnaghi", 87]],
+      ["ART Grand Prix", "#f2f2ef", ["KAT", "Taito Kato", 96], ["GLA", "Maciej Gładysz", 88]],
+      [
+        "Van Amersfoort Racing",
+        "#f070b2",
+        ["YAM", "Hiyu Yamakoshi", 91],
+        ["DEL", "Bruno del Pino", 89],
+      ],
+      ["Rodin Motorsport", "#0d5c3a", ["CLE", "Pedro Clerot", 94], ["BAD", "Brando Badoer", 92]],
+      ["Prema Racing", "#b0122b", ["WHA", "James Wharton", 83], ["SHA", "Louis Sharp", 78]],
+      ["Hitech", "#b9bec4", ["NAK", "Jin Nakamura", 86], ["MCL", "Fionn McLaughlin", 79]],
+      ["DAMS Lucas Oil", "#2f6df0", ["LAC", "Nicola Lacorte", 81], ["XIE", "Gerrard Xie", 77]],
+      ["AIX Racing", "#7a2bd6", ["DAV", "Yevan David", 82], ["BAR", "Fernando Barrichello", 76]],
     ],
   ),
   intermediate: level(
@@ -213,16 +219,31 @@ export const LEVELS: Record<Level, ReturnType<typeof level>> = {
     1,
     ["FIT", "Emerson Fittipaldi Jr.", 82],
     [
-      ["#ff6b1a", ["TSO", "Nikola Tsolov", 98], ["LEO", "Noel León", 94]],
-      ["#c8a24a", ["CAM", "Rafael Câmara", 99], ["DUR", "Joshua Dürksen", 92]],
-      ["#0d5c3a", ["DUN", "Alex Dunne", 97], ["STE", "Martinius Stenshorne", 93]],
-      ["#f2c230", ["MIN", "Gabriele Minì", 96], ["GOE", "Oliver Goethe", 85]],
-      ["#2f6df0", ["BEG", "Dino Beganovic", 95], ["BIL", "Roman Bilinski", 84]],
-      ["#f2f2ef", ["MAI", "Kush Maini", 91], ["INT", "Tasanapol Inthraphuvasak", 89]],
-      ["#1d3b8a", ["HOE", "Laurens van Hoepen", 90], ["BEN", "John Bennett", 86]],
-      ["#b9bec4", ["MIY", "Ritomo Miyata", 88], ["HER", "Colton Herta", 81]],
-      ["#f070b2", ["VIL", "Rafael Villagómez", 87], ["YAM", "Hiyu Yamakoshi", 77]],
-      ["#b0122b", ["MON", "Sebastián Montoya", 83], ["BOY", "Mari Boya", 80]],
+      ["Campos Racing", "#ff6b1a", ["TSO", "Nikola Tsolov", 98], ["LEO", "Noel León", 94]],
+      ["Invicta Racing", "#c8a24a", ["CAM", "Rafael Câmara", 99], ["DUR", "Joshua Dürksen", 92]],
+      [
+        "Rodin Motorsport",
+        "#0d5c3a",
+        ["DUN", "Alex Dunne", 97],
+        ["STE", "Martinius Stenshorne", 93],
+      ],
+      ["MP Motorsport", "#f2c230", ["MIN", "Gabriele Minì", 96], ["GOE", "Oliver Goethe", 85]],
+      ["DAMS Lucas Oil", "#2f6df0", ["BEG", "Dino Beganovic", 95], ["BIL", "Roman Bilinski", 84]],
+      [
+        "ART Grand Prix",
+        "#f2f2ef",
+        ["MAI", "Kush Maini", 91],
+        ["INT", "Tasanapol Inthraphuvasak", 89],
+      ],
+      ["Trident", "#1d3b8a", ["HOE", "Laurens van Hoepen", 90], ["BEN", "John Bennett", 86]],
+      ["Hitech", "#b9bec4", ["MIY", "Ritomo Miyata", 88], ["HER", "Colton Herta", 81]],
+      [
+        "Van Amersfoort Racing",
+        "#f070b2",
+        ["VIL", "Rafael Villagómez", 87],
+        ["YAM", "Hiyu Yamakoshi", 77],
+      ],
+      ["Prema Racing", "#b0122b", ["MON", "Sebastián Montoya", 83], ["BOY", "Mari Boya", 80]],
     ],
   ),
   pro: level(
@@ -234,60 +255,70 @@ export const LEVELS: Record<Level, ReturnType<typeof level>> = {
     ["CAM", "Rafael Câmara", 84, 76],
     [
       [
+        "Mercedes",
         "#27f4d2",
         ["ANT", "Kimi Antonelli", 93, 77],
         ["RUS", "George Russell", 92, 93],
         ["fade", "#c3c8cc", "#121416", "#27f4d2"],
       ],
       [
+        "Ferrari",
         "#a6051a",
         ["HAM", "Lewis Hamilton", 95, 91, true],
         ["LEC", "Charles Leclerc", 93, 91],
         ["pods", "#c8102e", "#1a1a1a", "#f2f2ef"],
       ],
       [
+        "McLaren",
         "#ff8000",
         ["NOR", "Lando Norris", 94, 85],
         ["PIA", "Oscar Piastri", 91, 84],
         ["split", "#ff8000", "#23272b", "#f2f2ef"],
       ],
       [
+        "Red Bull",
         "#1e41ff",
         ["VER", "Max Verstappen", 97, 82, true],
         ["HAD", "Isack Hadjar", 87, 82],
         ["nose", "#1e2a5e", "#d71e28", "#ffcc00"],
       ],
       [
+        "Racing Bulls",
         "#6692ff",
         ["LAW", "Liam Lawson", 81, 74],
         ["LIN", "Arvid Lindblad", 78, 66],
         ["fade", "#f2f2ef", "#1634cc", "#d71e28"],
       ],
       [
+        "Alpine",
         "#ff87bc",
         ["GAS", "Pierre Gasly", 86, 78],
         ["COL", "Franco Colapinto", 75, 74],
         ["split", "#ff87bc", "#0a2a8a", "#f2f2ef"],
       ],
       [
+        "Haas",
         "#b6babd",
         ["BEA", "Oliver Bearman", 84, 70],
         ["OCO", "Esteban Ocon", 84, 84],
         ["pods", "#e8e9ea", "#1a1a1a", "#d4002a"],
       ],
       [
+        "Audi",
         "#4a4f55",
         ["HUL", "Nico Hülkenberg", 85, 85],
         ["BOR", "Gabriel Bortoleto", 82, 77],
         ["fade", "#a7abb0", "#141414", "#f50537"],
       ],
       [
+        "Williams",
         "#64c4ff",
         ["SAI", "Carlos Sainz", 85, 80],
         ["ALB", "Alexander Albon", 83, 76],
         ["nose", "#041e42", "#64c4ff", "#f2f2ef"],
       ],
       [
+        "Aston Martin",
         "#229971",
         ["ALO", "Fernando Alonso", 90, 85],
         ["STR", "Lance Stroll", 76, 73],
@@ -304,16 +335,16 @@ export const LEVELS: Record<Level, ReturnType<typeof level>> = {
     LEGEND_EDGE,
     ["HUN", "James Hunt", 88],
     [
-      ["#a6051a", ["SCH", "Michael Schumacher", 100], ["LAU", "Niki Lauda", 88]],
-      ["#27f4d2", ["HAM", "Lewis Hamilton", 88], ["FAN", "Juan Manuel Fangio", 100]],
-      ["#ff8000", ["SEN", "Ayrton Senna", 100], ["PRO", "Alain Prost", 100]],
-      ["#1e41ff", ["VER", "Max Verstappen", 100], ["VET", "Sebastian Vettel", 80]],
-      ["#64c4ff", ["PIQ", "Nelson Piquet", 82], ["MAN", "Nigel Mansell", 79]],
-      ["#0d5c3a", ["CLA", "Jim Clark", 96], ["FIT", "Emerson Fittipaldi", 74]],
-      ["#f2f2ef", ["BRA", "Jack Brabham", 62], ["HIL", "Graham Hill", 58]],
-      ["#1d3b8a", ["STE", "Jackie Stewart", 77], ["ASC", "Alberto Ascari", 100]],
-      ["#f2c230", ["ALO", "Fernando Alonso", 100], ["HAK", "Mika Häkkinen", 69]],
-      ["#c9b037", ["ROS", "Nico Rosberg", 79], ["RAI", "Kimi Räikkönen", 71]],
+      ["Ferrari", "#a6051a", ["SCH", "Michael Schumacher", 100], ["LAU", "Niki Lauda", 88]],
+      ["Mercedes", "#27f4d2", ["HAM", "Lewis Hamilton", 88], ["FAN", "Juan Manuel Fangio", 100]],
+      ["McLaren", "#ff8000", ["SEN", "Ayrton Senna", 100], ["PRO", "Alain Prost", 100]],
+      ["Red Bull", "#1e41ff", ["VER", "Max Verstappen", 100], ["VET", "Sebastian Vettel", 80]],
+      ["Williams", "#64c4ff", ["PIQ", "Nelson Piquet", 82], ["MAN", "Nigel Mansell", 79]],
+      ["Team Lotus", "#0d5c3a", ["CLA", "Jim Clark", 96], ["FIT", "Emerson Fittipaldi", 74]],
+      ["Brabham", "#f2f2ef", ["BRA", "Jack Brabham", 62], ["HIL", "Graham Hill", 58]],
+      ["Tyrrell", "#1d3b8a", ["STE", "Jackie Stewart", 77], ["ASC", "Alberto Ascari", 100]],
+      ["Renault", "#f2c230", ["ALO", "Fernando Alonso", 100], ["HAK", "Mika Häkkinen", 69]],
+      ["Lotus", "#c9b037", ["ROS", "Nico Rosberg", 79], ["RAI", "Kimi Räikkönen", 71]],
     ],
   ),
 };
@@ -550,10 +581,12 @@ export type Racer = {
   best: number;
   life: number;
   // The compound on the car, the one going on at the stop (null until the team picks), and
-  // every set run so far, for the results, and the lap the set on the car went on.
+  // every set run so far and the lap each went on, for the results, and the lap the set on the
+  // car went on.
   tyre: Tyre;
   fit: Tyre | null;
   stints: Tyre[];
+  sets: number[];
   set: number;
   // Seconds left at the box, whether this visit's stop is done, and whether in the lane now.
   stop: number;
@@ -728,6 +761,7 @@ export function newRace(
       tyre: on,
       fit: null,
       stints: [on],
+      sets: [0],
       set: 0,
       stop: 0,
       served: false,
@@ -1066,10 +1100,11 @@ export function newQuali(
     return race;
   });
 }
-// The classification: each car's lap (0 for none), quickest first and no time last.
+// The classification: each car's lap (0 for none) and its sectors (0 for none, from its own
+// race's), quickest first and no time last.
 export const qualiOrder = (q: Race[]) =>
   q
-    .map(({ racers: [r] }) => ({ id: r!.id, best: r!.best }))
+    .map(({ racers: [r], sectors }) => ({ id: r!.id, best: r!.best, sectors }))
     .sort((a, b) => (a.best || Infinity) - (b.best || Infinity) || a.id - b.id);
 // Your gap in seconds to the quickest car through the last checkpoint anyone else has reached,
 // each timed from its own line crossing (checkpoint 0); negative when you're quicker. Null until
@@ -1101,6 +1136,8 @@ function pitStop(race: Race, r: Racer, dt: number) {
       [r.life, r.served, r.boxCall, r.box, r.warm, r.puncture] = [1, true, false, false, 0, false];
       [r.tyre, r.fit] = [r.fit ?? nextSet(race, r), null];
       r.stints.push(r.tyre);
+      // A box before the line: the in-lap was on the old set, as F1 counts a stint.
+      r.sets.push(r.laps + (race.track.signed(r.p) < 0 ? 1 : 0));
       [r.set, r.wear, r.wing] = [r.laps, [1, 1, 1, 1], r.nextWing];
     }
     return;
@@ -2146,9 +2183,13 @@ export function results(race: Race) {
       const run = r.finish ?? race.t + (total - r.dist) / (Math.max(r.dist, 1) / race.t);
       const time = run + r.penalty;
       const down = race.laps - r.laps;
-      const { id, best, penalty, paid, stints, out } = r;
+      const { id, best, penalty, paid, stints, sets, out } = r;
       const dsq = r.finish !== null && !sprint(race.laps) && new Set(stints).size < 2;
-      return { id, time, down, best, penalty, paid, stints, stops: stints.length - 1, out, dsq };
+      // The slot it started from (1 for pole), and the laps on each set.
+      const grid = race.grid.indexOf(id) + 1;
+      const stintLaps = sets.map((at, k) => (sets[k + 1] ?? r.laps) - at);
+      const stops = stints.length - 1;
+      return { id, time, down, best, penalty, paid, stints, stintLaps, stops, out, dsq, grid };
     })
     .sort((a, b) => +a.dsq - +b.dsq || +!!a.out - +!!b.out || a.down - b.down || a.time - b.time);
 }
