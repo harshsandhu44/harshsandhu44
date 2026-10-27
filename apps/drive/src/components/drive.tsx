@@ -78,7 +78,9 @@ import {
   type Tyre,
 } from "@/race";
 import { KERB_R, TOP, fmt, gear } from "@/track";
-import { CALENDAR, TRACKS, getTrack } from "@/tracks";
+import { CALENDAR, FIRST_CALENDAR, TRACKS, getTrack } from "@/tracks";
+import { Season, TitleScenarios } from "@/components/season";
+import { champion, decidable } from "@/season";
 
 // Your record per track. v2: Monza's real-length track; the v1 keys hold bests from the old short
 // one. ponytail: the old `-sectors-v2` keys are left in storage, unread.
@@ -111,6 +113,8 @@ const QUALI = "drive-quali";
 // How many frames a fast-forward runs per frame in the garage, and to skip to the end once you're out.
 const FAST = 20;
 const SKIP = 300;
+// The least time between the radio's word on who has the title as the race stands.
+const TITLE_GAP = 15_000;
 const PHASE_NAMES: Record<Phase, string> = {
   garage: "Garage",
   out: "Out lap",
@@ -219,11 +223,13 @@ const CONTROLS: [string[], string][] = [
   [["Space"], "Overtake"],
   [["B"], "Box (Safety Car)"],
   [["E"], "Team drives (qualifying)"],
+  [["F"], "Skip (team driving)"],
   [["P"], "Pause"],
   [["R"], "Restart"],
   [["T"], "Timing"],
   [["M"], "Map"],
 ];
+const trackName = (id: string) => TRACKS.find((t) => t.id === id)!.name;
 const RULES: [string, string][] = [
   [
     "Start",
@@ -243,7 +249,7 @@ const RULES: [string, string][] = [
   ],
   [
     "Career",
-    "A season with BMW in one series, ten rounds from Monaco to Yas Marina, at the distance and qualifying you pick when it starts. Points as in F1 (the sprint's in a sprint season) for drivers and teams, ties split on countback. Qualify or not, race, or simulate either: the team drives your car at your level's pace. Restart any session; quit a race and it's a retirement. The season's saved as you go.",
+    `A season with BMW in one series, ${CALENDAR.length} rounds from ${trackName(CALENDAR[0]!)} to ${trackName(CALENDAR.at(-1)!)}, at the distance and qualifying you pick when it starts. Points as in F1 (the sprint's in a sprint season) for drivers and teams, ties split on countback. Qualify or not, race, or simulate either: the team drives your car at your level's pace. Restart any session; quit a race and it's a retirement. The season's saved as you go. Its tabs show every round's results, you against your teammate or any two drivers, your season, points round by round and who can still win the title; where a round can decide it, what each result does, and in the race, the title as it stands.`,
   ],
   [
     "Track limits",
@@ -338,13 +344,22 @@ type Timing = {
   pick: number;
 };
 // Career: a season in one series, at one distance and qualifying format, round by round through
-// the CALENDAR; and whether the grid screen's on it or on a single race.
+// its calendar (the CALENDAR when it started; FIRST_CALENDAR if saved before seasons kept one);
+// and whether the grid screen's on it or on a single race.
 const CAREER = "drive-career";
 const MODE = "drive-mode";
-type Career = { series: Level; dist: number; full: boolean; rounds: Round[] };
+type Career = {
+  series: Level;
+  dist: number;
+  full: boolean;
+  rounds: Round[];
+  calendar?: string[];
+};
 const sprints = (c: Career) => DISTANCES[c.dist]!.share === 0;
-const trackName = (id: string) => TRACKS.find((t) => t.id === id)!.name;
-const live = (c: Career | null) => !!c && c.rounds.length < CALENDAR.length;
+const calOf = (c: Career) => c.calendar ?? FIRST_CALENDAR;
+const live = (c: Career | null) => !!c && c.rounds.length < calOf(c).length;
+// The rounds left in a season, this one included.
+const leftIn = (c: Career) => calOf(c).length - c.rounds.length;
 // The season under way, if the grid screen was left on the career.
 const careerNow = (): Career | null => {
   const c: Career | null = read(CAREER, null);
@@ -515,7 +530,7 @@ export default function Drive() {
   const [grid, setGrid] = useState(true);
   const [trackId, setTrackId] = useState(() => {
     const c = careerNow();
-    if (c) return CALENDAR[c.rounds.length]!;
+    if (c) return calOf(c)[c.rounds.length]!;
     const id: string = read(TRACK, TRACKS[0]!.id);
     return TRACKS.some((t) => t.id === id) ? id : TRACKS[0]!.id;
   });
@@ -563,7 +578,7 @@ export default function Drive() {
   const careerRef = useRef(career);
   const [inCareer, setInCareer] = useState(() => read(MODE, false));
   const inCareerRef = useRef(inCareer);
-  const [setup, setSetup] = useState<Omit<Career, "rounds">>(() => ({
+  const [setup, setSetup] = useState<Omit<Career, "rounds" | "calendar">>(() => ({
     series: "intermediate",
     dist: 0,
     full: false,
@@ -646,6 +661,7 @@ export default function Drive() {
   const unlapEl = useRef<HTMLSpanElement>(null);
   const teamEl = useRef<HTMLSpanElement>(null);
   const ffEl = useRef<HTMLButtonElement>(null);
+  const titleEl = useRef<HTMLSpanElement>(null);
   const boxPad = useRef<HTMLButtonElement>(null);
   const handEl = useRef<HTMLDivElement>(null);
   const otPad = useRef<HTMLButtonElement>(null);
@@ -672,7 +688,8 @@ export default function Drive() {
   // Onto a career round: its track, and the season's series, distance and qualifying, none of
   // them saved as the single race's picks. `now` is the track loaded.
   const enterRound = (c: Career, now: string) => {
-    const id = CALENDAR[Math.min(c.rounds.length, CALENDAR.length - 1)]!;
+    const cal = calOf(c);
+    const id = cal[Math.min(c.rounds.length, cal.length - 1)]!;
     [levelRef.current, distRef.current, fullRef.current] = [c.series, c.dist, c.full];
     setLevel(c.series);
     setDist(c.dist);
@@ -775,6 +792,10 @@ export default function Drive() {
     let place = 0;
     let stopped = false;
     let counting = 0;
+    // A career round that can settle the title: who has it as the race stands (null for nobody
+    // yet, undefined before the first look) and when the radio last said so.
+    let title: number | null | undefined;
+    let titleAt = 0;
     if (!MODES[mode]) mode = 0;
     let revs = -1;
     let skipping = false;
@@ -1010,7 +1031,7 @@ export default function Drive() {
       lightsEl.current!.hidden = false;
       rcEl.current!.hidden = true;
       msgAt = -Infinity;
-      [skipping, ffwd] = [false, false];
+      [skipping, ffwd, title] = [false, false, undefined];
       waitEl.current!.hidden = true;
       paused = false;
       pauseEl.current!.hidden = true;
@@ -1231,6 +1252,39 @@ export default function Drive() {
         me.nextWing = clamp(me.nextWing);
     };
 
+    // The title as the race stands, in a career round that can settle it: on the HUD, and on the
+    // radio when it changes, TITLE_GAP ms apart at most.
+    const showTitle = () => {
+      const el = titleEl.current!;
+      const c = careerRef.current;
+      const on =
+        !quali &&
+        !race.session &&
+        inCareerRef.current &&
+        live(c) &&
+        decidable(c!.rounds, sprints(c!), leftIn(c!));
+      el.hidden = !on;
+      if (!on) return;
+      const left = leftIn(c!);
+      const run = order(race).map((r) => r.id);
+      const none = race.racers.filter((r) => r.out).map((r) => r.id);
+      const now = champion(c!.rounds, { order: run, none }, sprints(c!), left);
+      const code = now ? LEVELS[race.level].drivers[now]!.code : "You";
+      const text = `Title · ${now === null ? "open" : code}`;
+      if (el.lastChild!.textContent !== text) el.lastChild!.textContent = text;
+      if (now === title) return;
+      if (title !== undefined && race.t - titleAt < TITLE_GAP) return;
+      if (title !== undefined && !race.done) {
+        const says =
+          now === null
+            ? "As it stands, the title fight goes on."
+            : now
+              ? `As it stands, ${code} ${left > 1 ? "clinches the title" : "is champion"}.`
+              : `As it stands, you ${left > 1 ? "clinch the title" : "are champion"}!`;
+        race.msgs.push({ kind: "radio", id: 0, text: says });
+      }
+      [title, titleAt] = [now, race.t];
+    };
     // Under a Safety Car or VSC, asking the team driving you to box, or not; in full qualifying,
     // the team driving your out-lap or taking you in.
     boxIt.current = () => {
@@ -1389,7 +1443,8 @@ export default function Drive() {
           if (inCareerRef.current && live(c)) {
             const order = table.map((r) => r.id);
             const none = table.filter((r) => r.out || r.dsq).map((r) => r.id);
-            const next = { ...c!, rounds: [...c!.rounds, { order, none }] };
+            const round = { order, none, track: trackId, fastest: race.fastest?.id ?? null, table };
+            const next = { ...c!, rounds: [...c!.rounds, round] };
             saveCareer(next);
             const { drivers } = standings(next.rounds, sprints(next));
             const k = drivers.findIndex((r) => r.k === 0);
@@ -1417,6 +1472,7 @@ export default function Drive() {
           else if (race.session) showSession();
           else drawBoard();
           showFastest();
+          showTitle();
         }
         // The classification waits for the whole field to take the flag, or retire.
         const waiting = !quali && !race.session && (me.finish !== null || !!me.out) && !race.done;
@@ -1723,51 +1779,15 @@ export default function Drive() {
   const shown = status === "ready" ? "" : "opacity-0";
   // The championships, in a career.
   const champs = career && standings(career.rounds, sprints(career));
-  const standingsList = (
-    name: string,
-    rows: { k: number; points: number }[],
-    nameOf: (k: number) => string,
-    color: (k: number) => string,
-    mine: (k: number) => boolean,
-  ) => (
-    <div>
-      <p className={label}>{name}</p>
-      <ol className="mt-1 max-h-40 overflow-y-auto text-sm tabular-nums">
-        {rows.map((r, i) => (
-          <li
-            key={r.k}
-            className={`flex items-center gap-2 px-1 py-0.5 ${mine(r.k) ? "bg-lamp" : ""}`}
-          >
-            <span className="w-5 text-soft">{i + 1}</span>
-            <span className="h-3 w-1 shrink-0 rounded-full" style={{ background: color(r.k) }} />
-            <span className="truncate">{nameOf(r.k)}</span>
-            <span className="ml-auto font-semibold">{r.points}</span>
-          </li>
-        ))}
-      </ol>
-    </div>
+  const seasonOf = (c: Career) => (
+    <Season
+      series={c.series}
+      rounds={c.rounds}
+      calendar={calOf(c)}
+      sprints={sprints(c)}
+      trackName={trackName}
+    />
   );
-  const champTables = (c: Career) => {
-    const lv = LEVELS[c.series];
-    return (
-      <div className="mt-3 grid grid-cols-2 gap-3">
-        {standingsList(
-          "Drivers",
-          champs!.drivers,
-          (id) => lv.drivers[id]!.code,
-          (id) => lv.colors[id >> 1]!,
-          (id) => id === 0,
-        )}
-        {standingsList(
-          "Teams",
-          champs!.teams,
-          (k) => lv.teams[k]!,
-          (k) => lv.colors[k]!,
-          (k) => k === 0,
-        )}
-      </div>
-    );
-  };
   const careerStart = () =>
     career ? (
       // The season's done: the champions, where you finished, and another season.
@@ -1782,7 +1802,7 @@ export default function Drive() {
           <span className="text-paper">{LEVELS[career.series].teams[champs!.teams[0]!.k]}</span>.
           You finished P{champs!.drivers.findIndex((r) => r.k === 0) + 1}.
         </p>
-        {champTables(career)}
+        {seasonOf(career)}
         <button
           type="button"
           autoFocus
@@ -1793,12 +1813,12 @@ export default function Drive() {
         </button>
       </>
     ) : (
-      // A new season: its series, distance and qualifying, set for all ten rounds.
+      // A new season: its series, distance and qualifying, set for every round.
       <>
         <p className="disp text-xl">New season</p>
         <p className={`${label} mt-1`}>
-          Ten rounds with BMW, Monaco to Yas Marina. The series, distance and qualifying are set for
-          the season.
+          {CALENDAR.length} rounds with BMW, {trackName(CALENDAR[0]!)} to{" "}
+          {trackName(CALENDAR.at(-1)!)}. The series, distance and qualifying are set for the season.
         </p>
         <Choice
           name="Series"
@@ -1825,7 +1845,7 @@ export default function Drive() {
           type="button"
           autoFocus
           onClick={() => {
-            const c = { ...setup, rounds: [] };
+            const c = { ...setup, calendar: CALENDAR, rounds: [] };
             saveCareer(c);
             enterRound(c, trackId);
           }}
@@ -2241,6 +2261,9 @@ export default function Drive() {
               <Bolt className="size-3.5" />
               Overtake
             </span>
+            <span ref={titleEl} hidden className={`${chip} bg-accent text-ink`}>
+              <span>Title</span>
+            </span>
             <span ref={scEl} hidden className={`${chip} bg-slow text-ink`}>
               <Car className="size-3.5" />
               <span>SC</span>
@@ -2584,7 +2607,7 @@ export default function Drive() {
                   {inCareer && career && (
                     <>
                       <p className="disp text-xl">
-                        Round {career.rounds.length + 1}/{CALENDAR.length} · {def.name}
+                        Round {career.rounds.length + 1}/{calOf(career).length} · {def.name}
                       </p>
                       <p className={`${label} mt-1`}>
                         {LEVELS[career.series].series} season, {DISTANCES[career.dist]!.name}
@@ -2592,11 +2615,11 @@ export default function Drive() {
                         {qualified ? ", qualified." : ": qualify for a better slot."}
                       </p>
                       <ol className="mt-3 grid grid-cols-5 gap-1 md:grid-cols-10">
-                        {CALENDAR.map((id, k) => {
+                        {calOf(career).map((id, k) => {
                           const r = career.rounds[k];
                           return (
                             <li
-                              key={id}
+                              key={k}
                               className={`rounded-sm px-1 py-1 text-center text-[11px] ring-1 ${k === career.rounds.length ? "bg-lamp ring-paper" : "ring-paper/25"}`}
                             >
                               <span className="block truncate text-soft">
@@ -2613,7 +2636,15 @@ export default function Drive() {
                           );
                         })}
                       </ol>
-                      {champTables(career)}
+                      {decidable(career.rounds, sprints(career), leftIn(career)) && (
+                        <TitleScenarios
+                          series={career.series}
+                          rounds={career.rounds}
+                          sprints={sprints(career)}
+                          left={leftIn(career)}
+                        />
+                      )}
+                      {seasonOf(career)}
                     </>
                   )}
                   {!inCareer && (

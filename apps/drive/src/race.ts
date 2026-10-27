@@ -2651,8 +2651,15 @@ export function results(race: Race) {
 export const POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1];
 export const SPRINT_POINTS = [8, 7, 6, 5, 4, 3, 2, 1];
 // A round of a season: the classification as driver ids, and those with no points (out of the
-// race or disqualified).
-export type Round = { order: number[]; none: number[] };
+// race or disqualified); since seasons had more to show, its track, the fastest lap's driver and
+// the classification itself (older rounds have none of those).
+export type Round = {
+  order: number[];
+  none: number[];
+  track?: string;
+  fastest?: number | null;
+  table?: ReturnType<typeof results>;
+};
 // The championships after `rounds`: drivers, and teams (by team index, its drivers' points
 // together), most points first, ties broken on countback (most wins, then seconds, and so on).
 export function standings(rounds: Round[], sprints: boolean) {
