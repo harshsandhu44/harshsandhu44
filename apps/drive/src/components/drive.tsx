@@ -368,6 +368,10 @@ const SEATS = "drive-seats";
 type Pick = { deal: number[] | null; mate: number };
 const AS_LISTED: Pick = { deal: null, mate: 1 };
 const seatsOf = (p: Pick) => withMate(p.deal ?? REAL, p.mate);
+// Who drives each car in the next session: the season's lineup in a career, otherwise the pick
+// for the level.
+const seatsFor = (on: boolean, c: Career | null, lv: Level, ps: Partial<Record<Level, Pick>>) =>
+  on && c ? (c.seats ?? REAL) : seatsOf(ps[lv] ?? AS_LISTED);
 const sprints = (c: Career) => DISTANCES[c.dist]!.share === 0;
 const calOf = (c: Career) => c.calendar ?? FIRST_CALENDAR;
 const live = (c: Career | null) => !!c && c.rounds.length < calOf(c).length;
@@ -657,10 +661,6 @@ export default function Drive() {
     write(SEATS, next);
   };
   const [setupPick, setSetupPick] = useState(AS_LISTED);
-  // Who drives each car in the next session: the season's lineup in a career, otherwise the pick
-  // for the level.
-  const seatsFor = (on: boolean, c: Career | null, lv: Level, ps: typeof picks) =>
-    on && c ? (c.seats ?? REAL) : seatsOf(ps[lv] ?? AS_LISTED);
   const seats = seatsFor(inCareer, career, level, picks);
   const pickNow = picks[level] ?? AS_LISTED;
 
