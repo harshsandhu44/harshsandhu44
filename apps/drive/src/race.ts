@@ -52,13 +52,16 @@ export const lapsOf = ({ share }: (typeof DISTANCES)[number], track: Track) =>
 // Räikkönen, at the team each is best known for. Their pace is their best season in
 // f1-analysis.com's model as a share of the best anyone had managed by then, as its scores grow
 // with the era. They never make a mistake, and their winner beats a clean race from you by a
-// second or two. In F1, Hamilton and Verstappen are stars: STAR on top of their pace.
+// second or two. In F1, world champions drive a little quicker, more the more titles (see titled).
+// ponytail: Antonelli's counted a champion for the 2026 title, by the user's call.
 export type Level = "amateur" | "intermediate" | "pro" | "legends";
 // ponytail: tuned in race.check.ts so pro's pole at Monza is a clean qualifying lap from the
 // player (1:20.567 on the 4 MJ battery, about 1:20.1 on today's), Verstappen's in the best car.
 const EDGE = 1.3;
 const LEGEND_EDGE = 1.31;
-const STAR = 1.005;
+// A champion's pace: a quarter of a percent for the first title, a twelfth more for each to five,
+// so four (Verstappen's) is half a percent.
+const titled = (n: number) => (n ? 1 + 0.0025 * (1 + (Math.min(n, 5) - 1) / 3) : 1);
 // Pro's cars, in tiers: your team and the top four, the midfield, and the back, in roster order.
 // Each weekend every tier deals its offsets (seconds a lap off the best car at Monza) to its teams
 // at random, so who's quickest within a tier changes and the tiers don't. An offset takes PER_S
@@ -133,7 +136,7 @@ export const carGrip = (race: Race, r: Racer) => {
   return r.puncture ? Math.max(MOST_WORN, g * 0.6) : g;
 };
 // Awareness defaults to pace, for the levels that rate only by championship place.
-type Seat = [code: string, name: string, pace: number, aware?: number, star?: boolean];
+type Seat = [code: string, name: string, pace: number, aware?: number, titles?: number];
 // A car's paint (scene.ts draws the layouts): a base colour, a second and a stripe, and for BMW's
 // M stripes a third. F1's are each team's by eye; the rest are made from the team's colour.
 export type Livery = [
@@ -181,7 +184,13 @@ const level = (
     ),
     drivers: all
       .flatMap(([, , a, b]) => [a, b])
-      .map(([code, name, pace, aware = pace, star = false]) => ({ code, name, pace, aware, star })),
+      .map(([code, name, pace, aware = pace, titles = 0]) => ({
+        code,
+        name,
+        pace,
+        aware,
+        titles,
+      })),
   };
 };
 export const LEVELS: Record<Level, ReturnType<typeof level>> = {
@@ -258,28 +267,28 @@ export const LEVELS: Record<Level, ReturnType<typeof level>> = {
       [
         "Mercedes",
         "#27f4d2",
-        ["ANT", "Kimi Antonelli", 93, 77],
+        ["ANT", "Kimi Antonelli", 93, 77, 1],
         ["RUS", "George Russell", 92, 93],
         ["fade", "#c3c8cc", "#121416", "#27f4d2"],
       ],
       [
         "Ferrari",
         "#a6051a",
-        ["HAM", "Lewis Hamilton", 95, 91, true],
+        ["HAM", "Lewis Hamilton", 95, 91, 7],
         ["LEC", "Charles Leclerc", 93, 91],
         ["pods", "#c8102e", "#1a1a1a", "#f2f2ef"],
       ],
       [
         "McLaren",
         "#ff8000",
-        ["NOR", "Lando Norris", 94, 85],
+        ["NOR", "Lando Norris", 94, 85, 1],
         ["PIA", "Oscar Piastri", 91, 84],
         ["split", "#ff8000", "#23272b", "#f2f2ef"],
       ],
       [
         "Red Bull",
         "#1e41ff",
-        ["VER", "Max Verstappen", 97, 82, true],
+        ["VER", "Max Verstappen", 97, 82, 4],
         ["HAD", "Isack Hadjar", 87, 82],
         ["nose", "#1e2a5e", "#d71e28", "#ffcc00"],
       ],
@@ -321,7 +330,7 @@ export const LEVELS: Record<Level, ReturnType<typeof level>> = {
       [
         "Aston Martin",
         "#229971",
-        ["ALO", "Fernando Alonso", 90, 85],
+        ["ALO", "Fernando Alonso", 90, 85, 2],
         ["STR", "Lance Stroll", 76, 73],
         ["pods", "#0b6b56", "#04352b", "#cedc00"],
       ],
@@ -783,7 +792,7 @@ export function newRace(
       pace:
         id === 0
           ? pace[0]
-          : (pace[1] + (pace[0] - pace[1]) * spread("pace", id)) * (drivers[id]!.star ? STAR : 1),
+          : (pace[1] + (pace[0] - pace[1]) * spread("pace", id)) * titled(drivers[id]!.titles),
       stops: strat.at,
       plan: strat.tyres,
       pitting: false,
