@@ -5,6 +5,10 @@ import { bump, fmt, step, TOP, type Car, type Track } from "./track.ts";
 import { TRACKS, getTrack } from "./tracks.ts";
 import {
   CARS,
+  REAL,
+  deal,
+  driver,
+  withMate,
   TIERS,
   carsOf,
   drawCars,
@@ -148,6 +152,36 @@ const BEST_CARS = carsOf(Array<number>(CARS / 2).fill(0));
     legends.every((r) => r.slip === 0),
     "legends make none",
   );
+}
+// Lineups: a deal keeps you in car 0 and seats everyone else once; a teammate pick swaps that
+// driver into car 1. The driver brings his ratings, the car stays with its team.
+{
+  const seats = deal(seeded(4));
+  assert.equal(seats[0], 0, "you stay in car 0");
+  assert.deepEqual(
+    seats.slice().sort((a, b) => a - b),
+    REAL,
+    "everyone seated once",
+  );
+  const mated = withMate(seats, 8);
+  assert.equal(mated[1], 8, "Verstappen beside you");
+  assert.equal(mated[seats.indexOf(8)], seats[1], "and your old teammate in his seat");
+  const swap = withMate(REAL, 8);
+  const rs = newRace(
+    getTrack("monza"),
+    GRID,
+    seeded(1),
+    "medium",
+    "pro",
+    5,
+    false,
+    undefined,
+    swap,
+  );
+  const real = newRace(getTrack("monza"), GRID, seeded(1), "medium", "pro").racers;
+  assert.equal(rs.racers[1]!.pace, real[8]!.pace, "he drives car 1 at his own pace");
+  assert.equal(driver(rs, 1).code, "VER", "under his own name");
+  assert.equal(driver(rs, 8).code, LEVELS.pro.drivers[1]!.code, "Red Bull gets your teammate");
 }
 const still = { gas: false, brake: false, steer: 0 };
 const DT = 1 / 30;

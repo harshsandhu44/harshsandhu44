@@ -70,6 +70,10 @@ import {
   wingGrip,
   wingTop,
   wrongWay,
+  deal,
+  REAL,
+  seated,
+  withMate,
   type Level,
   type Phase,
   type Race,
@@ -249,7 +253,7 @@ const RULES: [string, string][] = [
   ],
   [
     "Career",
-    `A season with BMW in one series, ${CALENDAR.length} rounds from ${trackName(CALENDAR[0]!)} to ${trackName(CALENDAR.at(-1)!)}, at the distance and qualifying you pick when it starts. Points as in F1 (the sprint's in a sprint season) for drivers and teams, ties split on countback. Qualify or not, race, or simulate either: the team drives your car at your level's pace. Restart any session; quit a race and it's a retirement. The season's saved as you go. Its tabs show every round's results, you against your teammate or any two drivers, your season, points round by round and who can still win the title; where a round can decide it, what each result does, and in the race, the title as it stands.`,
+    `A season with BMW in one series, ${CALENDAR.length} rounds from ${trackName(CALENDAR[0]!)} to ${trackName(CALENDAR.at(-1)!)}, at the distance, qualifying and lineup you pick when it starts: the real one or everyone else shuffled into a random seat, and any driver as your teammate, swapping seats with the one you had. Drivers bring their ratings; the cars stay with their teams. Points as in F1 (the sprint's in a sprint season) for drivers and teams, ties split on countback. Qualify or not, race, or simulate either: the team drives your car at your level's pace. Restart any session; quit a race and it's a retirement. The season's saved as you go. Its tabs show every round's results, you against your teammate or any two drivers, your season, points round by round and who can still win the title; where a round can decide it, what each result does, and in the race, the title as it stands.`,
   ],
   [
     "Track limits",
@@ -314,6 +318,7 @@ type Result = {
   level: Level;
   laps: number;
   radio: string;
+  seats: number[];
 };
 // A qualifying classification row: its lap (0 for none) and that lap's sectors.
 const qualiRow = (id: number, best: number, sectors: number[]): Result["table"][number] => ({
@@ -354,7 +359,15 @@ type Career = {
   full: boolean;
   rounds: Round[];
   calendar?: string[];
+  // Who drives each car all season (see REAL; the real lineup if saved before seasons kept one).
+  seats?: number[];
 };
+// A lineup pick: everyone else dealt a seat (null for the real lineup), and your teammate, both as
+// roster indices; for each level in a single race, and for a new season.
+const SEATS = "drive-seats";
+type Pick = { deal: number[] | null; mate: number };
+const AS_LISTED: Pick = { deal: null, mate: 1 };
+const seatsOf = (p: Pick) => withMate(p.deal ?? REAL, p.mate);
 const sprints = (c: Career) => DISTANCES[c.dist]!.share === 0;
 const calOf = (c: Career) => c.calendar ?? FIRST_CALENDAR;
 const live = (c: Career | null) => !!c && c.rounds.length < calOf(c).length;
@@ -510,6 +523,51 @@ function Choice<T extends string | boolean>(props: {
   );
 }
 
+// The lineup: the real one or everyone else dealt a seat (again for a new deal), and your
+// teammate from the whole roster, who swaps seats with whoever had the one beside you.
+function Lineup(props: { lv: Level; pick: Pick; set: (p: Pick) => void }) {
+  const { lv, pick, set } = props;
+  const { drivers, teams } = LEVELS[lv];
+  return (
+    <>
+      <Choice
+        name="Lineup"
+        value={pick.deal ? "shuffled" : "real"}
+        options={[
+          ["real", "Real"],
+          ["shuffled", "Shuffled"],
+        ]}
+        pick={(v) => set({ ...pick, deal: v === "real" ? null : deal() })}
+      />
+      <div className="mt-2 flex gap-2">
+        <label className="flex min-w-0 flex-1 items-center gap-2 text-sm text-soft">
+          Teammate
+          <select
+            value={pick.mate}
+            onChange={(e) => set({ ...pick, mate: +e.target.value })}
+            className="min-h-11 min-w-0 flex-1 rounded-md bg-ink px-2 text-paper ring-1 ring-paper/25"
+          >
+            {drivers.slice(1).map((d, k) => (
+              <option key={d.code} value={k + 1}>
+                {d.name} · {teams[(k + 1) >> 1]}
+              </option>
+            ))}
+          </select>
+        </label>
+        {pick.deal && (
+          <button
+            type="button"
+            onClick={() => set({ ...pick, deal: deal() })}
+            className="min-h-11 rounded-md px-3 text-sm ring-1 ring-paper/25 active:scale-[.98]"
+          >
+            Reshuffle
+          </button>
+        )}
+      </div>
+    </>
+  );
+}
+
 // The whole page. three.js (in scene.ts) loads on mount and draws the circuit; the race
 // (race.ts) runs in one rAF loop here, which writes the HUD straight to the DOM so React doesn't
 // re-render every frame.
@@ -590,6 +648,21 @@ export default function Drive() {
     setCareer(c);
     write(CAREER, c);
   };
+  const [picks, setPicks] = useState<Partial<Record<Level, Pick>>>(() => read(SEATS, {}));
+  const picksRef = useRef(picks);
+  const savePick = (lv: Level, p: Pick) => {
+    const next = { ...picksRef.current, [lv]: p };
+    picksRef.current = next;
+    setPicks(next);
+    write(SEATS, next);
+  };
+  const [setupPick, setSetupPick] = useState(AS_LISTED);
+  // Who drives each car in the next session: the season's lineup in a career, otherwise the pick
+  // for the level.
+  const seatsFor = (on: boolean, c: Career | null, lv: Level, ps: typeof picks) =>
+    on && c ? (c.seats ?? REAL) : seatsOf(ps[lv] ?? AS_LISTED);
+  const seats = seatsFor(inCareer, career, level, picks);
+  const pickNow = picks[level] ?? AS_LISTED;
 
   const distRef = useRef(dist);
   const regrid = useRef<() => void>(() => {});
@@ -1001,6 +1074,8 @@ export default function Drive() {
       el.classList.toggle("text-go", d !== null && d < 0);
     };
 
+    const seatsNow = () =>
+      seatsFor(inCareerRef.current, careerRef.current, levelRef.current, picksRef.current);
     const start = () => {
       race = newRace(
         track,
@@ -1011,6 +1086,7 @@ export default function Drive() {
         lapsOf(DISTANCES[distRef.current]!, track),
         true,
         lineupRef.current === GRID ? undefined : weekend,
+        seatsNow(),
       );
       quali = null;
       towerEl.current!.hidden = false;
@@ -1131,7 +1207,7 @@ export default function Drive() {
     };
     qualify.current = () => {
       if (fullRef.current) return session();
-      quali = newQuali(track, levelRef.current);
+      quali = newQuali(track, levelRef.current, Math.random, undefined, seatsNow());
       race = quali[0]!;
       weekend = race.cars;
       qualiWing.current = wingRef.current;
@@ -1144,7 +1220,7 @@ export default function Drive() {
     };
     // Full qualifying: no lights, you start in the garage.
     const session = () => {
-      race = newSession(track, levelRef.current, Math.random, undefined, simming);
+      race = newSession(track, levelRef.current, Math.random, undefined, simming, seatsNow());
       weekend = race.cars;
       qualiWing.current = wingRef.current;
       [race.racers[0]!.wing, race.racers[0]!.nextWing] = [wingRef.current, wingRef.current];
@@ -1228,6 +1304,7 @@ export default function Drive() {
         laps: 1,
         fastest: null,
         radio: text,
+        seats: race.seats,
         seg: s.seg,
         cut: done ? undefined : CUTS[s.seg],
         next: !done,
@@ -1269,7 +1346,7 @@ export default function Drive() {
       const run = order(race).map((r) => r.id);
       const none = race.racers.filter((r) => r.out).map((r) => r.id);
       const now = champion(c!.rounds, { order: run, none }, sprints(c!), left);
-      const code = now ? LEVELS[race.level].drivers[now]!.code : "You";
+      const code = now ? driver(race, now).code : "You";
       const text = `Title · ${now === null ? "open" : code}`;
       if (el.lastChild!.textContent !== text) el.lastChild!.textContent = text;
       if (now === title) return;
@@ -1404,6 +1481,7 @@ export default function Drive() {
               laps: 1,
               fastest: null,
               radio: text,
+              seats: race.seats,
             });
           }
         }
@@ -1464,6 +1542,7 @@ export default function Drive() {
             fastest: fastest?.id ?? null,
             radio: text,
             points,
+            seats: race.seats,
           });
         }
         if (t - board > 500) {
@@ -1782,6 +1861,7 @@ export default function Drive() {
   const seasonOf = (c: Career) => (
     <Season
       series={c.series}
+      seats={c.seats ?? REAL}
       rounds={c.rounds}
       calendar={calOf(c)}
       sprints={sprints(c)}
@@ -1796,7 +1876,7 @@ export default function Drive() {
         <p className={`${label} mt-1`}>
           {LEVELS[career.series].series} champion{" "}
           <span className="text-paper">
-            {LEVELS[career.series].drivers[champs!.drivers[0]!.k]!.name}
+            {seated(career.series, career.seats ?? REAL, champs!.drivers[0]!.k).name}
           </span>
           , teams{" "}
           <span className="text-paper">{LEVELS[career.series].teams[champs!.teams[0]!.k]}</span>.
@@ -1818,13 +1898,17 @@ export default function Drive() {
         <p className="disp text-xl">New season</p>
         <p className={`${label} mt-1`}>
           {CALENDAR.length} rounds with BMW, {trackName(CALENDAR[0]!)} to{" "}
-          {trackName(CALENDAR.at(-1)!)}. The series, distance and qualifying are set for the season.
+          {trackName(CALENDAR.at(-1)!)}. The series, distance, qualifying and lineup are set for the
+          season.
         </p>
         <Choice
           name="Series"
           value={setup.series}
           options={STEPS.map(([l, name]) => [l, name])}
-          pick={(series) => setSetup({ ...setup, series })}
+          pick={(series) => {
+            setSetup({ ...setup, series });
+            setSetupPick(AS_LISTED);
+          }}
         />
         <Choice
           name="Distance"
@@ -1841,11 +1925,12 @@ export default function Drive() {
           ]}
           pick={(full) => setSetup({ ...setup, full })}
         />
+        <Lineup lv={setup.series} pick={setupPick} set={setSetupPick} />
         <button
           type="button"
           autoFocus
           onClick={() => {
-            const c = { ...setup, calendar: CALENDAR, rounds: [] };
+            const c = { ...setup, calendar: CALENDAR, seats: seatsOf(setupPick), rounds: [] };
             saveCareer(c);
             enterRound(c, trackId);
           }}
@@ -2513,7 +2598,7 @@ export default function Drive() {
                       className="h-3 w-1 shrink-0 rounded-full"
                       style={{ background: LEVELS[level].colors[r.id >> 1] }}
                     />
-                    <span className="font-semibold">{LEVELS[level].drivers[r.id]!.code}</span>
+                    <span className="font-semibold">{seated(level, seats, r.id).code}</span>
                     <span className="ml-auto text-xs text-soft">{PHASE_NAMES[r.phase]}</span>
                     <span className="w-20 text-right">
                       {!r.best
@@ -2639,6 +2724,7 @@ export default function Drive() {
                       {decidable(career.rounds, sprints(career), leftIn(career)) && (
                         <TitleScenarios
                           series={career.series}
+                          seats={career.seats ?? REAL}
                           rounds={career.rounds}
                           sprints={sprints(career)}
                           left={leftIn(career)}
@@ -2753,6 +2839,15 @@ export default function Drive() {
                           </button>
                         ))}
                       </div>
+                      <Lineup
+                        lv={level}
+                        pick={pickNow}
+                        set={(p) => {
+                          savePick(level, p);
+                          unqualify();
+                          regrid.current();
+                        }}
+                      />
                     </>
                   )}
                   <div role="radiogroup" aria-label="Tyres" className="mt-2 grid grid-cols-3 gap-2">
@@ -3033,7 +3128,7 @@ export default function Drive() {
                   </thead>
                   <tbody>
                     {result.table.map((r, k) => {
-                      const who = LEVELS[result.level].drivers[r.id]!;
+                      const who = seated(result.level, result.seats, r.id);
                       const ahead = result.table[k - 1];
                       // Places gained from the grid, and the gap: to the leader or the car ahead.
                       const gained = r.grid - (k + 1);

@@ -359,7 +359,26 @@ export const LEVELS: Record<Level, ReturnType<typeof level>> = {
   ),
 };
 export const CARS = 22;
-export const driver = (race: Race, id: number) => LEVELS[race.level].drivers[id]!;
+// A lineup: each car's driver, as an index into its level's roster (you always in car 0). REAL
+// is the roster as listed; a shuffle deals everyone else a random seat, and a teammate pick swaps
+// that driver into car 1. The cars stay with their teams.
+export const REAL = [...Array(CARS).keys()];
+export const deal = (rand = Math.random) => [
+  0,
+  ...REAL.slice(1)
+    .map((k) => [rand(), k] as const)
+    .sort((a, b) => a[0] - b[0])
+    .map(([, k]) => k),
+];
+export const withMate = (seats: number[], mate: number) => {
+  const out = seats.slice();
+  const at = out.indexOf(mate);
+  if (at > 0) [out[1], out[at]] = [out[at]!, out[1]!];
+  return out;
+};
+export const seated = (lv: Level, seats: number[], id: number) =>
+  LEVELS[lv].drivers[seats[id] ?? id]!;
+export const driver = (race: Race, id: number) => seated(race.level, race.seats, id);
 // A car's colour: its team's.
 export const colorOf = (race: Race, id: number) => LEVELS[race.level].colors[id >> 1]!;
 
@@ -739,6 +758,8 @@ export type Race = {
   sim?: boolean;
   // The team handing your car back: Infinity while it drives, then the countdown's ms (see HAND).
   hand: number;
+  // Who drives each car (see REAL).
+  seats: number[];
 };
 
 export function newRace(
@@ -750,11 +771,13 @@ export function newRace(
   laps = SPRINT,
   incidents = false,
   cars = drawCars(lv, rand),
+  seats = REAL,
 ): Race {
   // Computer paces spread across the level's range by pace rating, and mistakes around its rate
   // by awareness, from half for the most aware to one and a half for the least. Everyone lines up
   // in `grid`'s order.
-  const { pace, slip, drivers } = LEVELS[lv];
+  const { pace, slip } = LEVELS[lv];
+  const drivers = seats.map((k) => LEVELS[lv].drivers[k]!);
   const { HALF, LENGTH, atDist, dirAt, pointAt, ZONES } = track;
   const options = strategies(laps, track);
   const close = options.filter((o) => o.cost <= options[0]!.cost + CALL[lv]);
@@ -873,6 +896,7 @@ export function newRace(
     session: null,
     rubber: 0,
     hand: 0,
+    seats,
     eng: {
       next: 0,
       pos: 0,
@@ -1106,12 +1130,13 @@ export function newQuali(
   lv: Level,
   rand = Math.random,
   cars = drawCars(lv, rand),
+  seats = REAL,
 ): Race[] {
   const { LENGTH, atDist, dirAt, limitAt, pointAt } = track;
   const m = -RUN_UP;
   const p = (m + LENGTH) / LENGTH;
   return [...Array(CARS).keys()].map((id) => {
-    const race = newRace(track, GRID, rand, "soft", lv, 1, false, cars);
+    const race = newRace(track, GRID, rand, "soft", lv, 1, false, cars, seats);
     const r = race.racers[id]!;
     const [x, y] = pointAt(m, 0);
     const v = Math.min(TOP, limitAt(atDist(m), grip(1, "soft")));
@@ -1233,8 +1258,9 @@ export function newSession(
   rand = Math.random,
   cars = drawCars(lv, rand),
   auto = false,
+  seats = REAL,
 ) {
-  const race = newRace(track, GRID, rand, "soft", lv, 1, true, cars);
+  const race = newRace(track, GRID, rand, "soft", lv, 1, true, cars, seats);
   const ids = race.racers.map((r) => r.id);
   const lap = lapGuess(track);
   // Half a race's breakdowns, each somewhere in the session's dozen-odd laps, not on the first.
