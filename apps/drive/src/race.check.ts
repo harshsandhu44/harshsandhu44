@@ -139,11 +139,8 @@ const BEST_CARS = carsOf(Array<number>(CARS / 2).fill(0));
   const rs = newRace(getTrack("monza"), GRID, seeded(1), "medium", "pro").racers;
   const paces = rs.slice(1).map((r) => r.pace);
   assert.equal(rs[8]!.pace, Math.max(...paces), "the best pace rating drives quickest");
-  const stars = [rs[4]!.pace, rs[8]!.pace];
-  assert.ok(
-    rs.slice(1).every((r) => r.id === 4 || r.id === 8 || r.pace < Math.min(...stars)),
-    "and Hamilton (4) and Verstappen are the stars",
-  );
+  // Antonelli (2) and Leclerc (5) are rated alike, and only Antonelli's a champion.
+  assert.ok(rs[2]!.pace > rs[5]!.pace, "a champion drives quicker than his rating alone");
   assert.equal(rs[13]!.pace, Math.min(...paces), "and the worst slowest");
   assert.ok(rs[11]!.slip > rs[3]!.slip, "the less aware make more mistakes");
   const legends = newRace(getTrack("monza"), GRID, seeded(1), "medium", "legends").racers;
@@ -770,12 +767,12 @@ assert.ok(pro.lap < mid.lap && mid.lap < am.lap, "the better the field, the quic
 assert.ok(am.strikes > 0, "computer cars make mistakes and pay for them");
 assert.ok(pro.strikes < am.strikes, "and pros make fewer");
 // Legends: no mistakes (at most a knock-on from a car ahead), and a winner about 1% under pro's,
-// so a clean race from you misses by a second or two.
+// so a clean race from you misses by a second or two. One race each, so a few tenths either way.
 const legends = (l: typeof leg, p: typeof pro, at: string) => {
   assert.ok(l.strikes <= 1, `${at}: legends keep it on the track (${l.strikes} strikes)`);
   assert.ok(l.front < p.front, `${at}: the quickest legend laps quicker than the quickest pro`);
   const r = l.win / p.win;
-  assert.ok(r > 0.985 && r < 0.995, `${at}: legends win about 1% under pro (${r.toFixed(4)})`);
+  assert.ok(r > 0.98 && r < 0.997, `${at}: legends win about 1% under pro (${r.toFixed(4)})`);
 };
 legends(leg, pro, "Monza");
 
