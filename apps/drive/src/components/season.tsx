@@ -1,7 +1,7 @@
 // A career season on the grid screen, in tabs: the standings, every round's results, you against
 // your teammate, your season, the title's outlook, points round by round, and any two drivers.
 import { useState } from "react";
-import { CARS, LEVELS, standings, type Level, type Round } from "@/race";
+import { CARS, LEVELS, seated, standings, type Level, type Round } from "@/race";
 import { fmt } from "@/track";
 import { gridIn, h2h, outlook, placeIn, pointsOf, progression, scenarios, season } from "@/season";
 
@@ -10,6 +10,7 @@ const TABS = ["Standings", "Results", "Teammate", "Stats", "Projections", "Chart
 
 export type SeasonProps = {
   series: Level;
+  seats: number[];
   rounds: Round[];
   calendar: string[];
   sprints: boolean;
@@ -47,7 +48,7 @@ export function Season(props: SeasonProps) {
   );
 }
 
-const codeOf = (series: Level, id: number) => LEVELS[series].drivers[id]!.code;
+const codeOf = (series: Level, seats: number[], id: number) => seated(series, seats, id).code;
 const colorOf = (series: Level, id: number) => LEVELS[series].colors[id >> 1]!;
 const Swatch = ({ color }: { color: string }) => (
   <span className="h-3 w-1 shrink-0 rounded-full" style={{ background: color }} />
@@ -80,7 +81,7 @@ function List(props: {
   );
 }
 
-function Standings({ series, rounds, sprints }: SeasonProps) {
+function Standings({ series, seats, rounds, sprints }: SeasonProps) {
   const lv = LEVELS[series];
   const { drivers, teams } = standings(rounds, sprints);
   return (
@@ -88,7 +89,7 @@ function Standings({ series, rounds, sprints }: SeasonProps) {
       <List
         name="Drivers"
         rows={drivers}
-        nameOf={(id) => lv.drivers[id]!.code}
+        nameOf={(id) => codeOf(series, seats, id)}
         color={(id) => colorOf(series, id)}
         mine={(id) => id === 0}
       />
@@ -112,7 +113,7 @@ const cell = (r: Round, id: number) => {
 
 // Every driver's every round, in championship order: pole in bold, the fastest lap in purple. A
 // round's name opens its classification.
-function Results({ series, rounds, calendar, sprints, trackName }: SeasonProps) {
+function Results({ series, seats, rounds, calendar, sprints, trackName }: SeasonProps) {
   const [open, setOpen] = useState<number | null>(null);
   const { drivers } = standings(rounds, sprints);
   return (
@@ -144,7 +145,7 @@ function Results({ series, rounds, calendar, sprints, trackName }: SeasonProps) 
                 <td className={`sticky left-0 px-1 ${id === 0 ? "bg-lamp" : "bg-ink"}`}>
                   <span className="flex items-center gap-1.5">
                     <Swatch color={colorOf(series, id)} />
-                    {codeOf(series, id)}
+                    {codeOf(series, seats, id)}
                   </span>
                 </td>
                 {calendar.map((_, k) => {
@@ -174,7 +175,7 @@ function Results({ series, rounds, calendar, sprints, trackName }: SeasonProps) 
         <span className="text-fl">purple</span> fastest lap. A round&apos;s name opens it.
       </p>
       {open !== null && rounds[open] && (
-        <Classification series={series} round={rounds[open]!} sprints={sprints} />
+        <Classification series={series} seats={seats} round={rounds[open]!} sprints={sprints} />
       )}
     </>
   );
@@ -182,10 +183,12 @@ function Results({ series, rounds, calendar, sprints, trackName }: SeasonProps) 
 
 function Classification({
   series,
+  seats,
   round,
   sprints,
 }: {
   series: Level;
+  seats: number[];
   round: Round;
   sprints: boolean;
 }) {
@@ -201,7 +204,7 @@ function Classification({
           <li key={id} className={`flex items-center gap-2 px-1 py-0.5 ${id ? "" : "bg-lamp"}`}>
             <span className="w-5 text-soft">{k + 1}</span>
             <Swatch color={colorOf(series, id)} />
-            <span className="w-9 font-semibold">{codeOf(series, id)}</span>
+            <span className="w-9 font-semibold">{codeOf(series, seats, id)}</span>
             {row && <span className="w-8 text-soft">P{row.grid}</span>}
             <span className="ml-auto">
               {!row
@@ -234,7 +237,14 @@ function Classification({
 const avg = (n: number | null) => (n === null ? "–" : n.toFixed(1));
 
 // Two drivers side by side, the better of each line lit.
-function HeadToHead({ series, rounds, sprints, a, b }: SeasonProps & { a: number; b: number }) {
+function HeadToHead({
+  series,
+  seats,
+  rounds,
+  sprints,
+  a,
+  b,
+}: SeasonProps & { a: number; b: number }) {
   if (!rounds.length) return <p className={label}>No rounds yet.</p>;
   const v = h2h(rounds, a, b, sprints);
   // Each line: its name, both values, and whether more (or less) is better.
@@ -261,7 +271,7 @@ function HeadToHead({ series, rounds, sprints, a, b }: SeasonProps & { a: number
             <th key={id} className="w-16 text-right font-semibold text-paper">
               <span className="inline-flex items-center gap-1.5">
                 <Swatch color={colorOf(series, id)} />
-                {codeOf(series, id)}
+                {codeOf(series, seats, id)}
               </span>
             </th>
           ))}
@@ -330,7 +340,7 @@ function Stats({ rounds, calendar, sprints, trackName }: SeasonProps) {
   );
 }
 
-function Projections({ series, rounds, calendar, sprints }: SeasonProps) {
+function Projections({ series, seats, rounds, calendar, sprints }: SeasonProps) {
   const left = calendar.length - rounds.length;
   const rows = outlook(rounds, sprints, left);
   const projected = rows.slice().sort((a, b) => b.projected - a.projected);
@@ -357,7 +367,7 @@ function Projections({ series, rounds, calendar, sprints }: SeasonProps) {
               <td>
                 <span className="flex items-center gap-1.5">
                   <Swatch color={colorOf(series, r.k)} />
-                  {codeOf(series, r.k)}
+                  {codeOf(series, seats, r.k)}
                 </span>
               </td>
               <td className="text-right font-semibold">{r.points}</td>
@@ -383,16 +393,17 @@ function Projections({ series, rounds, calendar, sprints }: SeasonProps) {
 // otherwise the leader's.
 export function TitleScenarios(props: {
   series: Level;
+  seats: number[];
   rounds: Round[];
   sprints: boolean;
   left: number;
 }) {
-  const { series, rounds, sprints, left } = props;
+  const { series, seats, rounds, sprints, left } = props;
   const mine = scenarios(rounds, 0, sprints, left);
   const alive = mine.some((s) => s.can);
   const who = alive ? 0 : standings(rounds, sprints).drivers[0]!.k;
   const list = alive ? mine : scenarios(rounds, who, sprints, left);
-  const name = who ? codeOf(series, who) : "You";
+  const name = who ? codeOf(series, seats, who) : "You";
   const verb = left > 1 ? (who ? "clinches" : "clinch") : who ? "is champion" : "are champion";
   const can = list.filter((s) => s.can);
   return (
@@ -411,8 +422,8 @@ export function TitleScenarios(props: {
                 ? ` if ${s.needs
                     .map((n) =>
                       n.below >= pointsOf(sprints).length
-                        ? `${codeOf(series, n.rival)} doesn't score`
-                        : `${codeOf(series, n.rival)} is P${n.below + 1} or lower`,
+                        ? `${codeOf(series, seats, n.rival)} doesn't score`
+                        : `${codeOf(series, seats, n.rival)} is P${n.below + 1} or lower`,
                     )
                     .join(" and ")}`
                 : ", whatever happens"}
@@ -430,7 +441,7 @@ export function TitleScenarios(props: {
 }
 
 // Points round by round: the top six, you and your teammate, teammates' second car dashed.
-function Chart({ series, rounds, calendar, sprints }: SeasonProps) {
+function Chart({ series, seats, rounds, calendar, sprints }: SeasonProps) {
   if (!rounds.length) return <p className={label}>No rounds yet.</p>;
   const prog = progression(rounds, sprints);
   const { drivers } = standings(rounds, sprints);
@@ -475,7 +486,7 @@ function Chart({ series, rounds, calendar, sprints }: SeasonProps) {
               y={at.get(id)}
               className={`text-[8px] ${id === 0 ? "fill-paper font-semibold" : "fill-soft"}`}
             >
-              {codeOf(series, id)} {end}
+              {codeOf(series, seats, id)} {end}
             </text>
           </g>
         );
@@ -485,7 +496,7 @@ function Chart({ series, rounds, calendar, sprints }: SeasonProps) {
 }
 
 function Compare(props: SeasonProps) {
-  const { series } = props;
+  const { series, seats } = props;
   const { drivers } = standings(props.rounds, props.sprints);
   const [a, setA] = useState(0);
   const [b, setB] = useState(drivers.find((r) => r.k !== 0)?.k ?? 1);
@@ -498,7 +509,7 @@ function Compare(props: SeasonProps) {
     >
       {[...Array(CARS).keys()].map((id) => (
         <option key={id} value={id}>
-          {codeOf(series, id)} · {LEVELS[series].drivers[id]!.name}
+          {codeOf(series, seats, id)} · {seated(series, seats, id).name}
         </option>
       ))}
     </select>
