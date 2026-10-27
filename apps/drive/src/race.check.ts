@@ -1301,6 +1301,34 @@ for (const boxing of [false, true]) {
     );
   }
 }
+// Called in while you're in the pits under it, the team drives you out and on until the Safety
+// Car's gone, then hands back with the call it held.
+{
+  const race = incident([...Array(CARS).keys()]);
+  const me = race.racers.find((r) => r.id === 0)!;
+  const drive = (secs: number, until = () => false) => {
+    for (let f = 0; f < secs / DT && !until(); f++) tick(race, aiInput(me, race), DT);
+  };
+  drive(90);
+  const x = race.racers.find((r) => r.id === CARS - 1)!;
+  const [px, py] = pointAt(-150, HALF[0]! - 1);
+  Object.assign(x.car, { x: px, y: py, h: dirAt(nearest(px, py).p) + Math.PI / 2, v: 60 });
+  x.launch = Infinity;
+  drive(1, () => x.out !== null);
+  toggleBox(race);
+  // A long clean-up: the Safety Car stays out until you're in the lane.
+  drive(600, () => (race.sc && (race.sc.run = 0), me.pit));
+  assert.ok(race.sc && !race.neutral!.ending, "into the pits under the Safety Car");
+  race.sc.run = LENGTH;
+  drive(1, () => race.neutral!.ending);
+  drive(60, () => !me.pit);
+  assert.ok(race.sc, "out of the pits with the Safety Car in this lap");
+  assert.ok(teamDriving(race, me) && handingBack(race) === 0, "the team still drives you");
+  drive(120, () => handingBack(race) > 0);
+  assert.ok(!race.sc, "and hands back once it's gone");
+  const said = race.msgs.filter((m) => m.kind === "radio").at(-1)?.text ?? "";
+  assert.ok(said.startsWith("Safety Car's in this lap."), "with the call it held");
+}
 // The radio: at Monza the boxes are before the line, so a stop ends inside the in-lap, and the
 // out-lap after it is slow but no lap to call slow. Gap trends read from your side.
 {
