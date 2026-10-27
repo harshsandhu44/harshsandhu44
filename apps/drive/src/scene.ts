@@ -967,14 +967,18 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
   });
   const wheels = ["wheelFrontLeft", "wheelFrontRight"].map((n) => body.getObjectByName(n));
 
-  // Rain lights, on at night: a red bar low on the back of each car (not the Safety Car's).
+  // Rain lights, on at night: a red bar low on the back of each car (not the Safety Car's). As in
+  // 2026, it flashes at 4 Hz while the car's super clipping.
   const rainMat = new THREE.MeshBasicMaterial({ color: "#ff2b2b" });
-  for (const b of bodies) {
+  const bars = bodies.map((b) => {
     const s = car!.size;
     const bar = new THREE.Mesh(new THREE.BoxGeometry(s.x * 0.14, s.y * 0.12, s.z * 0.02), rainMat);
     bar.position.set(0, s.y * 0.4, -s.z / 2);
     b.add(bar);
-  }
+    return bar;
+  });
+  let night = false;
+  let blink = 0;
 
   const hemi = new THREE.HemisphereLight("#e4ebf0", "#3d5244", 1.4);
   scene.add(hemi);
@@ -1012,7 +1016,7 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
     SUN.set(...a.at).lerp(toward.set(...b.at), t);
     const lamps = a.lamps + (b.lamps - a.lamps) * t;
     for (const { m, base, k } of lamped) m.emissiveIntensity = base + k * lamps;
-    rainMat.visible = lamps > 0.5;
+    night = lamps > 0.5;
   };
   light(0);
   const gaze = new THREE.Object3D();
@@ -1046,7 +1050,8 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
     // Every car on track, yours first (only yours in qualifying, the rest hidden), each one's
     // share of the full tow, each team's crew (0 in the garage, 1 a car in the lane, 2 a car
     // stopped at the box), which cars are gone (out of the race, their wrecks cleared), the
-    // Safety Car, if it's out, and how far through the race the leader is, for the light.
+    // Safety Car, if it's out, how far through the race the leader is, for the light, and which
+    // cars are super clipping.
     frame(
       cars: Car[],
       tows: number[],
@@ -1056,6 +1061,7 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
       gone: boolean[] = [],
       sc: Car | null = null,
       progress = 0,
+      clips: boolean[] = [],
     ) {
       let moved = false;
       crews.forEach((want, k) => {
@@ -1092,6 +1098,9 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
       });
       for (const w of wheels) if (w) w.rotation.y = -steer * 0.4;
       light(progress);
+      blink += dt;
+      const on = Math.floor(blink * 8) % 2 === 0;
+      bars.forEach((bar, k) => (bar.visible = clips[k] ? on : night));
       sun.position.set(c.x + SUN.x, SUN.y, c.y + SUN.z);
       sun.target.position.set(c.x, 0, c.y);
       // The eye turns to the car, gliding, and tilts no more than 5° down or up.

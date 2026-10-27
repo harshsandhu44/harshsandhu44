@@ -1824,6 +1824,7 @@ export default function Drive() {
         quali || race.session
           ? 1
           : Math.max(0, ...race.racers.map((r) => r.dist)) / (race.laps * LENGTH),
+        race.racers.map((r) => r.clipping),
       );
       drawMap();
       raf = requestAnimationFrame(frame);
