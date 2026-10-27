@@ -9,6 +9,14 @@
 // from Pirelli's ratings: Lusail, Silverstone and Spa the hardest, Monaco the easiest. The street
 // circuits (Monaco, Las Vegas) have their walls close, so their stands are nearer too.
 import { AUSTIN_DATA } from "./austin.ts";
+import { BAHRAIN_DATA } from "./bahrain.ts";
+import { BARCELONA_DATA } from "./barcelona.ts";
+import { HUNGARORING_DATA } from "./hungaroring.ts";
+import { MELBOURNE_DATA } from "./melbourne.ts";
+import { MEXICO_DATA } from "./mexico.ts";
+import { MONTREAL_DATA } from "./montreal.ts";
+import { SHANGHAI_DATA } from "./shanghai.ts";
+import { ZANDVOORT_DATA } from "./zandvoort.ts";
 import { INTERLAGOS_DATA } from "./interlagos.ts";
 import { LUSAIL_DATA } from "./lusail.ts";
 import { MONACO_DATA } from "./monaco.ts";
@@ -413,6 +421,297 @@ export const TRACKS: TrackDef[] = [
     sky: "night",
     smooth: true,
   },
+  {
+    id: "zandvoort",
+    name: "Zandvoort",
+    length: 4307,
+    laps: 72,
+    data: ZANDVOORT_DATA,
+    // Named as on the OpenStreetMap ways, the two after Scheivlak as one.
+    corners: [
+      { name: "Tarzanbocht", turnIn: 325, at: 430, boards: true },
+      { name: "Gerlachbocht", turnIn: 680, at: 735, boards: false },
+      { name: "Hugenholtzbocht", turnIn: 825, at: 884, boards: false },
+      { name: "Hunserug", turnIn: 1129, at: 1174, boards: false },
+      { name: "Rob Slotemakerbocht", turnIn: 1284, at: 1479, boards: false },
+      { name: "Scheivlak", turnIn: 1654, at: 1769, boards: false },
+      { name: "Mastersbocht", turnIn: 2069, at: 2343, boards: false },
+      { name: "CM.com bocht", turnIn: 2483, at: 2613, boards: false },
+      { name: "Hans Ernst chicane", turnIn: 3143, at: 3282, boards: true },
+      { name: "Arie Luyendykbocht", turnIn: 3712, at: 3907, boards: false },
+    ],
+    // The main straight, and the run to the Hans Ernst chicane.
+    zones: [
+      { detect: 3907, from: -300, to: 300 },
+      { detect: 2613, from: 2700, to: 2960 },
+    ],
+    // ponytail: the real lane's on the right, squeezed between the straight and Hugenholtz, and
+    // runs on past Tarzan; here, with no room for it there, it's on the left and rejoins before.
+    pit: { side: -1, in: -190, from: -110, to: 160, out: 240 },
+    stands: [...row(10, -260, -170), ...corner(-1, 430)],
+    seed: 1952,
+    grip: 0.381,
+    stop: 0.193,
+    wear: 1.0,
+    wing: 4,
+    proEdge: 1.203,
+    legendsEdge: 1.235,
+  },
+  {
+    id: "hungaroring",
+    name: "Hungaroring",
+    length: 4381,
+    laps: 70,
+    data: HUNGARORING_DATA,
+    // Numbered, by eye from the curvature; the Turn 6 and 7 chicane is one.
+    corners: [
+      { name: "Turn 1", turnIn: 535, at: 595, boards: true },
+      { name: "Turn 2", turnIn: 1024, at: 1074, boards: false },
+      { name: "Turn 3", turnIn: 1259, at: 1299, boards: false },
+      { name: "Turn 4", turnIn: 1739, at: 1779, boards: false },
+      { name: "Turn 5", turnIn: 1939, at: 1994, boards: false },
+      { name: "Turns 6–7", turnIn: 2304, at: 2348, boards: false },
+      { name: "Turn 8", turnIn: 2513, at: 2568, boards: false },
+      { name: "Turn 9", turnIn: 2633, at: 2698, boards: false },
+      { name: "Turn 10", turnIn: 2853, at: 2903, boards: false },
+      { name: "Turn 11", turnIn: 3018, at: 3073, boards: false },
+      { name: "Turn 12", turnIn: 3453, at: 3503, boards: true },
+      { name: "Turn 13", turnIn: 3673, at: 3773, boards: false },
+      { name: "Turn 14", turnIn: 3937, at: 3987, boards: false },
+    ],
+    // The main straight, and Turn 3 to Turn 4.
+    zones: [
+      { detect: 3987, from: -180, to: 500 },
+      { detect: 1299, from: 1360, to: 1640 },
+    ],
+    // On the right. ponytail: the real lane leaves before Turn 14; here it's on the main straight.
+    pit: { side: 1, in: -190, from: -110, to: 160, out: 250 },
+    stands: [...row(-10, -200, -110, -20, 70), ...corner(-1, 595)],
+    seed: 1986,
+    grip: 0.412,
+    stop: 0.178,
+    wear: 0.9,
+    wing: 5,
+    proEdge: 1.216,
+    legendsEdge: 1.222,
+  },
+  {
+    id: "barcelona",
+    name: "Barcelona",
+    length: 4655,
+    laps: 66,
+    data: BARCELONA_DATA,
+    // By their sponsors' names, as the circuit has them; Turns 7 and 8 together.
+    corners: [
+      { name: "Elf", turnIn: 780, at: 940, boards: true },
+      { name: "Renault", turnIn: 1034, at: 1174, boards: false },
+      { name: "Repsol", turnIn: 1649, at: 1709, boards: false },
+      { name: "Seat", turnIn: 2058, at: 2138, boards: false },
+      { name: "Turns 7–8", turnIn: 2493, at: 2643, boards: false },
+      { name: "Campsa", turnIn: 2823, at: 2933, boards: false },
+      { name: "La Caixa", turnIn: 3427, at: 3487, boards: true },
+      { name: "Banc Sabadell", turnIn: 3652, at: 3742, boards: false },
+      { name: "The chicane", turnIn: 3971, at: 4141, boards: false },
+      { name: "New Holland", turnIn: 4255, at: 4325, boards: false },
+    ],
+    // The main straight, and the back straight.
+    zones: [
+      { detect: 4325, from: -200, to: 740 },
+      { detect: 2933, from: 3010, to: 3400 },
+    ],
+    // On the right. ponytail: the real lane leaves before New Holland; here it's on the main straight.
+    pit: { side: 1, in: -210, from: -130, to: 140, out: 230 },
+    stands: [...row(-10, -200, -110, -20, 70), ...corner(-1, 845)],
+    seed: 1991,
+    grip: 0.425,
+    stop: 0.189,
+    wear: 1.2,
+    wing: 4,
+    proEdge: 1.193,
+    legendsEdge: 1.24,
+  },
+  {
+    id: "bahrain",
+    name: "Bahrain",
+    length: 5412,
+    laps: 57,
+    data: BAHRAIN_DATA,
+    // Numbered, as at Sakhir.
+    corners: [
+      { name: "Turn 1", turnIn: 695, at: 740, boards: true },
+      { name: "Turn 2", turnIn: 800, at: 840, boards: false },
+      { name: "Turn 3", turnIn: 920, at: 955, boards: false },
+      { name: "Turn 4", turnIn: 1490, at: 1534, boards: true },
+      { name: "Turn 5", turnIn: 1774, at: 1809, boards: false },
+      { name: "Turn 6", turnIn: 1844, at: 1894, boards: false },
+      { name: "Turn 7", turnIn: 1964, at: 2018, boards: false },
+      { name: "Turn 8", turnIn: 2213, at: 2268, boards: false },
+      { name: "Turns 9–10", turnIn: 2573, at: 2732, boards: false },
+      { name: "Turn 11", turnIn: 3407, at: 3452, boards: true },
+      { name: "Turn 12", turnIn: 3722, at: 3842, boards: false },
+      { name: "Turn 13", turnIn: 4021, at: 4136, boards: false },
+      { name: "Turn 14", turnIn: 4886, at: 4931, boards: true },
+      { name: "Turn 15", turnIn: 4981, at: 5016, boards: false },
+    ],
+    // The main straight, Turn 3 to Turn 4, and Turn 10 to Turn 11.
+    zones: [
+      { detect: 5016, from: -340, to: 660 },
+      { detect: 955, from: 1010, to: 1460 },
+      { detect: 2732, from: 2800, to: 3380 },
+    ],
+    // On the right.
+    pit: { side: 1, in: -200, from: -120, to: 150, out: 240 },
+    stands: [...row(-10, -200, -110, -20, 70), ...corner(-1, 740)],
+    seed: 2004,
+    grip: 0.305,
+    stop: 0.167,
+    wear: 1.2,
+    wing: 3,
+    proEdge: 1.26,
+    legendsEdge: 1.293,
+    setting: "desert",
+    sky: "night",
+  },
+  {
+    id: "mexico",
+    name: "Mexico City",
+    length: 4304,
+    laps: 71,
+    data: MEXICO_DATA,
+    // Turns 1 to 3 together, the esses (7 to 11) and the stadium (13 to 16).
+    corners: [
+      { name: "Turn 1", turnIn: 795, at: 965, boards: true },
+      { name: "Turn 4", turnIn: 1635, at: 1675, boards: true },
+      { name: "Turn 5", turnIn: 1705, at: 1759, boards: false },
+      { name: "Turn 6", turnIn: 1844, at: 1894, boards: false },
+      { name: "The esses", turnIn: 2194, at: 2718, boards: false },
+      { name: "Turn 12", turnIn: 2858, at: 2903, boards: false },
+      { name: "Foro Sol", turnIn: 3239, at: 3567, boards: true },
+      { name: "Peraltada", turnIn: 3592, at: 3642, boards: false },
+    ],
+    // The main straight, and Turn 3 to Turn 4.
+    zones: [
+      { detect: 3642, from: -400, to: 760 },
+      { detect: 1109, from: 1150, to: 1610 },
+    ],
+    // On the right.
+    pit: { side: 1, in: -300, from: -220, to: 60, out: 160 },
+    stands: [...row(-10, -200, -110, -20, 70), ...corner(-1, 826)],
+    seed: 1963,
+    grip: 0.354,
+    stop: 0.206,
+    wear: 0.8,
+    wing: 3,
+    proEdge: 1.235,
+    legendsEdge: 1.291,
+  },
+  {
+    id: "montreal",
+    name: "Montreal",
+    length: 4361,
+    laps: 70,
+    data: MONTREAL_DATA,
+    // The chicanes as pairs, as they're raced.
+    corners: [
+      { name: "Senna", turnIn: 215, at: 349, boards: true },
+      { name: "Turns 3–4", turnIn: 685, at: 784, boards: false },
+      { name: "Turn 5", turnIn: 959, at: 994, boards: false },
+      { name: "Turns 6–7", turnIn: 1209, at: 1329, boards: false },
+      { name: "Turns 8–9", turnIn: 1984, at: 2063, boards: true },
+      { name: "L'Épingle", turnIn: 2648, at: 2708, boards: true },
+      { name: "Wall of Champions", turnIn: 3873, at: 3943, boards: true },
+    ],
+    // The main straight, the Casino straight, and Turn 9 to the hairpin.
+    zones: [
+      { detect: 3943, from: -370, to: 20 },
+      { detect: 2708, from: 2880, to: 3850 },
+      { detect: 2063, from: 2140, to: 2480 },
+    ],
+    // On the right. ponytail: the real lane rejoins at Turn 2; here it's before the Senna.
+    pit: { side: 1, in: -370, from: -290, to: -20, out: 70 },
+    stands: [...row(-10, -200, -110, -20, 70), ...corner(1, 260)],
+    seed: 1978,
+    grip: 0.319,
+    stop: 0.176,
+    wear: 0.8,
+    wing: 2,
+    proEdge: 1.261,
+    legendsEdge: 1.314,
+  },
+  {
+    id: "melbourne",
+    name: "Melbourne",
+    length: 5303,
+    laps: 58,
+    data: MELBOURNE_DATA,
+    // Numbered as before 2021, with the Turn 9 and 10 chicane.
+    corners: [
+      { name: "Turn 1", turnIn: 335, at: 375, boards: true },
+      { name: "Turn 2", turnIn: 405, at: 525, boards: false },
+      { name: "Turn 3", turnIn: 1060, at: 1110, boards: true },
+      { name: "Turn 4", turnIn: 1200, at: 1255, boards: false },
+      { name: "Turn 5", turnIn: 1435, at: 1475, boards: false },
+      { name: "Turn 6", turnIn: 1860, at: 1890, boards: false },
+      { name: "Turn 7", turnIn: 1959, at: 1999, boards: false },
+      { name: "Turns 9–10", turnIn: 2519, at: 2629, boards: true },
+      { name: "Turn 11", turnIn: 3319, at: 3364, boards: false },
+      { name: "Turn 12", turnIn: 3449, at: 3479, boards: false },
+      { name: "Turn 13", turnIn: 4134, at: 4164, boards: true },
+      { name: "Turn 14", turnIn: 4369, at: 4419, boards: false },
+      { name: "Turn 15", turnIn: 4639, at: 4684, boards: false },
+      { name: "Turn 16", turnIn: 4764, at: 4819, boards: false },
+    ],
+    // The main straight, and Turn 2 to Turn 3.
+    zones: [
+      { detect: 4819, from: -370, to: 300 },
+      { detect: 525, from: 600, to: 1030 },
+    ],
+    // ponytail: on the right, from memory (OpenStreetMap doesn't map Albert Park's lane).
+    pit: { side: 1, in: -230, from: -150, to: 120, out: 210 },
+    stands: [...row(-10, -200, -110, -20, 70), ...corner(-1, 375)],
+    seed: 1996,
+    grip: 0.299,
+    stop: 0.154,
+    wear: 0.9,
+    wing: 3,
+    proEdge: 1.253,
+    legendsEdge: 1.295,
+  },
+  {
+    id: "shanghai",
+    name: "Shanghai",
+    length: 5451,
+    laps: 56,
+    data: SHANGHAI_DATA,
+    // Numbered, by eye from the curvature; the snail (1 to 3) as one.
+    corners: [
+      { name: "Turns 1–3", turnIn: 480, at: 884, boards: true },
+      { name: "Turn 4", turnIn: 1314, at: 1349, boards: false },
+      { name: "Turn 6", turnIn: 1544, at: 1594, boards: true },
+      { name: "Turns 7–8", turnIn: 1653, at: 1943, boards: false },
+      { name: "Turns 9–10", turnIn: 2248, at: 2667, boards: false },
+      { name: "Turn 11", turnIn: 3107, at: 3152, boards: true },
+      { name: "Turns 12–13", turnIn: 3180, at: 3222, boards: false },
+      { name: "Turn 14", turnIn: 4761, at: 4796, boards: true },
+      { name: "Turn 15", turnIn: 4861, at: 4896, boards: false },
+      { name: "Turn 16", turnIn: 5141, at: 5166, boards: false },
+    ],
+    // The main straight, and the back straight.
+    zones: [
+      { detect: 5166, from: -220, to: 450 },
+      { detect: 3222, from: 3620, to: 4730 },
+    ],
+    // On the right. ponytail: the real lane rejoins after Turn 1; here it's before it.
+    pit: { side: 1, in: -230, from: -150, to: 120, out: 210 },
+    stands: [...row(-10, -200, -110, -20, 70), ...corner(-1, 815)],
+    seed: 2004,
+    grip: 0.365,
+    stop: 0.143,
+    wear: 1.1,
+    wing: 4,
+    proEdge: 1.211,
+    legendsEdge: 1.237,
+  },
 ];
 
 // Each circuit is built the first time it's picked: the racing line, the speed profiles and the
@@ -420,12 +719,20 @@ export const TRACKS: TrackDef[] = [
 const built = new Map<string, Track>();
 // A career season's rounds, in 2026's calendar order: Yas Marina is the finale.
 export const CALENDAR = [
+  "melbourne",
+  "shanghai",
+  "bahrain",
+  "montreal",
   "monaco",
+  "barcelona",
   "redbullring",
   "silverstone",
   "spa",
+  "hungaroring",
+  "zandvoort",
   "monza",
   "austin",
+  "mexico",
   "interlagos",
   "lasvegas",
   "lusail",
