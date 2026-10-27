@@ -11,7 +11,9 @@
 import { AUSTIN_DATA } from "./austin.ts";
 import { BAHRAIN_DATA } from "./bahrain.ts";
 import { BARCELONA_DATA } from "./barcelona.ts";
+import { BUDDH_DATA } from "./buddh.ts";
 import { HUNGARORING_DATA } from "./hungaroring.ts";
+import { MIAMI_DATA } from "./miami.ts";
 import { MELBOURNE_DATA } from "./melbourne.ts";
 import { MEXICO_DATA } from "./mexico.ts";
 import { MONTREAL_DATA } from "./montreal.ts";
@@ -21,6 +23,7 @@ import { INTERLAGOS_DATA } from "./interlagos.ts";
 import { LUSAIL_DATA } from "./lusail.ts";
 import { MONACO_DATA } from "./monaco.ts";
 import { MONZA_DATA } from "./monza.ts";
+import { PORTIMAO_DATA } from "./portimao.ts";
 import { REDBULLRING_DATA } from "./redbullring.ts";
 import { SILVERSTONE_DATA } from "./silverstone.ts";
 import { SPA_DATA } from "./spa.ts";
@@ -712,6 +715,125 @@ export const TRACKS: TrackDef[] = [
     proEdge: 1.211,
     legendsEdge: 1.237,
   },
+  {
+    id: "portimao",
+    name: "Portimão",
+    length: 4653,
+    laps: 66,
+    data: PORTIMAO_DATA,
+    // Named as on the OpenStreetMap ways, numbered between.
+    corners: [
+      { name: "Turn 1", turnIn: 630, at: 675, boards: true },
+      { name: "Turn 2", turnIn: 790, at: 835, boards: false },
+      { name: "Curva Lagos", turnIn: 940, at: 995, boards: false },
+      { name: "Turn 4", turnIn: 1070, at: 1140, boards: false },
+      { name: "Curva da Torre VIP", turnIn: 1660, at: 1715, boards: true },
+      { name: "Turn 6", turnIn: 1905, at: 1955, boards: false },
+      { name: "Turn 7", turnIn: 2125, at: 2185, boards: false },
+      { name: "Curva Samsung", turnIn: 2270, at: 2330, boards: false },
+      { name: "Curva Craig Jones", turnIn: 2635, at: 2690, boards: false },
+      { name: "Curva Portimão", turnIn: 2875, at: 3015, boards: false },
+      { name: "Turn 11", turnIn: 3160, at: 3240, boards: false },
+      { name: "Turn 13", turnIn: 3380, at: 3450, boards: false },
+      { name: "Curva Sagres", turnIn: 3595, at: 3655, boards: false },
+      { name: "Curva Galp", turnIn: 3960, at: 4030, boards: false },
+    ],
+    // The main straight, and Turn 4 to the Torre VIP.
+    zones: [
+      { detect: 4030, from: -290, to: 600 },
+      { detect: 1140, from: 1205, to: 1640 },
+    ],
+    // On the right. ponytail: the real lane runs the whole straight; here it's shorter.
+    pit: { side: 1, in: -290, from: -210, to: 60, out: 150 },
+    stands: [...row(-10, -200, -110, -20, 70), ...corner(-1, 675)],
+    seed: 2020,
+    grip: 0.325,
+    stop: 0.199,
+    wear: 1.0,
+    wing: 4,
+    proEdge: 1.227,
+    legendsEdge: 1.27,
+    smooth: true,
+  },
+  {
+    id: "miami",
+    name: "Miami",
+    length: 5412,
+    laps: 57,
+    data: MIAMI_DATA,
+    // Numbered, by eye from the curvature; the flat-out kinks (8 to 10, 16) left out.
+    corners: [
+      { name: "Turn 1", turnIn: 200, at: 250, boards: true },
+      { name: "Turn 2", turnIn: 300, at: 350, boards: false },
+      { name: "Turn 3", turnIn: 385, at: 425, boards: false },
+      { name: "Turns 4–6", turnIn: 935, at: 1155, boards: false },
+      { name: "Turn 7", turnIn: 1220, at: 1510, boards: false },
+      { name: "Turn 11", turnIn: 2925, at: 2980, boards: true },
+      { name: "Turns 12–13", turnIn: 3015, at: 3290, boards: false },
+      { name: "Turns 14–15", turnIn: 3310, at: 3415, boards: false },
+      { name: "Turn 17", turnIn: 4680, at: 4735, boards: true },
+      { name: "Turn 18", turnIn: 4819, at: 4869, boards: false },
+      { name: "Turn 19", turnIn: 4994, at: 5134, boards: false },
+    ],
+    // The main straight, Turn 10 to Turn 11, and the back straight to Turn 17.
+    zones: [
+      { detect: 5134, from: -190, to: 190 },
+      { detect: 1510, from: 2460, to: 2900 },
+      { detect: 3415, from: 3470, to: 4660 },
+    ],
+    // On the right. ponytail: the real lane leaves after Turn 18 and rejoins after Turn 2; here
+    // it's on the main straight, which leaves it little room.
+    pit: { side: 1, in: -200, from: -125, to: 135, out: 195 },
+    stands: [...row(-10, -200, -110, -20, 70), ...corner(-1, 250)],
+    seed: 2022,
+    grip: 0.359,
+    stop: 0.151,
+    wear: 1.0,
+    wing: 2,
+    proEdge: 1.272,
+    legendsEdge: 1.283,
+    smooth: true,
+  },
+  {
+    id: "buddh",
+    name: "Buddh",
+    length: 5125,
+    laps: 60,
+    data: BUDDH_DATA,
+    // Numbered, by eye from the curvature; Turns 10 and 11 as one.
+    corners: [
+      { name: "Turn 1", turnIn: 305, at: 355, boards: true },
+      { name: "Turn 2", turnIn: 405, at: 455, boards: false },
+      { name: "Turn 3", turnIn: 680, at: 735, boards: true },
+      { name: "Turn 4", turnIn: 1965, at: 2015, boards: true },
+      { name: "Turn 5", turnIn: 2511, at: 2571, boards: true },
+      { name: "Turn 6", turnIn: 2636, at: 2691, boards: false },
+      { name: "Turn 7", turnIn: 2715, at: 2745, boards: false },
+      { name: "Turn 8", turnIn: 2866, at: 2916, boards: false },
+      { name: "Turn 9", turnIn: 2946, at: 2986, boards: false },
+      { name: "Turns 10–11", turnIn: 3216, at: 3566, boards: false },
+      { name: "Turn 12", turnIn: 3856, at: 3921, boards: false },
+      { name: "Turn 13", turnIn: 3996, at: 4036, boards: false },
+      { name: "Turn 14", turnIn: 4246, at: 4336, boards: false },
+      { name: "Turn 16", turnIn: 4656, at: 4721, boards: false },
+    ],
+    // The main straight, and the back straight to Turn 4.
+    zones: [
+      { detect: 4721, from: -310, to: 290 },
+      { detect: 735, from: 790, to: 1920 },
+    ],
+    // On the right.
+    pit: { side: 1, in: -320, from: -240, to: 30, out: 120 },
+    stands: [...row(-10, -200, -110, -20, 70), ...corner(-1, 355)],
+    seed: 2011,
+    grip: 0.343,
+    stop: 0.15,
+    wear: 1.0,
+    wing: 3,
+    proEdge: 1.249,
+    legendsEdge: 1.29,
+    smooth: true,
+  },
 ];
 
 // Each circuit is built the first time it's picked: the racing line, the speed profiles and the
@@ -722,6 +844,7 @@ export const CALENDAR = [
   "melbourne",
   "shanghai",
   "bahrain",
+  "miami",
   "montreal",
   "monaco",
   "barcelona",
@@ -731,9 +854,11 @@ export const CALENDAR = [
   "hungaroring",
   "zandvoort",
   "monza",
+  "portimao",
   "austin",
   "mexico",
   "interlagos",
+  "buddh",
   "lasvegas",
   "lusail",
   "yasmarina",
@@ -745,6 +870,7 @@ export const FIRST_CALENDAR = [
   "silverstone",
   "spa",
   "monza",
+  "portimao",
   "austin",
   "interlagos",
   "lasvegas",
