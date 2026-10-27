@@ -227,7 +227,7 @@ const CONTROLS: [string[], string][] = [
 const RULES: [string, string][] = [
   [
     "Start",
-    "You start at the back, or qualify for your slot. Quick qualifying is one flying lap on softs from a rolling start, and the grid lines up by lap time. Track limits, the pit lane or abandoning the lap leaves you without a time, still at the back. Full qualifying is Q1, Q2 and Q3 on the clock with the whole field on track: go out from the garage when you like, on new softs, and only a lap started before the flag counts. The slowest six go out after Q1 and Q2, and the last ten fight for pole. Each car has five sets of softs for the session: go out on a new one or a used one, as worn as you left it. The track rubbers in and gets quicker. Track limits only cost you the lap. Press E (or Team) and the team drives your out-lap, handing the car back with a countdown just before the line; on a push lap, E brings you in. The battery only deploys on push laps, so every one starts full. Cars on a push lap get room, and holding one up is impeding: a warning, then three places on the grid each time. A car stopped on track brings the red flag: the clock stops and everyone's back in the garage. In the garage you can fast-forward the clock. Go when the lights go out. Amateur races the F3 grid, intermediate F2 and pro F1: on the racing line, with the fewest mistakes and a little more grip than your car. Legends is the world champions: no mistakes, and a perfect race only just keeps up.",
+    "You start at the back, or qualify for your slot. Quick qualifying is one flying lap on softs from a rolling start, and the grid lines up by lap time. Track limits, the pit lane or abandoning the lap leaves you without a time, still at the back. Full qualifying is Q1, Q2 and Q3 on the clock with the whole field on track: go out from the garage when you like, on new softs, and only a lap started before the flag counts. The slowest six go out after Q1 and Q2, and the last ten fight for pole. Each car has five sets of softs for the session: go out on a new one or a used one, as worn as you left it. The track rubbers in and gets quicker. Track limits only cost you the lap. Press E (or Team) and the team drives your out-lap, handing the car back with a countdown just before the line; on a push lap, E brings you in. While it drives, F (or Skip) fast-forwards to the countdown, or to the garage. The battery only deploys on push laps, so every one starts full. Cars on a push lap get room, and holding one up is impeding: a warning, then three places on the grid each time. A car stopped on track brings the red flag: the clock stops and everyone's back in the garage. In the garage you can fast-forward the clock. Go when the lights go out. Amateur races the F3 grid, intermediate F2 and pro F1: on the racing line, with the fewest mistakes and a little more grip than your car. Legends is the world champions: no mistakes, and a perfect race only just keeps up.",
   ],
   [
     "Tyres & pits",
@@ -239,7 +239,7 @@ const RULES: [string, string][] = [
   ],
   [
     "Safety Car & failures",
-    "Cars break down (about one in twenty-five a race, yours too), crash out on a big hit, take lasting damage from smaller ones, and puncture from contact or a set run to nothing; a puncture costs grip, not top speed, until you box, its wheel blinking red. A car stopped off the track brings the Virtual Safety Car: everyone is held to the same speed. A crash, or a car stopped on the track, brings the Safety Car: the field queues behind it with no passing, and racing starts again at the line once it's gone in. The team drives your car under both and hands it back as either ends, after a three-second countdown: press B (or Box) to have it take you in, as a stop under either costs less. With more than three laps to go, lapped cars are waved past the queue to its back first (the team drives you through), and the Safety Car comes in once the last is back. When a car a lap up catches you, the blue flag lets it by; pass it again and pull away, and you've unlapped yourself.",
+    "Cars break down (about one in twenty-five a race, yours too), crash out on a big hit, take lasting damage from smaller ones, and puncture from contact or a set run to nothing; a puncture costs grip, not top speed, until you box, its wheel blinking red. A car stopped off the track brings the Virtual Safety Car: everyone is held to the same speed. A crash, or a car stopped on the track, brings the Safety Car: the field queues behind it with no passing, and racing starts again at the line once it's gone in. The team drives your car under both and hands it back as either ends, after a three-second countdown: press B (or Box) to have it take you in, as a stop under either costs less, and F (or Skip) to fast-forward to the countdown. With more than three laps to go, lapped cars are waved past the queue to its back first (the team drives you through), and the Safety Car comes in once the last is back. When a car a lap up catches you, the blue flag lets it by; pass it again and pull away, and you've unlapped yourself.",
   ],
   [
     "Career",
@@ -591,6 +591,7 @@ export default function Drive() {
   const fit = useRef<(t: Tyre) => void>(() => {});
   const fitWing = useRef<(by: number) => void>(() => {});
   const boxIt = useRef<() => void>(() => {});
+  const ffIt = useRef<() => void>(() => {});
   const wingNext = useRef<HTMLSpanElement>(null);
   const wingEl = useRef<HTMLSpanElement>(null);
   const tyreEls = useRef<HTMLSpanElement[]>([]);
@@ -644,6 +645,7 @@ export default function Drive() {
   const blueEl = useRef<HTMLSpanElement>(null);
   const unlapEl = useRef<HTMLSpanElement>(null);
   const teamEl = useRef<HTMLSpanElement>(null);
+  const ffEl = useRef<HTMLButtonElement>(null);
   const boxPad = useRef<HTMLButtonElement>(null);
   const handEl = useRef<HTMLDivElement>(null);
   const otPad = useRef<HTMLButtonElement>(null);
@@ -776,6 +778,8 @@ export default function Drive() {
     if (!MODES[mode]) mode = 0;
     let revs = -1;
     let skipping = false;
+    // F (or Skip): fast-forwarding while the team drives you (see skippable).
+    let ffwd = false;
     // Full qualifying: frames run per frame while you're in the garage, and the segment whose
     // classification's been shown.
     let fast = 0;
@@ -816,6 +820,7 @@ export default function Drive() {
         }
         if (e.key === "[" || e.key === "]") return fitWing.current(e.key === "]" ? 1 : -1);
         if (l === "b" || l === "e") return boxIt.current();
+        if (l === "f") return ffIt.current();
         if (l === "m") {
           const k = (mapSizeRef.current + 1) % MAPS.length;
           mapSizeRef.current = k;
@@ -1005,7 +1010,7 @@ export default function Drive() {
       lightsEl.current!.hidden = false;
       rcEl.current!.hidden = true;
       msgAt = -Infinity;
-      skipping = false;
+      [skipping, ffwd] = [false, false];
       waitEl.current!.hidden = true;
       paused = false;
       pauseEl.current!.hidden = true;
@@ -1233,6 +1238,16 @@ export default function Drive() {
       if (race.session) toggleTeam(race);
       else toggleBox(race);
     };
+    // While the team drives you on track (a qualifying out- or in-lap, or under a Safety Car or
+    // VSC, a stop too), up to its hand-back countdown or the garage. Again to stop.
+    const skippable = () => {
+      const me = race.racers[0]!;
+      return !quali && !simming && teamDriving(race, me) && !inGarage(me) && !handingBack(race);
+    };
+    ffIt.current = () => {
+      if (phase !== "racing" || paused) return;
+      ffwd = !ffwd && skippable();
+    };
 
     let raf = 0;
     let last = performance.now();
@@ -1300,6 +1315,12 @@ export default function Drive() {
         if (sess)
           for (let n = 0; n < fast && sess.state === "running" && inGarage(me); n++)
             tickSession(race, still, 1 / 30);
+        // ponytail: the skipped frames' sectors and gaps go unpainted; nobody's watching them.
+        for (let n = 0; ffwd && n < SKIP; n++) {
+          ffwd = skippable();
+          if (ffwd && sess) tickSession(race, still, 1 / 30);
+          else if (ffwd) tick(race, still, 1 / 30);
+        }
         if (sess && sess.state !== "running" && shown !== sess.seg) {
           shown = sess.seg;
           showSegment();
@@ -1552,6 +1573,11 @@ export default function Drive() {
             ? "Box? B"
             : "Team driving";
       if (team.lastChild!.textContent !== boxing) team.lastChild!.textContent = boxing;
+      const ff = ffEl.current!;
+      const canSkip = skippable();
+      ff.hidden = !canSkip;
+      const ffText = ffwd ? "Skipping" : p.touch ? "Skip" : "Skip · F";
+      if (canSkip && ff.lastChild!.textContent !== ffText) ff.lastChild!.textContent = ffText;
       const bp = boxPad.current!;
       bp.hidden = (sess ? !!me.out : !driven) || me.pit || !p.touch;
       const pad = sess
@@ -2223,6 +2249,15 @@ export default function Drive() {
               <Headset className="size-3.5" />
               <span>Team driving</span>
             </span>
+            <button
+              ref={ffEl}
+              type="button"
+              hidden
+              onClick={() => ffIt.current()}
+              className={`${chip} pointer-events-auto bg-paper text-ink active:scale-[.96]`}
+            >
+              <span>Skip · F</span>
+            </button>
             <span ref={unlapEl} hidden className={`${chip} bg-go text-ink`}>
               <Flag className="size-3.5" />
               Unlapping
