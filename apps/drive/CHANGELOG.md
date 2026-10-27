@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.10.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.9.0...drive-v1.10.0) (2026-10-27)
+
+
+### Features
+
+* **drive:** career season tabs and title projections ([#83](https://github.com/harshsandhu44/harshsandhu44/issues/83)) ([b5bbe33](https://github.com/harshsandhu44/harshsandhu44/commit/b5bbe33d32d86c105ab9485f616e74e2cdf61663))
+* **drive:** eight more circuits and an 18-round calendar ([#85](https://github.com/harshsandhu44/harshsandhu44/issues/85)) ([a054424](https://github.com/harshsandhu44/harshsandhu44/commit/a054424974059a2ffd116125ca7e9b56d2455226))
+* **drive:** F (or Skip) fast-forwards while the team drives you ([#82](https://github.com/harshsandhu44/harshsandhu44/issues/82)) ([25fcbe4](https://github.com/harshsandhu44/harshsandhu44/commit/25fcbe4c80d8d5ad9f2864b7d76fd8504bc12d3e))
+* **drive:** Portimão, Miami and Buddh, for a 21-round calendar ([#86](https://github.com/harshsandhu44/harshsandhu44/issues/86)) ([f20d223](https://github.com/harshsandhu44/harshsandhu44/commit/f20d22389d1ecb6c2812c6c9ab0774dfd4f91d38))
+* **drive:** shuffled lineups and your pick of teammate ([#84](https://github.com/harshsandhu44/harshsandhu44/issues/84)) ([57f30f6](https://github.com/harshsandhu44/harshsandhu44/commit/57f30f658d33136b85178e8227b64a0a949df821))
+* **drive:** world champions get a boost scaled by titles ([#81](https://github.com/harshsandhu44/harshsandhu44/issues/81)) ([7940e36](https://github.com/harshsandhu44/harshsandhu44/commit/7940e368df2ead79481344495dccc54e2e1c6388))
+
+
+### Bug Fixes
+
+* **drive:** keep driving you after a Safety Car stop until it's gone ([#79](https://github.com/harshsandhu44/harshsandhu44/issues/79)) ([b639f48](https://github.com/harshsandhu44/harshsandhu44/commit/b639f48014a97a417ac304b6a26f181b48c7c2d8))
+
 ## [1.9.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.8.0...drive-v1.9.0) (2026-10-26)
 
 
