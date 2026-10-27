@@ -431,6 +431,19 @@ export const CALENDAR = [
   "lusail",
   "yasmarina",
 ];
+// The first seasons' ten rounds, for a season saved before each kept its own calendar.
+export const FIRST_CALENDAR = [
+  "monaco",
+  "redbullring",
+  "silverstone",
+  "spa",
+  "monza",
+  "austin",
+  "interlagos",
+  "lasvegas",
+  "lusail",
+  "yasmarina",
+];
 export const getTrack = (id: string) => {
   const def = TRACKS.find((t) => t.id === id) ?? TRACKS[0]!;
   let t = built.get(def.id);
