@@ -711,9 +711,15 @@ export type Race = {
   incidents: boolean;
   // A Safety Car or VSC: which, when a VSC ends, and whether it's ending (the Safety Car is in
   // this lap); and the Safety Car itself while it's on track, with how far it's driven.
-  // A VSC or Safety Car: when a VSC ends, whether it's ending, and whether lapped cars have been
-  // waved through.
-  neutral: { kind: "sc" | "vsc"; end: number; ending: boolean; wave: boolean } | null;
+  // A VSC or Safety Car: when a VSC ends, whether it's ending, whether lapped cars have been
+  // waved through, and the handover call held for you while you were boxing (see handover).
+  neutral: {
+    kind: "sc" | "vsc";
+    end: number;
+    ending: boolean;
+    wave: boolean;
+    owed?: string;
+  } | null;
   sc: { car: Car; p: number; run: number } | null;
   // What your engineer last said, so it's said once (see engineer).
   eng: Engineer;
@@ -2222,7 +2228,9 @@ function green(race: Race) {
 // your car back; down the pit lane too.
 const HAND = 3000;
 const teamHas = (race: Race, r: Racer) =>
-  r.box || !!race.session?.team || (!!race.neutral && !race.neutral.ending);
+  r.box ||
+  !!race.session?.team ||
+  (!!race.neutral && (!race.neutral.ending || (!!race.neutral.owed && !!race.sc)));
 export const teamDriving = (race: Race, r: Racer) =>
   r.id === 0 && r.finish === null && !r.out && (teamHas(race, r) || race.hand > 0);
 // The seconds to go before your car's yours, or 0.
@@ -2241,12 +2249,16 @@ export function toggleBox(race: Race) {
   me.box = !me.box;
   if (!me.box) me.pitting = false;
 }
-// The Safety Car or VSC is ending: the team hands your car back, unless it's taking you in.
+// The Safety Car or VSC is ending: the team hands your car back, unless it's taking you in. Then
+// the call waits: it drives you out of the pits and on until the Safety Car's gone, and says it
+// as it hands back.
 function handover(race: Race, why: string) {
   const me = race.racers.find((r) => r.id === 0);
-  const driving = me && teamDriving(race, me) && !me.box;
-  race.neutral!.ending = true;
-  if (driving) radio(race, pick(LINES.handover)(why));
+  const driving = me && teamDriving(race, me);
+  const n = race.neutral!;
+  n.ending = true;
+  n.owed = driving && me.box ? why : undefined;
+  if (driving && !me.box) radio(race, pick(LINES.handover)(why));
 }
 // The Safety Car, VSC and blue flags for a frame: drives the Safety Car, ends a VSC, and sets
 // every car's cap and blue flag.
@@ -2434,8 +2446,11 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
       if (r.pitting || r.unlap || teamHas(race, r)) race.hand = Infinity;
       else if (race.hand === Infinity) {
         race.hand = HAND;
-        // The Safety Car's or VSC's ending has its own call (see handover).
-        if (r.finish === null && !failed && !race.neutral?.ending) radio(race, pick(LINES.yours));
+        // The Safety Car's or VSC's ending has its own call (see handover), held if you boxed.
+        const owed = race.neutral?.owed;
+        if (race.neutral) race.neutral.owed = undefined;
+        if (r.finish === null && !failed && (owed || !race.neutral?.ending))
+          radio(race, owed ? pick(LINES.handover)(owed) : pick(LINES.yours));
       } else race.hand = Math.max(0, race.hand - dt * 1000);
     }
     const input =
