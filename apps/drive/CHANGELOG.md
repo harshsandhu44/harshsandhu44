@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.11.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.10.0...drive-v1.11.0) (2026-10-27)
+
+
+### Features
+
+* **drive:** rear lights flash while super clipping ([#87](https://github.com/harshsandhu44/harshsandhu44/issues/87)) ([b188487](https://github.com/harshsandhu44/harshsandhu44/commit/b1884876440038e9e8ae0382c3d51275a803366c))
+
 ## [1.10.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.9.0...drive-v1.10.0) (2026-10-27)
 
 
