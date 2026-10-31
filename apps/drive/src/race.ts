@@ -127,7 +127,7 @@ export const carGrip = (race: Race, r: Racer) => {
   const g =
     grip(r.life, r.tyre) *
     wingGrip(r.wing) *
-    (r.id || race.sim ? edgeOf(race) : 1) *
+    (r.id || race.sim || teamDriving(race, r) ? edgeOf(race) : 1) *
     (1 - r.dirty) *
     (1 - COLD * (1 - r.warm)) *
     (1 - r.damage) *
@@ -668,9 +668,12 @@ export type Racer = {
   // tyres' squeal.
   slide: number;
   // You: whether the team has already called you in on these tyres, and whether you've asked to
-  // box while it drives you (see teamDriving).
+  // box while it drives you (see teamDriving); on auto drive, that you've called a stop off.
   boxCall: boolean;
   box: boolean;
+  stay: boolean;
+  // You: whether the team has driven any of this lap, so it can't be your record.
+  teamLap: boolean;
   // In the lane with no stop planned on this visit: a computer car that strayed in, or any car
   // after the flag. It drives straight through in the fast lane.
   through: boolean;
@@ -756,6 +759,8 @@ export type Race = {
   rubber: number;
   // Your car simulated: the team drives it, with a computer car's edge.
   sim?: boolean;
+  // Auto drive: you've given the team your car for the race, until you take it back (see toggleAuto).
+  auto?: boolean;
   // The team handing your car back: Infinity while it drives, then the countdown's ms (see HAND).
   hand: number;
   // Who drives each car (see REAL).
@@ -846,6 +851,8 @@ export function newRace(
       dirty: 0,
       slide: 0,
       boxCall: false,
+      stay: false,
+      teamLap: false,
       box: false,
       through: false,
       warm: 1,
@@ -1617,6 +1624,7 @@ const LINES = {
     (k: string) => `${k}, we'll drive. Box is there if you want it.`,
     (k: string) => `${k}. Staying out. Say the word and we'll box.`,
   ],
+  auto: ["We've got the car.", "Car's ours, sit tight.", "OK, we'll drive from here."],
   yours: ["Your car in three.", "Handing it back in three.", "Three seconds, then it's yours."],
   handover: [
     (k: string) => `${k}. Your car.`,
@@ -2091,6 +2099,7 @@ function boxCall(race: Race, r: Racer, why: string) {
   const k = r.stops.indexOf(firstChance(race, r));
   r.fit ??= (k >= 0 && r.plan[k + 1]) || nextSet(race, r);
   r.boxCall = true;
+  r.stay = false;
   const owed = r.penalty ? ` ${r.penalty / 1000} seconds to serve first.` : "";
   radio(race, `${why} ${TYRES[r.fit].name} ready.${owed}`);
 }
@@ -2264,6 +2273,7 @@ function green(race: Race) {
 const HAND = 3000;
 const teamHas = (race: Race, r: Racer) =>
   r.box ||
+  !!race.auto ||
   !!race.session?.team ||
   (!!race.neutral && (!race.neutral.ending || (!!race.neutral.owed && !!race.sc)));
 export const teamDriving = (race: Race, r: Racer) =>
@@ -2282,7 +2292,21 @@ export function toggleBox(race: Race) {
   const me = race.racers.find((r) => r.id === 0);
   if (!me || me.pit || !teamDriving(race, me)) return;
   me.box = !me.box;
+  me.stay = !!race.auto && !me.box;
   if (!me.box) me.pitting = false;
+}
+// E in a race: the team drives your car until you press it again, boxing as it calls (B calls a
+// stop off, until its next call). Taking it back drops a stop not yet started, unless it's for a
+// Safety Car or VSC, where the team has the car anyway.
+export function toggleAuto(race: Race) {
+  const me = race.racers.find((r) => r.id === 0);
+  if (!me || me.out || me.finish !== null) return;
+  race.auto = !race.auto;
+  me.stay = false;
+  if (race.auto) return radio(race, pick(LINES.auto));
+  if (!race.neutral && !me.pitting) me.box = false;
+  // The call that goes with the Safety Car's ending has been and gone.
+  if (race.neutral?.ending && !race.neutral.owed) radio(race, pick(LINES.yours));
 }
 // The Safety Car or VSC is ending: the team hands your car back, unless it's taking you in. Then
 // the call waits: it drives you out of the pits and on until the Safety Car's gone, and says it
@@ -2292,8 +2316,8 @@ function handover(race: Race, why: string) {
   const driving = me && teamDriving(race, me);
   const n = race.neutral!;
   n.ending = true;
-  n.owed = driving && me.box ? why : undefined;
-  if (driving && !me.box) radio(race, pick(LINES.handover)(why));
+  n.owed = driving && me.box && !race.auto ? why : undefined;
+  if (driving && !me.box && !race.auto) radio(race, pick(LINES.handover)(why));
 }
 // The Safety Car, VSC and blue flags for a frame: drives the Safety Car, ends a VSC, and sets
 // every car's cap and blue flag.
@@ -2420,16 +2444,18 @@ function wearTyres(race: Race, r: Racer, input: Input, turn: number, edge: numbe
   r.life = Math.max(0, r.life - lost);
 }
 
+// Your split, and whether the team drove any of the lap so far.
+export type YourSplit = Split & { team: boolean };
 // One frame for every car. `you` is the player's input, or null to hold them (before the lights).
 // Returns the player's split, if this frame made one.
-export function tick(race: Race, you: Input, dt: number): Split | null {
+export function tick(race: Race, you: Input, dt: number): YourSplit | null {
   race.t += dt * 1000;
   engineer(race);
   const { LENGTH, PIT_IN, PIT_OUT, PIT_SIDE } = race.track;
   const { collide, dirAt, inPit, lateral, nearest, signed } = race.track;
   // Race distance between the checkpoints the gaps are timed at.
   const CP = LENGTH / 50;
-  let mine: Split | null = null;
+  let mine: YourSplit | null = null;
   neutralise(race, dt);
   for (const r of race.racers) {
     // Out of the race: a wreck sits where it stopped, until it's cleared away.
@@ -2464,6 +2490,9 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
       if (r.id && race.eng.near.includes(r.id) && r.fit)
         radio(race, pick(LINES.rival)(code(race, r), TYRES[r.fit].name), true);
     }
+    // On auto drive the team takes its own calls and planned stops, unless you've said stay out.
+    if (r.id === 0 && race.auto && !r.stay && r.finish === null && !failed)
+      r.box ||= r.boxCall || (due >= 0 && s > PIT_IN - 200 && s < PIT_IN);
     // You, boxing while the team drives you, with the set the crew has out.
     if (r.id === 0 && r.box && s > PIT_IN - 200 && s < PIT_IN && !r.pitting) {
       r.pitting = true;
@@ -2488,6 +2517,7 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
           radio(race, owed ? pick(LINES.handover)(owed) : pick(LINES.yours));
       } else race.hand = Math.max(0, race.hand - dt * 1000);
     }
+    if (r.id === 0) r.teamLap ||= !!race.sim || teamDriving(race, r);
     const input =
       r.id === 0 && race.hand <= 0 && r.finish === null && !failed ? you : aiInput(r, race);
     const moved = Math.abs(dp) < 0.02 && dp > 0;
@@ -2589,7 +2619,11 @@ export function tick(race: Race, you: Input, dt: number): Split | null {
       }
     }
     if (race.session) timeLap(race, r, split, unstarted && r.lap.start !== null);
-    if (r.id === 0) mine = split;
+    if (r.id === 0) {
+      mine = split && { ...split, team: r.teamLap };
+      // A new lap's the next driver's: at the line, or a clock started from the garage.
+      if (split?.lap || (unstarted && r.lap.start !== null)) r.teamLap = false;
+    }
     const cp = Math.floor(r.dist / CP);
     if (cp > r.cp && r.finish === null) {
       [r.cp, r.cpT] = [cp, race.t];

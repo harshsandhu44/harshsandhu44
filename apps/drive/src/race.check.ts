@@ -17,6 +17,7 @@ import {
   lapsOf,
   LEVELS,
   PIT_V,
+  carGrip,
   edgeOf,
   gap,
   grip,
@@ -50,6 +51,7 @@ import {
   standings,
   simInput,
   type Session,
+  toggleAuto,
   toggleBox,
   trend,
   WINGS,
@@ -1745,6 +1747,111 @@ for (const { id, name } of TRACKS) {
     "the winner, the lead lap, then the lapped",
   );
   assert.equal(gap(race, win!), 0, "and the winner's gap is from the winner");
+}
+
+// Auto drive: E gives the team your car, at the computer's edge, and takes it back with a countdown.
+{
+  const race = newRace(monza, GRID, seeded(3), "medium", "pro", 10);
+  const me = race.racers.find((r) => r.id === 0)!;
+  const still = { gas: false, brake: false, steer: 0, ot: false };
+  const plain = carGrip(race, me);
+  toggleAuto(race);
+  assert.ok(teamDriving(race, me), "E: the team has the car");
+  assert.ok(carGrip(race, me) > plain, "with the level's edge");
+  for (let t = 0; t < 180 && !me.best; t += DT) tick(race, still, DT);
+  assert.ok(me.best > 0 && me.laps > 0, "and sets laps with you off the pedals");
+  toggleAuto(race);
+  assert.ok(handingBack(race) === 3 || race.hand === Infinity, "E again: the countdown starts");
+  let f = 0;
+  while (teamDriving(race, me) && f++ < 10 / DT) tick(race, still, DT);
+  assert.ok(!teamDriving(race, me), "and the car's yours");
+  // The lap you took it back on was the team's, the next is yours.
+  let last: { team: boolean; lap: number | null } | null = null;
+  const hold = (until: () => boolean) => {
+    for (let n = 0; n < 240 / DT && !until(); n++) {
+      const s = tick(race, aiInput(me, race), DT);
+      if (s?.lap) last = s;
+    }
+  };
+  hold(() => last !== null);
+  assert.equal(last!.team, true, "a lap the team drove part of is its lap");
+  last = null;
+  hold(() => last !== null);
+  assert.equal(last!.team, false, "the next is yours");
+}
+// Auto drive stops when the plan says, and only once for it.
+{
+  const race = newRace(monza, GRID, seeded(5), "medium", "pro", 12);
+  const me = race.racers.find((r) => r.id === 0)!;
+  const still = { gas: false, brake: false, steer: 0, ot: false };
+  [me.stops, me.plan] = [[4], ["medium", "hard"]];
+  toggleAuto(race);
+  for (let f = 0; me.stints.length < 2 && f < 600 / DT; f++) tick(race, still, DT);
+  assert.equal(me.stints.length, 2, "the team boxes");
+  const lap = me.laps;
+  for (let f = 0; me.laps < lap + 2 && f < 300 / DT; f++) tick(race, still, DT);
+  assert.equal(me.stints.join().split(",").length, 2, `no second stop (${me.stints.join()})`);
+}
+// B calls a stop off, and it stays off, until the team calls one again.
+{
+  const race = newRace(monza, GRID, seeded(5), "medium", "pro", 12);
+  const me = race.racers.find((r) => r.id === 0)!;
+  const still = { gas: false, brake: false, steer: 0, ot: false };
+  toggleAuto(race);
+  for (let f = 0; me.laps < 1 && f < 300 / DT; f++) tick(race, still, DT);
+  [me.stops, me.plan] = [[me.laps + 1], ["medium", "hard"]];
+  const lap = me.laps;
+  me.box = true;
+  toggleBox(race);
+  assert.ok(me.stay && !me.box, "called off");
+  for (let f = 0; me.laps === lap && f < 300 / DT; f++) tick(race, still, DT);
+  assert.ok(me.laps > lap && me.stints.join() === "medium", "so the car stays out past the stop");
+  // Two compounds are still owed, so the team calls it again, and that call stands.
+  for (let f = 0; me.stints.length < 2 && me.finish === null && f < 1500 / DT; f++)
+    tick(race, still, DT);
+  assert.ok(!me.stay && me.stints.length === 2, "a new call stands");
+}
+// Auto drive through a Safety Car: no hand-back as it ends.
+{
+  const race = newRace(monza, GRID, seeded(1), "medium", "intermediate", 12, true);
+  const me = race.racers.find((r) => r.id === 0)!;
+  const { HALF, dirAt, nearest, pointAt } = race.track;
+  const still = { gas: false, brake: false, steer: 0, ot: false };
+  for (const r of race.racers) r.failAt = Infinity;
+  toggleAuto(race);
+  for (let t = 0; t < 90; t += DT) tick(race, still, DT);
+  const x = race.racers.find((r) => r.id === 14)!;
+  const [px, py] = pointAt(-150, HALF[0]! - 1);
+  Object.assign(x.car, { x: px, y: py, h: dirAt(nearest(px, py).p) + Math.PI / 2, v: 60 });
+  x.launch = Infinity;
+  for (let t = 0; t < 1 && x.out === null; t += DT) tick(race, still, DT);
+  assert.equal(race.neutral?.kind, "sc", "a crash brings the Safety Car");
+  let counted = false;
+  let f = 0;
+  while (race.neutral && f++ < 900 / DT) {
+    tick(race, still, DT);
+    counted ||= handingBack(race) > 0;
+  }
+  assert.ok(!race.neutral, "and it ends");
+  assert.ok(!counted && teamDriving(race, me), "with the team still driving and no countdown");
+}
+// Auto drive picks up a car in a bad way: spun round, off the track, stopped.
+for (const [name, h, side] of [
+  ["backwards", Math.PI, 0],
+  ["sideways on the grass", Math.PI / 2, 1],
+] as const) {
+  const race = newRace(monza, GRID, seeded(2), "medium", "intermediate", 5);
+  const me = race.racers.find((r) => r.id === 0)!;
+  const { HALF, atDist, dirAt, nearest, pointAt } = race.track;
+  const still = { gas: false, brake: false, steer: 0, ot: false };
+  for (let t = 0; t < 40; t += DT) tick(race, aiInput(me, race), DT);
+  const m = me.p * race.track.LENGTH;
+  const [x, y] = pointAt(m, side * (HALF[atDist(m)]! + 4));
+  Object.assign(me.car, { x, y, h: dirAt(nearest(x, y).p) + h, v: 0 });
+  toggleAuto(race);
+  const dist = me.dist;
+  for (let t = 0; t < 60; t += DT) tick(race, still, DT);
+  assert.ok(me.dist > dist + 1000, `recovered from ${name}: ${(me.dist - dist).toFixed(0)} m on`);
 }
 
 console.log("race: ok");
