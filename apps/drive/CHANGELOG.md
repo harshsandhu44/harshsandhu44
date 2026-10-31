@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.12.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.11.0...drive-v1.12.0) (2026-10-31)
+
+
+### Features
+
+* **drive:** auto drive in the race, E hands the team your car ([#89](https://github.com/harshsandhu44/harshsandhu44/issues/89)) ([a56f28e](https://github.com/harshsandhu44/harshsandhu44/commit/a56f28ed4703bb8cabef4b8abb630b548dc5d57e))
+
 ## [1.11.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.10.0...drive-v1.11.0) (2026-10-27)
 
 
