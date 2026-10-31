@@ -61,6 +61,7 @@ import {
   sprint,
   stintLaps,
   teamDriving,
+  toggleAuto,
   teamPlan,
   tick,
   toggleBox,
@@ -225,8 +226,8 @@ const CONTROLS: [string[], string][] = [
   [["1–3"], "Tyres"],
   [["[ ]"], "Wing"],
   [["Space"], "Overtake"],
-  [["B"], "Box (Safety Car)"],
-  [["E"], "Team drives (qualifying)"],
+  [["B"], "Box (team driving)"],
+  [["E"], "Team drives"],
   [["F"], "Skip (team driving)"],
   [["P"], "Pause"],
   [["R"], "Restart"],
@@ -249,7 +250,7 @@ const RULES: [string, string][] = [
   ],
   [
     "Safety Car & failures",
-    "Cars break down (about one in twenty-five a race, yours too), crash out on a big hit, take lasting damage from smaller ones, and puncture from contact or a set run to nothing; a puncture costs grip, not top speed, until you box, its wheel blinking red. A car stopped off the track brings the Virtual Safety Car: everyone is held to the same speed. A crash, or a car stopped on the track, brings the Safety Car: the field queues behind it with no passing, and racing starts again at the line once it's gone in. The team drives your car under both and hands it back as either ends, after a three-second countdown: press B (or Box) to have it take you in, as a stop under either costs less, and F (or Skip) to fast-forward to the countdown. With more than three laps to go, lapped cars are waved past the queue to its back first (the team drives you through), and the Safety Car comes in once the last is back. When a car a lap up catches you, the blue flag lets it by; pass it again and pull away, and you've unlapped yourself.",
+    "Cars break down (about one in twenty-five a race, yours too), crash out on a big hit, take lasting damage from smaller ones, and puncture from contact or a set run to nothing; a puncture costs grip, not top speed, until you box, its wheel blinking red. A car stopped off the track brings the Virtual Safety Car: everyone is held to the same speed. A crash, or a car stopped on the track, brings the Safety Car: the field queues behind it with no passing, and racing starts again at the line once it's gone in. The team drives your car under both and hands it back as either ends, after a three-second countdown: press E (or Auto) any time in a race and the team drives until you press it again, boxing as it calls, with B to call a stop off, and no lap it drives can set your record; press B (or Box) to have it take you in, as a stop under either costs less, and F (or Skip) to fast-forward to the countdown. With more than three laps to go, lapped cars are waved past the queue to its back first (the team drives you through), and the Safety Car comes in once the last is back. When a car a lap up catches you, the blue flag lets it by; pass it again and pull away, and you've unlapped yourself.",
   ],
   [
     "Career",
@@ -679,6 +680,7 @@ export default function Drive() {
   const fit = useRef<(t: Tyre) => void>(() => {});
   const fitWing = useRef<(by: number) => void>(() => {});
   const boxIt = useRef<() => void>(() => {});
+  const autoIt = useRef<() => void>(() => {});
   const ffIt = useRef<() => void>(() => {});
   const wingNext = useRef<HTMLSpanElement>(null);
   const wingEl = useRef<HTMLSpanElement>(null);
@@ -736,6 +738,7 @@ export default function Drive() {
   const ffEl = useRef<HTMLButtonElement>(null);
   const titleEl = useRef<HTMLSpanElement>(null);
   const boxPad = useRef<HTMLButtonElement>(null);
+  const autoPad = useRef<HTMLButtonElement>(null);
   const handEl = useRef<HTMLDivElement>(null);
   const otPad = useRef<HTMLButtonElement>(null);
   const batEl = useRef<HTMLSpanElement>(null);
@@ -913,7 +916,8 @@ export default function Drive() {
           return drawBoard();
         }
         if (e.key === "[" || e.key === "]") return fitWing.current(e.key === "]" ? 1 : -1);
-        if (l === "b" || l === "e") return boxIt.current();
+        if (l === "b") return boxIt.current();
+        if (l === "e") return autoIt.current();
         if (l === "f") return ffIt.current();
         if (l === "m") {
           const k = (mapSizeRef.current + 1) % MAPS.length;
@@ -1369,6 +1373,12 @@ export default function Drive() {
       if (race.session) toggleTeam(race);
       else toggleBox(race);
     };
+    // E: auto drive in a race, from the lights on; in full qualifying, the same as B.
+    autoIt.current = () => {
+      if (phase === "grid" || quali || paused || simming) return;
+      if (race.session) toggleTeam(race);
+      else toggleAuto(race);
+    };
     // While the team drives you on track (a qualifying out- or in-lap, or under a Safety Car or
     // VSC, a stop too), up to its hand-back countdown or the garage. Again to stop.
     const skippable = () => {
@@ -1449,8 +1459,18 @@ export default function Drive() {
         // ponytail: the skipped frames' sectors and gaps go unpainted; nobody's watching them.
         for (let n = 0; ffwd && n < SKIP; n++) {
           ffwd = skippable();
+          const was = [race.neutral, me.boxCall, me.puncture, me.damage] as const;
           if (ffwd && sess) tickSession(race, still, 1 / 30);
           else if (ffwd) tick(race, still, 1 / 30);
+          // On auto drive there's no hand-back to stop at: back to real time when something happens.
+          if (
+            race.auto &&
+            ((!was[0] && race.neutral) ||
+              (!was[1] && me.boxCall) ||
+              (!was[2] && me.puncture) ||
+              me.damage > was[3])
+          )
+            ffwd = false;
         }
         if (sess && sess.state !== "running" && shown !== sess.seg) {
           shown = sess.seg;
@@ -1507,7 +1527,7 @@ export default function Drive() {
           l.classList.toggle("text-accent", !split.valid);
           l.classList.toggle("text-paper", split.valid);
           if (me.best) bestEl.current!.textContent = fmt(me.best);
-          if (split.valid && (!record || split.lap < record)) {
+          if (split.valid && !split.team && (!record || split.lap < record)) {
             record = split.lap;
             write(BEST(trackId), record);
           }
@@ -1706,7 +1726,9 @@ export default function Drive() {
           ? "Boxing"
           : me.boxCall
             ? "Box? B"
-            : "Team driving";
+            : race.auto
+              ? "Auto drive · E"
+              : "Team driving";
       if (team.lastChild!.textContent !== boxing) team.lastChild!.textContent = boxing;
       const ff = ffEl.current!;
       const canSkip = skippable();
@@ -1727,6 +1749,10 @@ export default function Drive() {
           ? "Stay out"
           : "Box";
       if (bp.textContent !== pad) bp.textContent = pad;
+      const ap = autoPad.current!;
+      ap.hidden = !!sess || !!quali || simming || !p.touch || !!me.out || me.finish !== null;
+      const apText = race.auto ? "Drive" : "Auto";
+      if (ap.textContent !== apText) ap.textContent = apText;
       // Handing your car back: the seconds to go, a pip on each.
       const back = me.out ? 0 : handingBack(race);
       const hand = handEl.current!;
@@ -2551,6 +2577,15 @@ export default function Drive() {
             className={`${padKey} px-4 text-sm font-semibold tracking-wide uppercase`}
           >
             Box
+          </button>
+          <button
+            ref={autoPad}
+            type="button"
+            hidden
+            onClick={() => autoIt.current()}
+            className={`${padKey} px-4 text-sm font-semibold tracking-wide uppercase`}
+          >
+            Auto
           </button>
           <button
             ref={otPad}
