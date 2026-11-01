@@ -18,6 +18,11 @@ import {
   LEVELS,
   PIT_V,
   carGrip,
+  COLD_T,
+  HIGH_T,
+  LOW_T,
+  heatTyres,
+  tempGrip,
   edgeOf,
   gap,
   grip,
@@ -217,7 +222,7 @@ const lapAt = (life: number, tyre: Tyre = "medium", track: Track = monza) => {
   const r = race.racers[0]!;
   race.slips = false;
   for (let f = 0; f < 400 / DT && r.laps < 3; f++) {
-    [r.life, r.warm, r.stops, r.plan] = [life, 1, [], [tyre]];
+    [r.life, r.temps, r.stops, r.plan] = [life, [LOW_T, LOW_T, LOW_T, LOW_T], [], [tyre]];
     tick(race, still, DT);
   }
   return r.best;
@@ -239,13 +244,77 @@ assert.ok(lapAt(0) > fresh + 5000, `worn tyres are slower (${fmt(fresh)} vs ${fm
 // A cold set from the pits is slower over the first half lap.
 {
   const half = (warm: number) => {
-    const race = solo(10, (r) => ([r.warm, r.launch] = [warm, 0]));
+    const t = warm ? LOW_T : COLD_T;
+    const race = solo(10, (r) => ([r.temps, r.launch] = [[t, t, t, t], 0]));
     race.slips = false;
     run(race, 120, () => race.racers[0]!.dist > LENGTH / 2);
     return race.t;
   };
   const [cold, warm] = [half(0), half(1)];
   assert.ok(cold - warm > 200, `cold tyres cost time (${(cold - warm).toFixed(0)} ms)`);
+}
+// Temperature: a clean lap stays in the window on every compound at every track, so dry pace is
+// as tuned; dirty air takes a set over it, which costs grip and wears it quicker, and clean air
+// brings it back.
+{
+  for (const def of TRACKS)
+    for (const tyre of ["soft", "medium", "hard"] as const) {
+      const track = getTrack(def.id);
+      const race = solo(
+        10,
+        (r) => ([r.tyre, r.stints, r.plan, r.stops] = [tyre, [tyre], [tyre], []]),
+        "pro",
+        track,
+      );
+      const r = race.racers[0]!;
+      race.slips = false;
+      let hottest = 0;
+      for (let f = 0; f < 400 / DT && r.laps < 2; f++) {
+        tick(race, still, DT);
+        hottest = Math.max(hottest, ...r.temps);
+      }
+      assert.ok(
+        hottest <= HIGH_T,
+        `${def.name} ${tyre}: clean lap in the window (${hottest.toFixed(1)})`,
+      );
+    }
+  assert.equal(tempGrip([LOW_T, 95, HIGH_T, 100]), 1, "no grip lost in the window");
+  assert.ok(tempGrip([COLD_T, COLD_T, COLD_T, COLD_T]) < 1, "cold tyres lose grip");
+  assert.ok(tempGrip([135, 135, 135, 135]) < 0.97, "hot tyres lose grip");
+  // In dirty air a set heats past the window whatever the compound, softs most; out of it, back.
+  const heat = (tyre: Tyre, dirty: number, temps = [LOW_T, LOW_T, LOW_T, LOW_T]) => {
+    const race = solo(10);
+    const r = race.racers[0]!;
+    [r.tyre, r.dirty, r.temps] = [tyre, dirty, temps];
+    for (let k = 0; k < 500; k++) heatTyres(race, r, still, 0, 1, 10);
+    return r.temps[0]!;
+  };
+  assert.equal(heat("medium", 0), LOW_T, "no heat in clean air on a straight");
+  assert.ok(heat("hard", 0.04) > HIGH_T, "dirty air takes even a hard over the window");
+  assert.ok(heat("soft", 0.04) > heat("medium", 0.04), "softs run hottest");
+  assert.ok(heat("medium", 0, [130, 130, 130, 130]) < HIGH_T, "clean air cools a hot set");
+  // Queueing behind a Safety Car, however close, doesn't heat them.
+  {
+    const race = solo(10);
+    const r = race.racers[0]!;
+    [r.dirty, r.cap] = [0.04, 40];
+    for (let k = 0; k < 500; k++) heatTyres(race, r, still, 0, 1, 10);
+    assert.equal(r.temps[0], LOW_T, "no dirty-air heat under a cap");
+  }
+  // Hot tyres lap slower and wear quicker than the same set in the window.
+  const hotLap = (t: number) => {
+    const race = solo(10);
+    const r = race.racers[0]!;
+    race.slips = false;
+    for (let f = 0; f < 400 / DT && r.laps < 3; f++) {
+      [r.temps, r.stops, r.plan] = [[t, t, t, t], [], ["medium"]];
+      tick(race, still, DT);
+    }
+    return { best: r.best, life: r.life };
+  };
+  const [cool, cooked] = [hotLap(LOW_T), hotLap(HIGH_T + 25)];
+  assert.ok(cooked.best > cool.best, `hot tyres cost time (${cooked.best - cool.best} ms)`);
+  assert.ok(cooked.life < cool.life, "hot tyres wear quicker");
 }
 // A set lasts its share of the race to the cliff, at any Grand Prix distance (the sprint's wears
 // as a 10-lap race's), faster on harder tracks. Life lost per lap on a medium, alone, over its
@@ -318,7 +387,13 @@ assert.ok(BATTERY < 0.998, `the bigger battery's quicker (${BATTERY.toFixed(4)})
     const r = race.racers[0]!;
     race.slips = false;
     for (let f = 0; f < 400 / DT && r.laps < 3; f++) {
-      [r.life, r.warm, r.stops, r.plan, r.form] = [1, 1, [], ["medium"], 1];
+      [r.life, r.temps, r.stops, r.plan, r.form] = [
+        1,
+        [LOW_T, LOW_T, LOW_T, LOW_T],
+        [],
+        ["medium"],
+        1,
+      ];
       tick(race, still, DT);
     }
     return r.best;

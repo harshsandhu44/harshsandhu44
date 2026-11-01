@@ -129,7 +129,7 @@ export const carGrip = (race: Race, r: Racer) => {
     wingGrip(r.wing) *
     (r.id || race.sim || teamDriving(race, r) ? edgeOf(race) : 1) *
     (1 - r.dirty) *
-    (1 - COLD * (1 - r.warm)) *
+    tempGrip(r.temps) *
     (1 - r.damage) *
     (1 + race.rubber) *
     race.cars[r.id >> 1]!;
@@ -418,11 +418,27 @@ const TRACTION = 0.1;
 // Front-left, front-right, rear-left, rear-right.
 export const CORNERS = ["front-left", "front-right", "rear-left", "rear-right"];
 export type Tyre = "soft" | "medium" | "hard";
-export const TYRES: Record<Tyre, { grip: number; last: number; warm: number; name: string }> = {
-  soft: { grip: 1.04, last: 0.41, warm: 0.3, name: "Softs" },
-  medium: { grip: 1, last: 0.65, warm: 0.5, name: "Mediums" },
-  hard: { grip: 0.975, last: 0.94, warm: 0.7, name: "Hards" },
+export const TYRES: Record<
+  Tyre,
+  { grip: number; last: number; warm: number; hot: number; name: string }
+> = {
+  soft: { grip: 1.04, last: 0.41, warm: 0.3, hot: 1.15, name: "Softs" },
+  medium: { grip: 1, last: 0.65, warm: 0.5, hot: 1, name: "Mediums" },
+  hard: { grip: 0.975, last: 0.94, warm: 0.7, hot: 0.9, name: "Hards" },
 };
+// Each wheel has a temperature (see heatTyres). Below the window it's short of up to COLD of its
+// grip, as a new set warms up; through the window, none; over it, HOT of its grip and HOT_WEAR more
+// wear for each HOT_SPAN degrees.
+export const COLD_T = 50;
+export const LOW_T = 85;
+export const HIGH_T = 110;
+const HOT_SPAN = 25;
+const HOT = 0.04;
+const HOT_WEAR = 1;
+const coldShare = (t: number) => Math.max(0, (LOW_T - t) / (LOW_T - COLD_T));
+const hotShare = (t: number) => Math.min(2, Math.max(0, (t - HIGH_T) / HOT_SPAN));
+export const tempGrip = (temps: number[]) =>
+  temps.reduce((sum, t) => sum + 1 - COLD * coldShare(t) - HOT * hotShare(t), 0) / temps.length;
 export const grip = (life: number, tyre: Tyre) =>
   TYRES[tyre].grip * (1 - DEG * (1 - life) - CLIFF * Math.max(0, 1 - life / CLIFF_AT) ** 2);
 // Laps a set lasts to the cliff, in a race of `laps` (qualifying's is one).
@@ -677,8 +693,10 @@ export type Racer = {
   // In the lane with no stop planned on this visit: a computer car that strayed in, or any car
   // after the flag. It drives straight through in the fast lane.
   through: boolean;
-  // How far the set on the car has warmed up, 0 (cold) to 1.
-  warm: number;
+  // Each tyre's temperature (degrees), in CORNERS' order, and whether your engineer has called
+  // them hot since they last came back into the window.
+  temps: number[];
+  hotCall: boolean;
   // Each tyre's life, in CORNERS' order: `life` is their average.
   wear: number[];
   // The rear wing on the car, and the one going on at the next stop.
@@ -855,7 +873,8 @@ export function newRace(
       teamLap: false,
       box: false,
       through: false,
-      warm: 1,
+      temps: [LOW_T, LOW_T, LOW_T, LOW_T],
+      hotCall: false,
       wear: [1, 1, 1, 1],
       wing: id ? aiWing(track, lv, id) : 3,
       nextWing: id ? aiWing(track, lv, id) : 3,
@@ -1362,7 +1381,7 @@ function leave(race: Race, r: Racer, k: number) {
     tyre: "soft",
     wear: set.wear.slice(),
     life: lifeOf(set),
-    warm: 0,
+    temps: [COLD_T, COLD_T, COLD_T, COLD_T],
     charge: CAP,
     harvested: 0,
     damage: 0,
@@ -1545,7 +1564,8 @@ function pitStop(race: Race, r: Racer, dt: number) {
     car.v = 0;
     r.stop -= dt;
     if (r.stop <= 0) {
-      [r.life, r.served, r.boxCall, r.box, r.warm, r.puncture] = [1, true, false, false, 0, false];
+      [r.life, r.served, r.boxCall, r.box, r.puncture] = [1, true, false, false, false];
+      r.temps = [COLD_T, COLD_T, COLD_T, COLD_T];
       [r.tyre, r.fit] = [r.fit ?? nextSet(race, r), null];
       r.stints.push(r.tyre);
       // A box before the line: the in-lap was on the old set, as F1 counts a stint.
@@ -1638,6 +1658,11 @@ const LINES = {
     "In the queue now, over to you.",
     "Lap back, you're in the queue. Your car.",
     "Back where we belong. Over to you.",
+  ],
+  hot: [
+    (w: string) => `The ${w} is running hot. Give it some clean air.`,
+    (w: string) => `Tyre temps are high on the ${w}. Back out of the dirty air.`,
+    (w: string) => `We're overheating the ${w}. Look after it for a lap.`,
   ],
   damage: [
     "We've got damage. Car feel OK?",
@@ -1889,6 +1914,13 @@ function engineer(race: Race) {
   const e = race.eng;
   if (!me || me.out || me.finish !== null || race.laps < 2) return;
   if (me.pit || race.neutral) e.touch = me.laps + 1;
+  // Tyres over the window: said once, until they're back in it.
+  const hottest = Math.max(...me.temps);
+  if (hottest < HIGH_T) me.hotCall = false;
+  else if (hottest > HIGH_T + HOT_SPAN / 2 && !me.hotCall && !me.pit) {
+    me.hotCall = true;
+    radio(race, pick(LINES.hot)(CORNERS[me.temps.indexOf(hottest)]!), true);
+  }
   if (me.damage - e.hurt >= 0.02) {
     e.hurt = me.damage;
     radio(race, pick(LINES.damage));
@@ -2426,22 +2458,54 @@ function neutralise(race: Race, dt: number) {
   }
 }
 
-// A frame's wear over `ds` m (see TYRES): `turn` is what the steering asked of the grip (step),
-// turning right with the left tyres on the outside, and `edge` how far past the tarmac the car is.
-function wearTyres(race: Race, r: Racer, input: Input, turn: number, edge: number, ds: number) {
-  const base = (lapWear(r.tyre, race.laps, race.track) / race.track.LENGTH) * ds;
+// How hard a frame works tyre k, 1 as a set's average: `turn` is what the steering asked of the
+// grip (step), turning right with the left tyres on the outside.
+const tyreLoad = (k: number, input: Input, turn: number) => {
   const u = Math.min(1, Math.abs(turn));
   const pedal = (input.brake ? BRAKING : 0) - (input.gas ? TRACTION : 0);
+  const [front, left] = [k < 2 ? 1 : -1, k % 2 === 0];
+  return 1 + (left === turn > 0 ? LOAD : -LOAD) * u + front * (FRONT * u + pedal);
+};
+// A frame's wear over `ds` m (see TYRES), with `edge` how far past the tarmac the car is. A tyre
+// over its window wears quicker.
+function wearTyres(race: Race, r: Racer, input: Input, turn: number, edge: number, ds: number) {
+  const base = (lapWear(r.tyre, race.laps, race.track) / race.track.LENGTH) * ds;
   const grass = allFourOff(edge) ? GRASS * ds : 0;
   let lost = 0;
   r.wear = r.wear.map((w, k) => {
-    const [front, left] = [k < 2 ? 1 : -1, k % 2 === 0];
-    const load = 1 + (left === turn > 0 ? LOAD : -LOAD) * u + front * (FRONT * u + pedal);
-    const d = base * load + grass;
+    const d = base * tyreLoad(k, input, turn) * (1 + HOT_WEAR * hotShare(r.temps[k]!)) + grass;
     lost += d / 4;
     return Math.max(0, w - d);
   });
   r.life = Math.max(0, r.life - lost);
+}
+
+// A frame's heat over `ds` m. A cold tyre climbs to the window over a share of a lap, softs
+// quickest. In it, each tyre heads over TAU m for LOW_T plus what's heating it: cornering and
+// braking load (at most 2 of CORNER_HEAT, so clean driving can't take even the hottest compound
+// out of the window, and dry pace is as tuned), dirty air (DIRTY_HEAT at the car's bumper) and
+// going into a corner over its limit, by more than OVER of it (OVER_HEAT for all of it).
+// ponytail: tyre temperature as one number a wheel, no surface or carcass; add those if heat ever
+// needs to come and go on two timescales.
+const TAU = 800;
+const CORNER_HEAT = 10;
+const DIRTY_HEAT = 70;
+const OVER = 0.05;
+const OVER_HEAT = 2000;
+export function heatTyres(race: Race, r: Racer, input: Input, turn: number, g: number, ds: number) {
+  const { LENGTH, atDist, limitAt } = race.track;
+  const { hot, warm } = TYRES[r.tyre];
+  const limit = limitAt(atDist(r.p * LENGTH), g, LEVELS[race.level].line);
+  const over = Math.abs(turn) < 1 ? 0 : Math.min(0.2, Math.max(0, r.car.v / limit - 1 - OVER));
+  // Nobody's working the tyres queueing behind a Safety Car or under a VSC, however close.
+  const dirty = r.cap === Infinity ? r.dirty / DIRTY : 0;
+  const heat = hot * (DIRTY_HEAT * dirty + OVER_HEAT * over);
+  const u = Math.min(1, Math.abs(turn));
+  r.temps = r.temps.map((t, k) => {
+    if (t < LOW_T) return Math.min(LOW_T, t + ((LOW_T - COLD_T) * ds) / (warm * LENGTH));
+    const load = hot * CORNER_HEAT * Math.max(0, u + tyreLoad(k, input, turn) - 1);
+    return t + ((LOW_T + load + heat - t) * Math.min(ds, TAU)) / TAU;
+  });
 }
 
 // Your split, and whether the team drove any of the lap so far.
@@ -2559,7 +2623,7 @@ export function tick(race: Race, you: Input, dt: number): YourSplit | null {
     // quick lap was tuned on (QUALI_WEAR); out-laps really do cost little.
     if (!race.session || race.session.phase[r.id] === "push")
       wearTyres(race, r, input, turn, edge, dt * v);
-    r.warm = Math.min(1, r.warm + (dt * v) / (TYRES[r.tyre].warm * LENGTH));
+    heatTyres(race, r, input, turn, g, dt * v);
     if (race.incidents && r.life <= 0 && r.finish === null && race.rand() < 0.05 * dt)
       puncture(race, r, true);
     r.wrong = Math.cos(car.h - dirAt(p)) < -0.5 && car.v > 4.2 ? r.wrong + dt : 0;

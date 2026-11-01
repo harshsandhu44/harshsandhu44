@@ -81,6 +81,9 @@ import {
   type Racer,
   type Round,
   type Tyre,
+  COLD_T,
+  HIGH_T,
+  LOW_T,
 } from "@/race";
 import { KERB_R, TOP, fmt, gear } from "@/track";
 import { CALENDAR, FIRST_CALENDAR, TRACKS, getTrack } from "@/tracks";
@@ -207,9 +210,12 @@ const wingText = (w: number) =>
   w === 3
     ? "The car as tuned"
     : `Top speed ${signed((wingTop(w) - 1) * TOP * 3.6, 0)} km/h, grip ${signed((wingGrip(w) - 1) * 100, 1)}%`;
-// A tyre's colour in the HUD: blue while cold, then green, yellow and red as it wears.
-const wearInk = (life: number, warm: number) =>
-  warm < 0.9 ? "bg-print text-paper" : life > 0.6 ? "bg-go" : life > 0.3 ? "bg-slow" : "bg-accent";
+// A tyre's colour in the HUD: blue while cold, then green, yellow and red as it wears, with a
+// white ring while it's over its window.
+const wearInk = (life: number, temp: number) =>
+  temp < COLD_T + 0.9 * (LOW_T - COLD_T)
+    ? "bg-print text-paper"
+    : `${life > 0.6 ? "bg-go" : life > 0.3 ? "bg-slow" : "bg-accent"}${temp > HIGH_T ? " ring-2 ring-inset ring-white" : ""}`;
 // The team's plan as the grid screen shows it: "M → H, box lap 3", or in the sprint "M, no stop".
 const planText = ({ at, tyres }: { at: number[]; tyres: Tyre[] }) =>
   `${tyres.map(letter).join(" → ")}, ${at.length ? `box lap ${at.join(" and ")}` : "no stop"}`;
@@ -242,7 +248,7 @@ const RULES: [string, string][] = [
   ],
   [
     "Tyres & pits",
-    "Softs grip most, hards last longest, and a set lasts the same share of the race at any Grand Prix distance, less on tracks hard on tyres like Silverstone and Spa. Grip fades slowly, then falls off a cliff in the last quarter of a set's life, and all four wheels on the grass wears them faster. Each tyre wears on its own: the outside ones through the corners, the fronts on the brakes and the rears on the throttle. A new set is cold for its first half lap, shown blue. In a Grand Prix you must run two compounds, so everyone stops at least once: finish on one and you're disqualified. The sprint is one stint, as in F1: no stop needed and any compound, with softs quickest but fading before the flag. The team plans your race on the grid screen and calls you in, but when you box is up to you: press 1, 2 or 3 any time to pick the next set. The pit lane leaves the main straight before the line: turn in and the team drives you to your box and back out, counting down before it hands back. Only your teammate can hold you up there.",
+    "Softs grip most, hards last longest, and a set lasts the same share of the race at any Grand Prix distance, less on tracks hard on tyres like Silverstone and Spa. Grip fades slowly, then falls off a cliff in the last quarter of a set's life, and all four wheels on the grass wears them faster. Each tyre wears on its own: the outside ones through the corners, the fronts on the brakes and the rears on the throttle. A new set is cold for its first half lap, shown blue. Clean driving keeps tyres in their window, but following closely in dirty air or overcooking corners overheats them, softs most: a white ring on a wheel means it's over the window, losing grip and wearing faster until clean air cools it. In a Grand Prix you must run two compounds, so everyone stops at least once: finish on one and you're disqualified. The sprint is one stint, as in F1: no stop needed and any compound, with softs quickest but fading before the flag. The team plans your race on the grid screen and calls you in, but when you box is up to you: press 1, 2 or 3 any time to pick the next set. The pit lane leaves the main straight before the line: turn in and the team drives you to your box and back out, counting down before it hands back. Only your teammate can hold you up there.",
   ],
   [
     "Wing",
@@ -1628,7 +1634,7 @@ export default function Drive() {
         const w = flat ? 0 : me.wear[k]!;
         const text = String(Math.round(w * 100));
         if (el.textContent !== text) el.textContent = text;
-        const cls = `${TYRE_CELL} ${flat ? "bg-accent motion-safe:animate-pulse" : wearInk(w, me.warm)}`;
+        const cls = `${TYRE_CELL} ${flat ? "bg-accent motion-safe:animate-pulse" : wearInk(w, me.temps[k]!)}`;
         if (el.className !== cls) el.className = cls;
       });
       tyreText.current!.textContent = `${Math.round(me.life * 100)}%`;
