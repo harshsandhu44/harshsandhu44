@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.13.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.12.0...drive-v1.13.0) (2026-11-01)
+
+
+### Features
+
+* **drive:** rain, with inters and wets, on by default ([#97](https://github.com/harshsandhu44/harshsandhu44/issues/97)) ([f90f834](https://github.com/harshsandhu44/harshsandhu44/commit/f90f834496e7c14a54af19545a9eacab416b5691))
+
 ## [1.12.0](https://github.com/harshsandhu44/harshsandhu44/compare/drive-v1.11.0...drive-v1.12.0) (2026-10-31)
 
 
