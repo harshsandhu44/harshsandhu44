@@ -21,6 +21,7 @@ import {
 } from "./track.ts";
 import {
   aquaplane,
+  bestKind,
   clearLine,
   forecast,
   meanWater,
@@ -764,6 +765,21 @@ const UNLAP_LAPS = 3;
 const UNLAP_PACE = 1;
 const REJOIN = 150;
 const UNLAP_MAX = 4;
+// Race Control and the water, by the track's mean: the Safety Car from HEAVY, staying out until
+// under CLEAR; from EXTREME a red flag. Every car stops where it is and the clock waits, for at least
+// RED_WAIT ms with the weather running RED_SPEED times as fast, until it's under RESUME, with a free
+// change of tyres and a restart behind the Safety Car. After RED_LIMIT ms of that the race is called:
+// the running order stands, on half points under CALLED_FULL of the distance and none under two
+// laps. ponytail: the cars wait where they stopped rather than drive to the pit lane and queue, so
+// there's no grid to rebuild and no lap count to fake.
+const HEAVY = 0.75;
+const CLEAR = 0.62;
+const EXTREME = 0.92;
+const RESUME = 0.8;
+const RED_WAIT = 15_000;
+const RED_SPEED = 30;
+const RED_LIMIT = 90_000;
+const CALLED_FULL = 0.75;
 
 export type Racer = {
   // Driver index into the level's roster: 0 is you, and id >> 1 is the team (and its box).
@@ -941,6 +957,10 @@ export type Race = {
   outlook: Outlook | null;
   rainCall: number;
   planning: Racer[];
+  // A red flag in the race: its ms still to run at the least and waited so far; whether it ended
+  // the race.
+  red: { left: number; waited: number } | null;
+  called: boolean;
 };
 
 // The coming laps: each one's water in your team's read, and the chance of rain in the next few.
@@ -985,6 +1005,7 @@ export function newRace(
     const [lo, hi] = [Math.min(...xs), Math.max(...xs)];
     return (drivers[id]![k] - lo) / (hi - lo || 1);
   };
+  const soaked = !!weather && meanWater(weather) >= HEAVY;
   const racers = [...Array(CARS).keys()].map((id): Racer => {
     // Too short a race for a stop (qualifying), and you, plan nothing here. You run the car as
     // tuned until the grid screen sets your wing.
@@ -993,7 +1014,9 @@ export function newRace(
     const s = grid.indexOf(id);
     const m = gridAt(s);
     const [x, y] = pointAt(m, (s % 2 ? 1 : -1) * (HALF[atDist(m)]! / 2.5));
-    const on = strat.tyres[0]!;
+    // A downpour at the start: everyone on wets, behind the Safety Car.
+    const planned = soaked ? ["wet" as const, ...strat.tyres.slice(1)] : strat.tyres;
+    const on = planned[0]!;
     return {
       id,
       car: { x, y, h: dirAt((m + LENGTH) / LENGTH), v: 0 },
@@ -1016,7 +1039,7 @@ export function newRace(
           ? pace[0]
           : (pace[1] + (pace[0] - pace[1]) * spread("pace", id)) * titled(drivers[id]!.titles),
       stops: strat.at,
-      plan: strat.tyres,
+      plan: planned,
       pitting: false,
       launch: 180 + rand() * 140,
       lane: 0,
@@ -1103,6 +1126,8 @@ export function newRace(
     outlook: null,
     rainCall: -1,
     planning: [],
+    red: null,
+    called: false,
     eng: {
       next: 0,
       pos: 0,
@@ -1860,6 +1885,10 @@ const LINES = {
     (n: number) => `Radar's got rain about ${n} lap${n > 1 ? "s" : ""} out. We'll call the tyre.`,
     (n: number) => `Rain coming, maybe ${n} lap${n > 1 ? "s" : ""}. Stay on these for now.`,
   ],
+  red: [
+    "Red flag, red flag. Stop the car. Pick your tyres for the restart.",
+    "That's a red flag. Too much water. Which tyres for the restart?",
+  ],
   hot: [
     (w: string) => `The ${w} is running hot. Give it some clean air.`,
     (w: string) => `Tyre temps are high on the ${w}. Back out of the dirty air.`,
@@ -2615,7 +2644,8 @@ function neutralise(race: Race, dt: number) {
         if (r.id === 0) radio(race, pick(LINES.rejoin));
       }
     }
-    if (!n.ending && sc.run > 0.75 * LENGTH && !rs.some((r) => r.unlap)) {
+    const tooWet = !!race.weather && meanWater(race.weather) >= CLEAR;
+    if (!n.ending && sc.run > 0.75 * LENGTH && !tooWet && !rs.some((r) => r.unlap)) {
       handover(race, "Safety Car's in this lap");
       say(race, "sc", -1, "Safety Car in this lap");
     }
@@ -2748,6 +2778,67 @@ export function heatTyres(
   });
 }
 
+// Whether this race starts behind the Safety Car on wets.
+export const wetStart = (race: Race) => !!race.weather && meanWater(race.weather) >= HEAVY;
+function rainControl(race: Race) {
+  const w = race.weather;
+  if (!w?.any || race.session || race.done) return;
+  if (race.racers.some((r) => r.finish !== null)) return;
+  const deep = meanWater(w);
+  if (deep >= EXTREME) {
+    if (race.neutral?.kind !== "sc") deploy(race, "sc");
+    race.red = { left: RED_WAIT, waited: 0 };
+    for (const r of race.racers) r.car.v = 0;
+    if (race.sc) race.sc.car.v = 0;
+    race.planning = [];
+    say(race, "flag", -1, "Red flag · Too much water");
+    radio(race, pick(LINES.red));
+  } else if (deep >= HEAVY && race.neutral?.kind !== "sc") deploy(race, "sc");
+}
+function redFlagged(race: Race, ms: number) {
+  const red = race.red!;
+  const w = race.weather!;
+  tickWeather(w, ms * RED_SPEED);
+  red.left -= ms;
+  red.waited += ms;
+  if (red.left > 0) return;
+  if (red.waited >= RED_LIMIT) return callRace(race);
+  if (meanWater(w) >= RESUME) return;
+  race.red = null;
+  for (const r of race.racers) {
+    r.wreck = false;
+    if (r.out || r.finish !== null) continue;
+    // Your pick, or the team's for the next lap's water.
+    const water = teamWater(race, r.id >> 1, r.laps)?.[r.laps] ?? 0;
+    const kind = bestKind(water);
+    const tyre = (r.id ? null : r.fit) ?? (kind === "slick" ? "medium" : kind);
+    r.fit = null;
+    [r.tyre, r.life, r.wear, r.set] = [tyre, 1, [1, 1, 1, 1], r.laps];
+    r.temps = [LOW_T, LOW_T, LOW_T, LOW_T];
+    r.stints.push(tyre);
+    r.sets.push(r.laps);
+    replan(race, r);
+  }
+  say(race, "flag", -1, "Restart behind the Safety Car");
+}
+// The race ends where it stopped: the running order is the result, a millisecond a place.
+function callRace(race: Race) {
+  race.red = null;
+  race.called = true;
+  race.racers
+    .filter((r) => !r.out && r.finish === null)
+    .sort((a, b) => b.dist - a.dist)
+    .forEach((r, k) => (r.finish = race.t + k));
+  race.done = true;
+  say(race, "flag", -1, "Race will not resume");
+}
+// The share of the points a race pays.
+export const pointsShare = (race: Race) => {
+  if (!race.called) return 1;
+  const most = Math.max(...race.racers.map((r) => r.laps));
+  return most < 2 ? 0 : most < CALLED_FULL * race.laps ? 0.5 : 1;
+};
+
 // Your team's forecast, every LOOK_EVERY ms: the water it reads on the coming laps, the chance of
 // rain over the next OUTLOOK from how often a few reads of it agree, and the call on the radio when
 // rain first looks close, once a spell.
@@ -2785,9 +2876,15 @@ export type YourSplit = Split & { team: boolean };
 // One frame for every car. `you` is the player's input, or null to hold them (before the lights).
 // Returns the player's split, if this frame made one.
 export function tick(race: Race, you: Input, dt: number): YourSplit | null {
+  if (race.red) {
+    redFlagged(race, dt * 1000);
+    return null;
+  }
   race.t += dt * 1000;
   if (race.weather) tickWeather(race.weather, dt * 1000);
   outlook(race);
+  rainControl(race);
+  if (race.red) return null;
   // One computer car's plan a frame; it may have stopped or finished by its turn.
   const turn = race.planning.shift();
   if (turn && !turn.out && turn.finish === null && !turn.pitting && !turn.puncture) {
@@ -3054,7 +3151,7 @@ export function results(race: Race) {
       const time = run + r.penalty;
       const down = race.laps - r.laps;
       const { id, best, penalty, paid, stints, sets, out } = r;
-      const dsq = r.finish !== null && !sprint(race.laps) && !legalSets(stints);
+      const dsq = r.finish !== null && !sprint(race.laps) && !race.called && !legalSets(stints);
       // The slot it started from (1 for pole), and the laps on each set.
       const grid = race.grid.indexOf(id) + 1;
       const stintLaps = sets.map((at, k) => (sets[k + 1] ?? r.laps) - at);
@@ -3076,6 +3173,8 @@ export type Round = {
   track?: string;
   fastest?: number | null;
   table?: ReturnType<typeof results>;
+  // The share of the points it paid, if a called race didn't pay them all.
+  share?: number;
 };
 // The championships after `rounds`: drivers, and teams (by team index, its drivers' points
 // together), most points first, ties broken on countback (most wins, then seconds, and so on).
@@ -3087,11 +3186,11 @@ export function standings(rounds: Round[], sprints: boolean) {
       points: 0,
       places: Array<number>(CARS).fill(0),
     }));
-    for (const { order, none } of rounds)
+    for (const { order, none, share = 1 } of rounds)
       order.forEach((id, place) => {
         if (none.includes(id)) return;
         const row = rows[of(id)]!;
-        row.points += pts[place] ?? 0;
+        row.points += (pts[place] ?? 0) * share;
         row.places[place]!++;
       });
     const countback = (a: (typeof rows)[number], b: (typeof rows)[number]) =>

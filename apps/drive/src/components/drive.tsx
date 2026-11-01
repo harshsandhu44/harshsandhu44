@@ -82,7 +82,9 @@ import {
   type Tyre,
   COLD_T,
   gripAhead,
+  pointsShare,
   teamWater,
+  wetStart,
   type Outlook,
   HIGH_T,
   LOW_T,
@@ -1246,8 +1248,10 @@ export default function Drive() {
       // start.
       if (read(SOUND, false)) audio.current ??= createAudio(aidsRef.current.mix);
     };
-    go.current = (t) => {
+    go.current = (pick) => {
       const me = race.racers[0]!;
+      // A downpour at the start's on wets for everyone.
+      const t = wetStart(race) ? "wet" : pick;
       const plan = teamPlan(race.laps, track, t, teamWater(race, 0));
       [me.tyre, me.stints, me.stops, me.plan] = [t, [t], plan.at, plan.tyres];
       [me.wing, me.nextWing] = [wingRef.current, wingRef.current];
@@ -1586,7 +1590,15 @@ export default function Drive() {
           if (inCareerRef.current && live(c)) {
             const order = table.map((r) => r.id);
             const none = table.filter((r) => r.out || r.dsq).map((r) => r.id);
-            const round = { order, none, track: trackId, fastest: race.fastest?.id ?? null, table };
+            const share = pointsShare(race);
+            const round = {
+              ...(share < 1 && { share }),
+              order,
+              none,
+              track: trackId,
+              fastest: race.fastest?.id ?? null,
+              table,
+            };
             const next = { ...c!, rounds: [...c!.rounds, round] };
             saveCareer(next);
             const { drivers } = standings(next.rounds, sprints(next));
@@ -1597,6 +1609,7 @@ export default function Drive() {
             text = `${text} ${titleWord(k + 1, gap, !live(next))}`;
             points = sprints(next) ? SPRINT_POINTS : POINTS;
           }
+          if (pointsShare(race) < 1) points = (points ?? POINTS).map((p) => p * pointsShare(race));
           race.msgs.push({ kind: "radio", id: 0, text });
           const { level, laps, fastest } = race;
           setResult({
@@ -1714,8 +1727,9 @@ export default function Drive() {
       const banner = bannerEl.current!;
       // A penalty's served first, before the stop's own STOP seconds.
       const serving = me.stop > STOP;
-      const say =
-        me.stop > 0
+      const say = race.red
+        ? `Red flag · pick your tyres · ${Math.ceil(Math.max(0, race.red.left) / 1000)}`
+        : me.stop > 0
           ? serving
             ? `Penalty ${(me.stop - STOP).toFixed(1)}`
             : me.stop.toFixed(1)

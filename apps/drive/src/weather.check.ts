@@ -17,6 +17,7 @@ import {
   wetGrip,
 } from "./weather.ts";
 import { TRACKS, getTrack } from "./tracks.ts";
+import { progression, season } from "./season.ts";
 import {
   carGrip,
   GRID,
@@ -25,6 +26,10 @@ import {
   legalSets,
   LOW_T,
   newRace,
+  pointsShare,
+  results,
+  standings,
+  wetStart,
   tick,
   type Tyre,
 } from "./race.ts";
@@ -150,14 +155,14 @@ const lap = (tyre: Tyre, water: number, id = 2) => {
 {
   const dry = lap("medium", 0);
   const inters = [lap("inter", 0.2), lap("medium", 0.2)];
-  const soaked = [lap("wet", 1), lap("inter", 1), lap("medium", 1)];
-  console.log(`Monza: dry ${dry}, damp I/M ${inters}, soaked W/I/M ${soaked}`);
+  const soaked = [lap("wet", 0.7), lap("inter", 0.7), lap("medium", 0.7)];
+  console.log(`Monza: dry ${dry}, damp I/M ${inters}, very wet W/I/M ${soaked}`);
   assert.ok(dry > 0 && soaked.every((x) => x > 0), "gets round");
   assert.ok(inters[0]! < inters[1]!, "inters beat slicks when damp");
   assert.ok(soaked[0]! < soaked[1]! && soaked[1]! < soaked[2]!, "wets, then inters, then slicks");
   assert.ok(
     soaked[0]! / dry > 1.08 && soaked[0]! / dry < 1.5,
-    `a soaked lap ${soaked[0]! / dry}x dry`,
+    `a very wet lap ${soaked[0]! / dry}x dry`,
   );
   assert.ok(lap("wet", 0) > dry, "wets are slower on a dry road");
 }
@@ -177,6 +182,71 @@ const lap = (tyre: Tyre, water: number, id = 2) => {
     fixedWeather(0.5),
   );
   assert.ok(carGrip(wet, wet.racers[3]!) < carGrip(dry, dry.racers[3]!));
+}
+// Race Control. The Safety Car comes out for heavy water and stays until it's eased.
+{
+  const w = fixedWeather(0.8, 0.8);
+  const race = newRace(monza, GRID, seeded(7), "medium", "pro", 8, false, undefined, undefined, w);
+  race.auto = true;
+  for (let f = 0; f < 60 / DT; f++) tick(race, still, DT);
+  assert.equal(race.neutral?.kind, "sc", "out for heavy water");
+  assert.ok(
+    race.racers.every((r) => r.tyre === "wet"),
+    "a downpour start's on wets",
+  );
+  assert.ok(wetStart(race));
+  // Far past when it'd normally come in, still soaked.
+  for (let f = 0; f < 200 / DT; f++) tick(race, still, DT);
+  assert.equal(race.neutral?.kind, "sc", "stays out while it's soaked");
+  w.cells = [];
+  for (let f = 0; f < 700 / DT && race.neutral; f++) tick(race, still, DT);
+  assert.equal(race.neutral, null, "in once it's eased");
+}
+// A red flag: the clock waits, nobody moves, the tyres are free, and it restarts behind the Safety
+// Car once the water's down.
+{
+  const w = fixedWeather(0.5, 1);
+  const race = newRace(monza, GRID, seeded(7), "medium", "pro", 8, false, undefined, undefined, w);
+  race.auto = true;
+  const me = race.racers[3]!;
+  [me.tyre, me.stints, me.plan] = ["medium", ["medium"], ["medium"]];
+  for (let f = 0; f < 400 / DT && !race.red; f++) tick(race, still, DT);
+  assert.ok(race.red, "red at extreme water");
+  const { t } = race;
+  const [x, y] = [me.car.x, me.car.y];
+  w.cells = [{ from: -1e6, to: w.t + 5 * 60_000, at: 0, drift: 0, width: 2, rate: 1 }];
+  for (let f = 0; f < 5 / DT; f++) tick(race, still, DT);
+  assert.equal(race.t, t, "the clock waits");
+  assert.deepEqual([me.car.x, me.car.y], [x, y], "nobody moves");
+  for (let f = 0; f < 200 / DT && race.red; f++) tick(race, still, DT);
+  assert.equal(race.red, null, "resumes");
+  assert.ok(!race.called, "not called");
+  assert.equal(race.neutral?.kind, "sc", "behind the Safety Car");
+  assert.equal(me.life, 1, "a free set");
+  assert.notEqual(me.tyre, "medium", "wet tyres for the water");
+  const moved = me.dist;
+  for (let f = 0; f < 30 / DT; f++) tick(race, still, DT);
+  assert.ok(me.dist > moved + 100, "racing again");
+}
+// One that never eases is called: the order stands on reduced points.
+{
+  const w = fixedWeather(0.5, 1);
+  const race = newRace(monza, GRID, seeded(7), "medium", "pro", 12, false, undefined, undefined, w);
+  race.auto = true;
+  race.fastest = { id: 3, ms: 90_000 };
+  for (const r of race.racers) r.laps = 4;
+  for (let f = 0; f < 400 / DT && !race.red; f++) tick(race, still, DT);
+  const first = race.racers.reduce((p, q) => (q.dist > p.dist ? q : p)).id;
+  for (let f = 0; f < 800 / DT && !race.done; f++) tick(race, still, DT);
+  assert.ok(race.called && race.done, "called");
+  const table = results(race);
+  assert.equal(table[0]!.id, first, "the running order stands");
+  assert.ok(!table.some((r) => r.dsq), "no one's disqualified for one compound");
+  assert.equal(pointsShare(race), 0.5, "half points");
+  const rounds = [{ order: table.map((r) => r.id), none: [], share: 0.5 }];
+  assert.equal(standings(rounds, false).drivers[0]!.points, 12.5, "half of 25 in the table");
+  assert.equal(season(rounds, first, false).points, 12.5, "and in the season");
+  assert.deepEqual(progression(rounds, false)[first], [12.5], "and the chart");
 }
 assert.equal(SECTIONS, 30);
 console.log("weather: ok");

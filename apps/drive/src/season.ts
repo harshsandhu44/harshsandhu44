@@ -16,7 +16,7 @@ export function progression(rounds: Round[], sprints: boolean) {
   const pts = pointsOf(sprints);
   return [...Array(CARS).keys()].map((id) => {
     let sum = 0;
-    return rounds.map((r) => (sum += pts[placeIn(r, id) ?? CARS] ?? 0));
+    return rounds.map((r) => (sum += (pts[placeIn(r, id) ?? CARS] ?? 0) * (r.share ?? 1)));
   });
 }
 
@@ -36,7 +36,7 @@ export function season(rounds: Round[], id: number, sprints: boolean) {
     poles: grids.filter((g) => g === 0).length,
     fastest: rounds.filter((r) => r.fastest === id).length,
     dnfs: places.length - finished.length,
-    points: finished.reduce((s, p) => s + (pts[p] ?? 0), 0),
+    points: rounds.reduce((s, r, k) => s + (pts[places[k] ?? CARS] ?? 0) * (r.share ?? 1), 0),
     best: finished.length ? Math.min(...finished) + 1 : null,
     grid: grids.length ? mean(grids)! + 1 : null,
     finish: finished.length ? mean(finished)! + 1 : null,

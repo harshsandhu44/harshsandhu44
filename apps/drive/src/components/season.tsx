@@ -226,7 +226,9 @@ function Classification({
                 {row.stints.map((t) => t[0]!.toUpperCase()).join("")}
               </span>
             )}
-            <span className="w-6 text-right font-semibold">{(!out && pts[k]) || ""}</span>
+            <span className="w-6 text-right font-semibold">
+              {(!out && (pts[k] ?? 0) * (round.share ?? 1)) || ""}
+            </span>
           </li>
         );
       })}
@@ -331,7 +333,9 @@ function Stats({ rounds, calendar, sprints, trackName }: SeasonProps) {
                 {gridIn(r, 0) !== null ? `from P${gridIn(r, 0)! + 1}` : ""}
               </span>
               <span className="w-10 text-right">{p === null ? cell(r, 0) : `P${p + 1}`}</span>
-              <span className="w-6 text-right font-semibold">{(p !== null && pts[p]) || ""}</span>
+              <span className="w-6 text-right font-semibold">
+                {(p !== null && (pts[p] ?? 0) * (r.share ?? 1)) || ""}
+              </span>
             </li>
           );
         })}
