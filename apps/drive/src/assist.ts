@@ -39,7 +39,15 @@ const cornersOf = (track: Track) => {
 // fastest the car can be at each point and still slow for everything after it, as track.ts's
 // profile but not stopping at TOP, as the 2026 power runs past it: where you're quicker than
 // that is the zone to brake for, and it starts at the braking point.
-export function guide(track: Track, g: number, v: number, m: number, mode: Line, out: Uint8Array) {
+export function guide(
+  track: Track,
+  gripOf: number | ((i: number) => number),
+  v: number,
+  m: number,
+  mode: Line,
+  out: Uint8Array,
+) {
+  const gAt = (i: number) => (typeof gripOf === "number" ? gripOf : gripOf(i));
   const { CUM, LENGTH, PATH, atDist, limitAt } = track;
   const N = PATH.length;
   const mask = cornersOf(track);
@@ -56,12 +64,13 @@ export function guide(track: Track, g: number, v: number, m: number, mode: Line,
     dist.push(d);
   }
   const can = ahead.map((i) => {
-    const l = limitAt(i, g, 1);
+    const l = limitAt(i, gAt(i), 1);
     return l >= TOP - 0.01 ? Infinity : l;
   });
   for (let k = can.length - 2; k >= 0; k--) {
     const next = can[k + 1]!;
     if (next === Infinity) continue;
+    const g = gAt(ahead[k + 1]!);
     const reach = Math.sqrt(next * next + 2 * g * brakeAt(next) * (dist[k + 1]! - dist[k]!));
     can[k] = Math.min(can[k]!, reach);
   }

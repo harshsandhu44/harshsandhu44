@@ -35,7 +35,6 @@ import {
   TYRES,
   STOP,
   WINGS,
-  carGrip,
   colorOf,
   driver,
   gap,
@@ -82,9 +81,11 @@ import {
   type Round,
   type Tyre,
   COLD_T,
+  gripAhead,
   HIGH_T,
   LOW_T,
 } from "@/race";
+import { drawWeather, MODES as SKIES, WEATHER_ON, type Mode } from "@/weather";
 import { KERB_R, TOP, fmt, gear } from "@/track";
 import { CALENDAR, FIRST_CALENDAR, TRACKS, getTrack } from "@/tracks";
 import { Season, TitleScenarios } from "@/components/season";
@@ -196,7 +197,13 @@ const TYRE_INK: Record<Tyre, string> = {
   soft: "text-accent",
   medium: "text-slow",
   hard: "text-paper",
+  inter: "text-go",
+  wet: "text-[#5b9dff]",
 };
+// With rain possible, the wet tyres too: keys 4 and 5.
+const WET_COMPOUNDS: Tyre[] = [...COMPOUNDS, "inter", "wet"];
+const WEATHER = "drive-weather";
+const weatherShown = () => WEATHER_ON || location.search.includes("weather");
 // How long a set lasts in this race, to the cliff.
 const blurb = (t: Tyre, laps: number) => {
   const n = Math.max(1, Math.round(laps));
@@ -248,7 +255,7 @@ const RULES: [string, string][] = [
   ],
   [
     "Tyres & pits",
-    "Softs grip most, hards last longest, and a set lasts the same share of the race at any Grand Prix distance, less on tracks hard on tyres like Silverstone and Spa. Grip fades slowly, then falls off a cliff in the last quarter of a set's life, and all four wheels on the grass wears them faster. Each tyre wears on its own: the outside ones through the corners, the fronts on the brakes and the rears on the throttle. A new set is cold for its first half lap, shown blue. Clean driving keeps tyres in their window, but following closely in dirty air or overcooking corners overheats them, softs most: a white ring on a wheel means it's over the window, losing grip and wearing faster until clean air cools it. In a Grand Prix you must run two compounds, so everyone stops at least once: finish on one and you're disqualified. The sprint is one stint, as in F1: no stop needed and any compound, with softs quickest but fading before the flag. The team plans your race on the grid screen and calls you in, but when you box is up to you: press 1, 2 or 3 any time to pick the next set. The pit lane leaves the main straight before the line: turn in and the team drives you to your box and back out, counting down before it hands back. Only your teammate can hold you up there.",
+    "Softs grip most, hards last longest, and a set lasts the same share of the race at any Grand Prix distance, less on tracks hard on tyres like Silverstone and Spa. Grip fades slowly, then falls off a cliff in the last quarter of a set's life, and all four wheels on the grass wears them faster. Each tyre wears on its own: the outside ones through the corners, the fronts on the brakes and the rears on the throttle. A new set is cold for its first half lap, shown blue. Clean driving keeps tyres in their window, but following closely in dirty air or overcooking corners overheats them, softs most: a white ring on a wheel means it's over the window, losing grip and wearing faster until clean air cools it. In a Grand Prix you must run two compounds, so everyone stops at least once: finish on one and you're disqualified. The sprint is one stint, as in F1: no stop needed and any compound, with softs quickest but fading before the flag. The team plans your race on the grid screen and calls you in, but when you box is up to you: press 1, 2 or 3 any time to pick the next set, or in the rain 4 for inters and 5 for wets. The pit lane leaves the main straight before the line: turn in and the team drives you to your box and back out, counting down before it hands back. Only your teammate can hold you up there.",
   ],
   [
     "Wing",
@@ -593,6 +600,10 @@ export default function Drive() {
   });
   const aidsRef = useRef(aids);
   const [settings, setSettings] = useState(false);
+  const [shownWeather] = useState(weatherShown);
+  const weatherShownRef = useRef(shownWeather);
+  const [weather, setWeather] = useState<Mode>(() => read(WEATHER, "auto"));
+  const weatherRef = useRef(weather);
   const audio = useRef<Audio | null>(null);
   const again = useRef<() => void>(() => {});
   // The grid screen's pick, and what it and the pit lane's chips call into the race.
@@ -646,6 +657,9 @@ export default function Drive() {
   const [career, setCareer] = useState<Career | null>(() => read(CAREER, null));
   const careerRef = useRef(career);
   const [inCareer, setInCareer] = useState(() => read(MODE, false));
+  const tyres = shownWeather && (weather !== "dry" || inCareer) ? WET_COMPOUNDS : COMPOUNDS;
+  const tyresRef = useRef(tyres);
+  tyresRef.current = tyres;
   const inCareerRef = useRef(inCareer);
   const [setup, setSetup] = useState<Omit<Career, "rounds" | "calendar">>(() => ({
     series: "intermediate",
@@ -931,7 +945,7 @@ export default function Drive() {
           setMapSize(k);
           return write(MAP, k);
         }
-        const pick = COMPOUNDS[+e.key - 1];
+        const pick = tyresRef.current[+e.key - 1];
         if (pick && phase === "grid") setTyre(pick);
         else if (pick) fit.current(pick);
         const k = key(e);
@@ -1087,16 +1101,25 @@ export default function Drive() {
     const seatsNow = () =>
       seatsFor(inCareerRef.current, careerRef.current, levelRef.current, picksRef.current);
     const start = () => {
+      const raceLaps = lapsOf(DISTANCES[distRef.current]!, track);
       race = newRace(
         track,
         lineupRef.current,
         Math.random,
         "medium",
         levelRef.current,
-        lapsOf(DISTANCES[distRef.current]!, track),
+        raceLaps,
         true,
         lineupRef.current === GRID ? undefined : weekend,
         seatsNow(),
+        // ponytail: an average lap by the length, near enough for how far ahead to draw the rain.
+        weatherShownRef.current
+          ? drawWeather(
+              track.id,
+              inCareerRef.current ? "auto" : weatherRef.current,
+              (raceLaps * track.LENGTH * 1000) / 55,
+            )
+          : null,
       );
       quali = null;
       towerEl.current!.hidden = false;
@@ -1659,7 +1682,7 @@ export default function Drive() {
       fitLabel.current!.textContent = me.pit ? "Fitting" : "Next set";
       if (fitting)
         fitEls.current.forEach((b, i) => {
-          const on = COMPOUNDS[i] === me.fit;
+          const on = tyresRef.current[i] === me.fit;
           b.classList.toggle("bg-lamp", on);
           b.classList.toggle("ring-paper", on);
           b.classList.toggle("ring-paper/25", !on);
@@ -1828,7 +1851,7 @@ export default function Drive() {
       const m = me.p * LENGTH;
       const brakeIn =
         driving && (line !== "off" || brakes)
-          ? guide(track, carGrip(race, me), car.v, m, line, shades)
+          ? guide(track, (i) => gripAhead(race, me, i), car.v, m, line, shades)
           : null;
       scene!.guide(
         driving && line !== "off" ? shades : null,
@@ -2521,7 +2544,7 @@ export default function Drive() {
                 <span ref={fitLabel} className="mr-auto text-xs whitespace-nowrap text-soft">
                   Next set
                 </span>
-                {COMPOUNDS.map((t, i) => (
+                {tyres.map((t, i) => (
                   <button
                     key={t}
                     ref={(el) => {
@@ -2892,8 +2915,12 @@ export default function Drive() {
                       />
                     </>
                   )}
-                  <div role="radiogroup" aria-label="Tyres" className="mt-2 grid grid-cols-3 gap-2">
-                    {COMPOUNDS.map((t) => (
+                  <div
+                    role="radiogroup"
+                    aria-label="Tyres"
+                    className={`mt-2 grid gap-2 ${tyres.length > 3 ? "grid-cols-5" : "grid-cols-3"}`}
+                  >
+                    {tyres.map((t) => (
                       <button
                         key={t}
                         type="button"
@@ -2942,6 +2969,19 @@ export default function Drive() {
                     Team plan{" "}
                     <span className="text-paper">{planText(teamPlan(laps, built, tyre))}</span>
                   </p>
+                  {shownWeather && !inCareer && !qualified && (
+                    <Choice
+                      name="Weather"
+                      value={weather}
+                      options={SKIES}
+                      pick={(m: Mode) => {
+                        setWeather(m);
+                        write(WEATHER, m);
+                        weatherRef.current = m;
+                        regrid.current();
+                      }}
+                    />
+                  )}
                   {!qualified && !inCareer && (
                     <Choice
                       name="Qualifying"

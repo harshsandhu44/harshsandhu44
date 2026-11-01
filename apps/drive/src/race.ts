@@ -19,6 +19,18 @@ import {
   type Split,
   type Track,
 } from "./track.ts";
+import {
+  aquaplane,
+  clearLine,
+  sectionOf,
+  SECTIONS,
+  tickWeather,
+  traction,
+  waterAt,
+  wetGrip,
+  type Kind,
+  type Weather,
+} from "./weather.ts";
 
 // Race distances to pick from, as the F1 games have them: a five-lap sprint, or a share of the
 // Grand Prix's laps. The paces are tuned on the shortest.
@@ -121,20 +133,41 @@ export const aim = (car: Car, [x, y]: [number, number]) => {
 export const edgeOf = ({ level: lv, track }: Race) =>
   (lv === "pro" ? track.PRO_EDGE : lv === "legends" ? track.LEGENDS_EDGE : undefined) ??
   LEVELS[lv].edge;
-// A car's grip on its tyres, wing and car: a computer car's (or your simulated one's) scaled by its edge. Close behind another car its
-// dirty air takes some of that, and so do cold tyres and damage; on a puncture it has little.
-export const carGrip = (race: Race, r: Racer) => {
-  const g =
-    grip(r.life, r.tyre) *
-    wingGrip(r.wing) *
-    (r.id || race.sim || teamDriving(race, r) ? edgeOf(race) : 1) *
-    (1 - r.dirty) *
-    tempGrip(r.temps) *
-    (1 - r.damage) *
-    (1 + race.rubber) *
-    race.cars[r.id >> 1]!;
-  return r.puncture ? Math.max(MOST_WORN, g * 0.6) : g;
+// A car's grip on its tyres, wing and car, before the water: a computer car's (or your simulated one's) scaled by its edge. Close behind another car its
+// dirty air takes some of that, and so do cold tyres and damage.
+const dryGrip = (race: Race, r: Racer) =>
+  grip(r.life, r.tyre) *
+  wingGrip(r.wing) *
+  (r.id || race.sim || teamDriving(race, r) ? edgeOf(race) : 1) *
+  (1 - r.dirty) *
+  tempGrip(r.temps) *
+  (1 - r.damage) *
+  (1 + race.rubber) *
+  race.cars[r.id >> 1]!;
+// The water under a car, and at point i ahead of it on its line.
+const waterUnder = (race: Race, r: Racer) => {
+  const w = race.weather;
+  if (!w?.any) return 0;
+  const { LENGTH, RACING, atDist, lateral } = race.track;
+  const m = r.p * LENGTH;
+  const off = lateral(r.car.x, r.car.y, r.p) - LEVELS[race.level].line * RACING[atDist(m)]!;
+  return waterAt(w, sectionOf(m, LENGTH), off);
 };
+const waterAhead = (race: Race, i: number) =>
+  race.weather?.any ? waterAt(race.weather, sectionOf(race.track.CUM[i]!, race.track.LENGTH)) : 0;
+// On a puncture it has little.
+const flatGrip = (r: Racer, g: number) =>
+  r.puncture ? Math.max(Math.min(MOST_WORN, g), g * 0.6) : g;
+// Its grip here, the tyre's share of it on this much water and at this speed.
+export const carGrip = (race: Race, r: Racer) => {
+  const { kind } = TYRES[r.tyre];
+  const water = waterUnder(race, r);
+  const share = wetGrip(kind, water) * aquaplane(kind, water, r.car.v);
+  return flatGrip(r, dryGrip(race, r) * share);
+};
+// Its grip at point i ahead, slowed down for the corner there, as the driver reads it.
+export const gripAhead = (race: Race, r: Racer, i: number) =>
+  flatGrip(r, dryGrip(race, r) * wetGrip(TYRES[r.tyre].kind, waterAhead(race, i)));
 // Awareness defaults to pace, for the levels that rate only by championship place.
 type Seat = [code: string, name: string, pace: number, aware?: number, titles?: number];
 // A car's paint (scene.ts draws the layouts): a base colour, a second and a stripe, and for BMW's
@@ -411,21 +444,82 @@ const SPRINT_WEAR = 10;
 // ponytail: qualifying's lap wears as the shortest race did when pole was tuned (race.check.ts
 // POLE), a soft losing about two fifths of its life.
 const QUALI_WEAR = 4.25;
+// How much likelier a mistake on soaked tarmac, on top of the driver's rate.
+const WET_SLIP = 3;
 const LOAD = 0.5;
 const FRONT = 0.2;
 const BRAKING = 0.3;
 const TRACTION = 0.1;
 // Front-left, front-right, rear-left, rear-right.
 export const CORNERS = ["front-left", "front-right", "rear-left", "rear-right"];
-export type Tyre = "soft" | "medium" | "hard";
+export type Tyre = "soft" | "medium" | "hard" | "inter" | "wet";
 export const TYRES: Record<
   Tyre,
-  { grip: number; last: number; warm: number; hot: number; name: string }
+  {
+    grip: number;
+    last: number;
+    warm: number;
+    hot: number;
+    // Which grip curve it's on (weather.ts); the heat a dry road adds and the degrees full water
+    // takes off (heatTyres).
+    kind: Kind;
+    dry: number;
+    cool: number;
+    name: string;
+  }
 > = {
-  soft: { grip: 1.04, last: 0.41, warm: 0.3, hot: 1.15, name: "Softs" },
-  medium: { grip: 1, last: 0.65, warm: 0.5, hot: 1, name: "Mediums" },
-  hard: { grip: 0.975, last: 0.94, warm: 0.7, hot: 0.9, name: "Hards" },
+  soft: {
+    grip: 1.04,
+    last: 0.41,
+    warm: 0.3,
+    hot: 1.15,
+    kind: "slick",
+    dry: 0,
+    cool: 40,
+    name: "Softs",
+  },
+  medium: {
+    grip: 1,
+    last: 0.65,
+    warm: 0.5,
+    hot: 1,
+    kind: "slick",
+    dry: 0,
+    cool: 40,
+    name: "Mediums",
+  },
+  hard: {
+    grip: 0.975,
+    last: 0.94,
+    warm: 0.7,
+    hot: 0.9,
+    kind: "slick",
+    dry: 0,
+    cool: 40,
+    name: "Hards",
+  },
+  inter: {
+    grip: 1,
+    last: 0.6,
+    warm: 0.5,
+    hot: 1,
+    kind: "inter",
+    dry: 25,
+    cool: 20,
+    name: "Inters",
+  },
+  wet: { grip: 1, last: 0.8, warm: 0.6, hot: 0.9, kind: "wet", dry: 40, cool: 10, name: "Wets" },
 };
+// Whether a race's sets meet the rules: two compounds, or any wet tyre, which waives that as in F1.
+export const legalSets = (sets: Tyre[]) =>
+  new Set(sets).size > 1 || sets.some((t) => TYRES[t].kind !== "slick");
+// How much quicker a tyre wears on this much water: a wet tyre up to three times on a dry road, and
+// a slick up to half as fast once the water's cooling it.
+const WET_ROAD = 0.2;
+const waterWear = (t: Tyre, water: number) =>
+  TYRES[t].kind === "slick"
+    ? 1 - 0.5 * Math.min(1, water / 0.5)
+    : 1 + 2 * Math.max(0, 1 - water / WET_ROAD);
 // Each wheel has a temperature (see heatTyres). Below the window it's short of up to COLD of its
 // grip, as a new set warms up; through the window, none; over it, HOT of its grip and HOT_WEAR more
 // wear for each HOT_SPAN degrees.
@@ -508,7 +602,7 @@ function walkPlans(laps: number, track: Track, now: Now | null, visit: (p: Plan)
   const used = now?.used ?? [];
   // The sprint plans no stop and needs no second compound.
   const more = sprint(laps) ? 0 : Math.min(2, 3 - Math.max(0, used.length - 1));
-  const legal = (sets: Tyre[]) => sprint(laps) || new Set([...used, ...sets]).size > 1;
+  const legal = (sets: Tyre[]) => sprint(laps) || legalSets([...used, ...sets]);
   const every = Math.ceil(laps / 25);
   const weigh = (n: number) => n % every === 0 || n === now?.first || !!now?.keep.includes(n);
   // New sets from the end of lap `done`, after `at` stops so far.
@@ -783,6 +877,8 @@ export type Race = {
   hand: number;
   // Who drives each car (see REAL).
   seats: number[];
+  // The weekend's weather, or null for a dry race with none to run.
+  weather: Weather | null;
 };
 
 export function newRace(
@@ -795,6 +891,7 @@ export function newRace(
   incidents = false,
   cars = drawCars(lv, rand),
   seats = REAL,
+  weather: Weather | null = null,
 ): Race {
   // Computer paces spread across the level's range by pace rating, and mistakes around its rate
   // by awareness, from half for the most aware to one and a half for the least. Everyone lines up
@@ -923,6 +1020,7 @@ export function newRace(
     rubber: 0,
     hand: 0,
     seats,
+    weather,
     eng: {
       next: 0,
       pos: 0,
@@ -981,10 +1079,12 @@ export function aiInput(r: Racer, race: Race): Input {
     // Nobody overcooks one under a Safety Car or VSC.
     // Nor does the team, driving yours.
     const risk = race.slips && r.slip > 0 && r.cap === Infinity && r.id > 0;
-    r.mistake = risk && race.rand() < r.slip + 0.08 * (1 - r.life) ? k : -1;
+    const wet = WET_SLIP * waterUnder(race, r) * r.slip;
+    r.mistake = risk && race.rand() < r.slip + 0.08 * (1 - r.life) + wet ? k : -1;
   }
   if (r.mistake >= 0 && fwd(CORNERS[r.mistake]!.at, m) < 200) r.mistake = -1;
   const at = atDist(m + 5);
+  const wetNow = !!race.weather?.any;
   // How far ahead on track another car is (behind, less than 0), so cars a lap apart are traffic
   // to each other too.
   const gap = (o: Racer) => {
@@ -993,7 +1093,11 @@ export function aiInput(r: Racer, race: Race): Input {
   };
   // The profiles stop at TOP, so a car the 2026 power has taken past it looks down the road for
   // the first point under TOP and brakes for that in time; with none in sight, flat out.
-  const gp = g * (r.mistake >= 0 ? 1.08 : r.pace * r.form);
+  // Off the pace, grip stops counting at the worn tyres' floor in the dry: the out-lap's pace was
+  // tuned on it. Only the wet goes lower.
+  const floor = wetNow ? 0 : MOST_WORN;
+  const gp = Math.max(floor, g * (r.mistake >= 0 ? 1.08 : r.pace * r.form));
+  const paced = Math.max(floor, g * r.pace * r.form);
   let want = limitAt(at, gp, line);
   if (r.finish !== null) want = 0.8 * Math.min(want, TOP);
   else if (want >= TOP) {
@@ -1005,6 +1109,15 @@ export function aiInput(r: Racer, race: Race): Input {
       break;
     }
   }
+  // In the wet the grip changes round the lap, so the profile for the grip here says nothing of a
+  // corner in wetter water up ahead: look down the road and brake for it on that grip.
+  if (wetNow && r.finish === null)
+    for (let d = 20; d <= 300; d += 20) {
+      const j = atDist(m + 5 + d);
+      const gj = (gripAhead(race, r, j) * gp) / g;
+      const l = limitAt(j, gj, line);
+      if (l < TOP) want = Math.min(want, Math.sqrt(l * l + 2 * gj * brakeAt(l) * d));
+    }
 
   // Where a car is across the track from this level's line. Cars on a line that swings across
   // the track, through a chicane, keep their offsets from it, so traffic is judged in these.
@@ -1065,7 +1178,7 @@ export function aiInput(r: Racer, race: Race): Input {
     // the Safety Car nobody pulls out but the lapped cars waved through, past anything but each
     // other, and kept off the Safety Car's line while near it.
     const clear =
-      r.unlap || (!r.held && (slip > 0 || limitAt(at, g * r.pace * r.form, line) > car.v + PASS));
+      r.unlap || (!r.held && (slip > 0 || limitAt(at, paced, line) > car.v + PASS));
     if (!clear) r.lane = 0;
     const sc = race.sc && r.unlap ? fwd(m, race.sc.p * LENGTH) : Infinity;
     const bySc = sc < 150 || (sc < LENGTH && sc > LENGTH - 30);
@@ -1134,7 +1247,7 @@ export function aiInput(r: Racer, race: Race): Input {
       if (Math.abs(to - lo) < SPACE) to = lo + (lo > 0 ? -1 : 1) * SPACE;
     }
   // Held off the line, a legend backs off to the centreline's speed rather than run wide.
-  if (held && !slip) want = Math.min(want, limitAt(at, g * r.pace * r.form));
+  if (held && !slip) want = Math.min(want, limitAt(at, paced));
   want = Math.min(want, r.cap);
 
   const over = car.v > want;
@@ -2467,9 +2580,18 @@ const tyreLoad = (k: number, input: Input, turn: number) => {
   return 1 + (left === turn > 0 ? LOAD : -LOAD) * u + front * (FRONT * u + pedal);
 };
 // A frame's wear over `ds` m (see TYRES), with `edge` how far past the tarmac the car is. A tyre
-// over its window wears quicker.
-function wearTyres(race: Race, r: Racer, input: Input, turn: number, edge: number, ds: number) {
-  const base = (lapWear(r.tyre, race.laps, race.track) / race.track.LENGTH) * ds;
+// over its window wears quicker, and wet tyres on a dry road much quicker.
+function wearTyres(
+  race: Race,
+  r: Racer,
+  input: Input,
+  turn: number,
+  edge: number,
+  ds: number,
+  water: number,
+) {
+  const base =
+    (lapWear(r.tyre, race.laps, race.track) / race.track.LENGTH) * ds * waterWear(r.tyre, water);
   const grass = allFourOff(edge) ? GRASS * ds : 0;
   let lost = 0;
   r.wear = r.wear.map((w, k) => {
@@ -2484,7 +2606,9 @@ function wearTyres(race: Race, r: Racer, input: Input, turn: number, edge: numbe
 // quickest. In it, each tyre heads over TAU m for LOW_T plus what's heating it: cornering and
 // braking load (at most 2 of CORNER_HEAT, so clean driving can't take even the hottest compound
 // out of the window, and dry pace is as tuned), dirty air (DIRTY_HEAT at the car's bumper) and
-// going into a corner over its limit, by more than OVER of it (OVER_HEAT for all of it).
+// going into a corner over its limit, by more than OVER of it (OVER_HEAT for all of it); wheelspin
+// heats the rears, and a dry road heats wet tyres. Water cools every tyre, slicks most, so a slick on
+// a wet track falls out of its window from below while a wet tyre needs the water to stay in it.
 // ponytail: tyre temperature as one number a wheel, no surface or carcass; add those if heat ever
 // needs to come and go on two timescales.
 const TAU = 800;
@@ -2492,19 +2616,32 @@ const CORNER_HEAT = 10;
 const DIRTY_HEAT = 70;
 const OVER = 0.05;
 const OVER_HEAT = 2000;
-export function heatTyres(race: Race, r: Racer, input: Input, turn: number, g: number, ds: number) {
+const SPIN_HEAT = 40;
+export function heatTyres(
+  race: Race,
+  r: Racer,
+  input: Input,
+  turn: number,
+  g: number,
+  ds: number,
+  water = 0,
+  spin = 0,
+) {
   const { LENGTH, atDist, limitAt } = race.track;
-  const { hot, warm } = TYRES[r.tyre];
+  const { cool, dry, hot, warm } = TYRES[r.tyre];
   const limit = limitAt(atDist(r.p * LENGTH), g, LEVELS[race.level].line);
   const over = Math.abs(turn) < 1 ? 0 : Math.min(0.2, Math.max(0, r.car.v / limit - 1 - OVER));
   // Nobody's working the tyres queueing behind a Safety Car or under a VSC, however close.
   const dirty = r.cap === Infinity ? r.dirty / DIRTY : 0;
-  const heat = hot * (DIRTY_HEAT * dirty + OVER_HEAT * over);
+  const road = dry * Math.max(0, 1 - water / WET_ROAD) - cool * water;
+  const heat = hot * (DIRTY_HEAT * dirty + OVER_HEAT * over) + road;
   const u = Math.min(1, Math.abs(turn));
   r.temps = r.temps.map((t, k) => {
-    if (t < LOW_T) return Math.min(LOW_T, t + ((LOW_T - COLD_T) * ds) / (warm * LENGTH));
     const load = hot * CORNER_HEAT * Math.max(0, u + tyreLoad(k, input, turn) - 1);
-    return t + ((LOW_T + load + heat - t) * Math.min(ds, TAU)) / TAU;
+    const want = LOW_T + load + heat + (k > 1 ? SPIN_HEAT * spin : 0);
+    if (t < LOW_T && want >= LOW_T)
+      return Math.min(LOW_T, t + ((LOW_T - COLD_T) * ds) / (warm * LENGTH));
+    return t + ((want - t) * Math.min(ds, TAU)) / TAU;
   });
 }
 
@@ -2514,6 +2651,7 @@ export type YourSplit = Split & { team: boolean };
 // Returns the player's split, if this frame made one.
 export function tick(race: Race, you: Input, dt: number): YourSplit | null {
   race.t += dt * 1000;
+  if (race.weather) tickWeather(race.weather, dt * 1000);
   engineer(race);
   const { LENGTH, PIT_IN, PIT_OUT, PIT_SIDE } = race.track;
   const { collide, dirAt, inPit, lateral, nearest, signed } = race.track;
@@ -2595,6 +2733,8 @@ export function tick(race: Race, you: Input, dt: number): YourSplit | null {
       power(race, r, from, p * LENGTH, moved, input) + battery(race, r, input, dt) + r.tow;
     const g = carGrip(race, r);
     const v0 = car.v;
+    const water = waterUnder(race, r);
+    const drive = water ? traction(wetGrip(TYRES[r.tyre].kind, water) * (1 - 0.35 * water), v0) : 1;
     const turn = step(
       car,
       input,
@@ -2602,6 +2742,7 @@ export function tick(race: Race, you: Input, dt: number): YourSplit | null {
       onGrass(edge),
       g,
       top * (1 - r.damage) * r.form * wingTop(r.wing) * race.cars[r.id >> 1]!,
+      drive,
     );
     r.slide = Math.abs(turn);
     // Held to a Safety Car, the VSC or a blue flag, braking down to it; broken down and limping,
@@ -2622,8 +2763,17 @@ export function tick(race: Race, you: Input, dt: number): YourSplit | null {
     // ponytail: in qualifying only a push lap wears the set, so the push starts on the new set the
     // quick lap was tuned on (QUALI_WEAR); out-laps really do cost little.
     if (!race.session || race.session.phase[r.id] === "push")
-      wearTyres(race, r, input, turn, edge, dt * v);
-    heatTyres(race, r, input, turn, g, dt * v);
+      wearTyres(race, r, input, turn, edge, dt * v, water);
+    heatTyres(race, r, input, turn, g, dt * v, water, input.gas ? 1 - drive : 0);
+    // On its line, a car clears a little of the water.
+    if (race.weather?.any) {
+      const m = p * LENGTH;
+      const off =
+        lateral(car.x, car.y, p) -
+        LEVELS[race.level].line * race.track.RACING[race.track.atDist(m)]!;
+      if (Math.abs(off) < 2)
+        clearLine(race.weather, sectionOf(m, LENGTH), (dt * v * SECTIONS) / LENGTH);
+    }
     if (race.incidents && r.life <= 0 && r.finish === null && race.rand() < 0.05 * dt)
       puncture(race, r, true);
     r.wrong = Math.cos(car.h - dirAt(p)) < -0.5 && car.v > 4.2 ? r.wrong + dt : 0;
@@ -2676,7 +2826,7 @@ export function tick(race: Race, you: Input, dt: number): YourSplit | null {
           boxCall(
             race,
             r,
-            new Set(r.stints).size < 2 && r.laps >= race.laps - 2
+            !legalSets(r.stints) && r.laps >= race.laps - 2
               ? pick(LINES.compound)
               : pick(LINES.box),
           );
@@ -2761,7 +2911,7 @@ export function results(race: Race) {
       const time = run + r.penalty;
       const down = race.laps - r.laps;
       const { id, best, penalty, paid, stints, sets, out } = r;
-      const dsq = r.finish !== null && !sprint(race.laps) && new Set(stints).size < 2;
+      const dsq = r.finish !== null && !sprint(race.laps) && !legalSets(stints);
       // The slot it started from (1 for pole), and the laps on each set.
       const grid = race.grid.indexOf(id) + 1;
       const stintLaps = sets.map((at, k) => (sets[k + 1] ?? r.laps) - at);
