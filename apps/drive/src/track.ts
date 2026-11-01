@@ -118,13 +118,21 @@ export const gripAt = (v: number) => GRIP + DOWNFORCE * v * v;
 // g is what's left of the tyres' grip (1 new) and scales cornering and braking. Returns the turn
 // the steering asked for as a share of what the grip gives, positive turning right: over 1 in
 // either direction the car is sliding. `top` is the speed drag allows, higher with the 2026 power
-// on.
-export function step(car: Car, input: Input, dt: number, grass: boolean, g = 1, top = TOP) {
+// on, and `drive` the share of its acceleration the road lets it put down.
+export function step(
+  car: Car,
+  input: Input,
+  dt: number,
+  grass: boolean,
+  g = 1,
+  top = TOP,
+  drive = 1,
+) {
   const v = car.v;
   const drag = v > 0 ? ACCEL / (grass ? GRASS_TOP : top) ** 2 : REVERSE / REVERSE_TOP ** 2;
   let a = -drag * v * Math.abs(v);
   // Each pedal brakes while the car rolls the other way, then drives.
-  if (input.gas) a += v < -0.5 ? brakeAt(v) * g : ACCEL;
+  if (input.gas) a += v < -0.5 ? brakeAt(v) * g : ACCEL * drive;
   if (input.brake) a -= v > 0.5 ? brakeAt(v) * g : REVERSE;
   if (!input.gas && !input.brake) a -= COAST * Math.sign(v);
   car.v = v + a * dt;
@@ -146,10 +154,10 @@ export const gear = (v: number) =>
   v < -0.5 ? "R" : Math.min(8, Math.max(1, 1 + Math.floor((v / TOP) * 8)));
 
 // Profiles every 0.05 of grip from MOST (softs, a legend's extra grip and the most wing) down to
-// 0.55 (fully worn), blended between. Downforce means the fast corners lose more than √grip would
+// 0.3 (slicks on a soaked track), blended between. Downforce means the fast corners lose more than √grip would
 // say, so it's worth the ~20k sums at load.
 const MOST = 1.6;
-const STEPS = 22;
+const STEPS = 27;
 const grips = (k: number) => MOST - k * 0.05;
 // The racing line keeps this far from the tarmac edge.
 const LINE_MARGIN = 1.6;

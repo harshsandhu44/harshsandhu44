@@ -35,7 +35,6 @@ import {
   TYRES,
   STOP,
   WINGS,
-  carGrip,
   colorOf,
   driver,
   gap,
@@ -81,7 +80,24 @@ import {
   type Racer,
   type Round,
   type Tyre,
+  COLD_T,
+  gripAhead,
+  teamWater,
+  waterUnder,
+  type Outlook,
+  HIGH_T,
+  LOW_T,
 } from "@/race";
+import {
+  bestKind,
+  drawWeather,
+  meanWater,
+  MODES as SKIES,
+  sectionOf,
+  WEATHER_ON,
+  type Mode,
+  type Weather,
+} from "@/weather";
 import { KERB_R, TOP, fmt, gear } from "@/track";
 import { CALENDAR, FIRST_CALENDAR, TRACKS, getTrack } from "@/tracks";
 import { Season, TitleScenarios } from "@/components/season";
@@ -193,7 +209,13 @@ const TYRE_INK: Record<Tyre, string> = {
   soft: "text-accent",
   medium: "text-slow",
   hard: "text-paper",
+  inter: "text-go",
+  wet: "text-[#5b9dff]",
 };
+// With rain possible, the wet tyres too: keys 4 and 5.
+const WET_COMPOUNDS: Tyre[] = [...COMPOUNDS, "inter", "wet"];
+const WEATHER = "drive-weather";
+const weatherShown = () => WEATHER_ON || location.search.includes("weather");
 // How long a set lasts in this race, to the cliff.
 const blurb = (t: Tyre, laps: number) => {
   const n = Math.max(1, Math.round(laps));
@@ -207,12 +229,40 @@ const wingText = (w: number) =>
   w === 3
     ? "The car as tuned"
     : `Top speed ${signed((wingTop(w) - 1) * TOP * 3.6, 0)} km/h, grip ${signed((wingGrip(w) - 1) * 100, 1)}%`;
-// A tyre's colour in the HUD: blue while cold, then green, yellow and red as it wears.
-const wearInk = (life: number, warm: number) =>
-  warm < 0.9 ? "bg-print text-paper" : life > 0.6 ? "bg-go" : life > 0.3 ? "bg-slow" : "bg-accent";
+// A tyre's colour in the HUD: blue while cold, then green, yellow and red as it wears, with a
+// white ring while it's over its window.
+const wearInk = (life: number, temp: number) =>
+  temp < COLD_T + 0.9 * (LOW_T - COLD_T)
+    ? "bg-print text-paper"
+    : `${life > 0.6 ? "bg-go" : life > 0.3 ? "bg-slow" : "bg-accent"}${temp > HIGH_T ? " ring-2 ring-inset ring-white" : ""}`;
 // The team's plan as the grid screen shows it: "M → H, box lap 3", or in the sprint "M, no stop".
 const planText = ({ at, tyres }: { at: number[]; tyres: Tyre[] }) =>
   `${tyres.map(letter).join(" → ")}, ${at.length ? `box lap ${at.join(" and ")}` : "no stop"}`;
+// The coming laps' water as bars, and the team's read for the grid screen.
+const BARS = "▁▂▃▄▅▆▇█";
+const rainStrip = ({ water, chance }: Outlook, from: number) =>
+  `${water.map((w, k) => `L${from + k + 1} ${BARS[Math.min(7, Math.floor(w * 8))]}`).join(" ")} ~${Math.round(chance * 100)}%`;
+const rainRead = (water: number[] | null) => {
+  if (!water) return "Dry";
+  const first = water.findIndex((w) => w > 0.08);
+  if (first < 0) return "Dry, with rain about";
+  if (first === 0) return water.every((w) => w > 0.08) ? "Wet all race" : "Starting wet, may dry";
+  return `Rain from about lap ${first + 1}`;
+};
+// What's on track as the grid screen opens, and the tyre for it.
+const skyRead = (race: Race) => {
+  const w = race.weather;
+  const water = w ? meanWater(w) : 0;
+  const rain = w ? w.rain.reduce((sum, r) => sum + r, 0) / w.rain.length : 0;
+  const falling =
+    rain > 0.6 ? "Heavy rain" : rain > 0.25 ? "Rain" : rain > 0.02 ? "Light rain" : "No rain";
+  const road = water < 0.08 ? "dry" : water < 0.3 ? "damp" : water < 0.7 ? "wet" : "soaked";
+  const kind = bestKind(water);
+  return {
+    now: `${falling}, ${road} track`,
+    best: `Best tyre now ${kind === "slick" ? "slicks" : kind === "inter" ? "inters" : "wets"}`,
+  };
+};
 const STEPS: [Level, string, string][] = [
   ["amateur", "Amateur", "F3 grid"],
   ["intermediate", "Intermediate", "F2 grid"],
@@ -242,11 +292,15 @@ const RULES: [string, string][] = [
   ],
   [
     "Tyres & pits",
-    "Softs grip most, hards last longest, and a set lasts the same share of the race at any Grand Prix distance, less on tracks hard on tyres like Silverstone and Spa. Grip fades slowly, then falls off a cliff in the last quarter of a set's life, and all four wheels on the grass wears them faster. Each tyre wears on its own: the outside ones through the corners, the fronts on the brakes and the rears on the throttle. A new set is cold for its first half lap, shown blue. In a Grand Prix you must run two compounds, so everyone stops at least once: finish on one and you're disqualified. The sprint is one stint, as in F1: no stop needed and any compound, with softs quickest but fading before the flag. The team plans your race on the grid screen and calls you in, but when you box is up to you: press 1, 2 or 3 any time to pick the next set. The pit lane leaves the main straight before the line: turn in and the team drives you to your box and back out, counting down before it hands back. Only your teammate can hold you up there.",
+    "Softs grip most, hards last longest, and a set lasts the same share of the race at any Grand Prix distance, less on tracks hard on tyres like Silverstone and Spa. Grip fades slowly, then falls off a cliff in the last quarter of a set's life, and all four wheels on the grass wears them faster. Each tyre wears on its own: the outside ones through the corners, the fronts on the brakes and the rears on the throttle. A new set is cold for its first half lap, shown blue. In a Grand Prix you must run two compounds, so everyone stops at least once: finish on one and you're disqualified. The sprint is one stint, as in F1: no stop needed and any compound, with softs quickest but fading before the flag. The team plans your race on the grid screen and calls you in, but when you box is up to you: press 1, 2 or 3 any time to pick the next set, or in the rain 4 for inters and 5 for wets. The pit lane leaves the main straight before the line: turn in and the team drives you to your box and back out, counting down before it hands back. Only your teammate can hold you up there.",
   ],
   [
     "Wing",
     "More rear wing is more grip in the corners and under braking, and less top speed. Each track has a quickest wing, low at Monza and high at Monaco: the team suggests it on the grid screen. Qualify and the race starts on your qualifying wing (parc fermé). In the race, [ and ] pick the wing for your next stop.",
+  ],
+  [
+    "Rain",
+    "Rain cells sweep round the lap, so one part can be soaked while another's dry, and the field clears a drier line that goes off-line doesn't get. Slicks fall away quickly in the wet, inters are quickest on a damp track and full wets once it's deep; running either waives the two-compound rule. Wet tyres cook on a dry road, so stay out too long as it dries and they wear away. Water takes traction, and deep water floats a tyre at speed, wets last. The forecast under the battery is your team's read of the next laps, and it can be wrong, more so far out and at lower levels. Overtake Mode is off while the track's wet; rain itself never stops a race, but crashes bring out the Safety Car as usual. The water qualifying leaves is the water the race starts on.",
   ],
   [
     "Safety Car & failures",
@@ -346,7 +400,7 @@ type Timing = {
   fast: boolean;
   rows: { id: number; best: number; phase: Phase }[];
   // Your sets: life left (1 new) and whether run, and the one picked for the next run.
-  sets: { life: number; used: boolean }[];
+  sets: { tyre: Tyre; life: number; used: boolean }[];
   pick: number;
 };
 // Career: a season in one series, at one distance and qualifying format, round by round through
@@ -587,6 +641,12 @@ export default function Drive() {
   });
   const aidsRef = useRef(aids);
   const [settings, setSettings] = useState(false);
+  const [shownWeather] = useState(weatherShown);
+  const weatherShownRef = useRef(shownWeather);
+  const [weather, setWeather] = useState<Mode>(() => read(WEATHER, "auto"));
+  const weatherRef = useRef(weather);
+  const [gridRain, setGridRain] = useState<number[] | null>(null);
+  const [gridSky, setGridSky] = useState({ now: "", best: "" });
   const audio = useRef<Audio | null>(null);
   const again = useRef<() => void>(() => {});
   // The grid screen's pick, and what it and the pit lane's chips call into the race.
@@ -640,6 +700,9 @@ export default function Drive() {
   const [career, setCareer] = useState<Career | null>(() => read(CAREER, null));
   const careerRef = useRef(career);
   const [inCareer, setInCareer] = useState(() => read(MODE, false));
+  const tyres = shownWeather && (weather !== "dry" || inCareer) ? WET_COMPOUNDS : COMPOUNDS;
+  const tyresRef = useRef(tyres);
+  tyresRef.current = tyres;
   const inCareerRef = useRef(inCareer);
   const [setup, setSetup] = useState<Omit<Career, "rounds" | "calendar">>(() => ({
     series: "intermediate",
@@ -743,6 +806,7 @@ export default function Drive() {
   const otPad = useRef<HTMLButtonElement>(null);
   const batEl = useRef<HTMLSpanElement>(null);
   const batText = useRef<HTMLSpanElement>(null);
+  const rainEl = useRef<HTMLDivElement>(null);
   const limitsEl = useRef<HTMLDivElement>(null);
   const rcEl = useRef<HTMLDivElement>(null);
   const rcLabel = useRef<HTMLSpanElement>(null);
@@ -925,7 +989,7 @@ export default function Drive() {
           setMapSize(k);
           return write(MAP, k);
         }
-        const pick = COMPOUNDS[+e.key - 1];
+        const pick = tyresRef.current[+e.key - 1];
         if (pick && phase === "grid") setTyre(pick);
         else if (pick) fit.current(pick);
         const k = key(e);
@@ -1080,18 +1144,37 @@ export default function Drive() {
 
     const seatsNow = () =>
       seatsFor(inCareerRef.current, careerRef.current, levelRef.current, picksRef.current);
+    // The race's weather: after qualifying, what it left, the same again on a restart; or a new
+    // draw, over the race and the qualifying it may yet have. ponytail: an average lap by the
+    // length, near enough for how far ahead to draw the rain.
+    let sky: Weather | null = null;
+    let carried: Weather | null = null;
+    const raceSky = (laps: number) => {
+      if (!weatherShownRef.current) return null;
+      if (lineupRef.current !== GRID && sky) {
+        carried ??= structuredClone(sky);
+        return structuredClone(carried);
+      }
+      const lap = (track.LENGTH * 1000) / 55;
+      const mode = inCareerRef.current ? "auto" : weatherRef.current;
+      return drawWeather(track.id, mode, (laps + (fullRef.current ? 15 : 1)) * lap);
+    };
     const start = () => {
+      const raceLaps = lapsOf(DISTANCES[distRef.current]!, track);
       race = newRace(
         track,
         lineupRef.current,
         Math.random,
         "medium",
         levelRef.current,
-        lapsOf(DISTANCES[distRef.current]!, track),
+        raceLaps,
         true,
         lineupRef.current === GRID ? undefined : weekend,
         seatsNow(),
+        raceSky(raceLaps),
       );
+      setGridRain(teamWater(race, 0));
+      setGridSky(skyRead(race));
       quali = null;
       towerEl.current!.hidden = false;
       lapName.current!.textContent = "Lap";
@@ -1201,9 +1284,10 @@ export default function Drive() {
       // start.
       if (read(SOUND, false)) audio.current ??= createAudio(aidsRef.current.mix);
     };
-    go.current = (t) => {
+    go.current = (pick) => {
       const me = race.racers[0]!;
-      const plan = teamPlan(race.laps, track, t);
+      const t = pick;
+      const plan = teamPlan(race.laps, track, t, teamWater(race, 0));
       [me.tyre, me.stints, me.stops, me.plan] = [t, [t], plan.at, plan.tyres];
       [me.wing, me.nextWing] = [wingRef.current, wingRef.current];
       drawBoard();
@@ -1211,7 +1295,9 @@ export default function Drive() {
     };
     qualify.current = () => {
       if (fullRef.current) return session();
-      quali = newQuali(track, levelRef.current, Math.random, undefined, seatsNow());
+      // The weekend's weather runs from here into the race.
+      [sky, carried] = [race.weather, null];
+      quali = newQuali(track, levelRef.current, Math.random, undefined, seatsNow(), sky);
       race = quali[0]!;
       weekend = race.cars;
       qualiWing.current = wingRef.current;
@@ -1224,7 +1310,8 @@ export default function Drive() {
     };
     // Full qualifying: no lights, you start in the garage.
     const session = () => {
-      race = newSession(track, levelRef.current, Math.random, undefined, simming, seatsNow());
+      [sky, carried] = [race.weather, null];
+      race = newSession(track, levelRef.current, Math.random, undefined, simming, seatsNow(), sky);
       weekend = race.cars;
       qualiWing.current = wingRef.current;
       [race.racers[0]!.wing, race.racers[0]!.nextWing] = [wingRef.current, wingRef.current];
@@ -1272,7 +1359,8 @@ export default function Drive() {
               through: s.in.includes(0),
               fast: fast > 0,
               rows: order.map((id) => ({ id, best: s.best[s.seg]![id]!, phase: s.phase[id]! })),
-              sets: s.sets[0]!.map(({ wear, used }) => ({
+              sets: s.sets[0]!.map(({ tyre, wear, used }) => ({
+                tyre,
                 life: wear.reduce((a, b) => a + b, 0) / wear.length,
                 used,
               })),
@@ -1541,7 +1629,13 @@ export default function Drive() {
           if (inCareerRef.current && live(c)) {
             const order = table.map((r) => r.id);
             const none = table.filter((r) => r.out || r.dsq).map((r) => r.id);
-            const round = { order, none, track: trackId, fastest: race.fastest?.id ?? null, table };
+            const round = {
+              order,
+              none,
+              track: trackId,
+              fastest: race.fastest?.id ?? null,
+              table,
+            };
             const next = { ...c!, rounds: [...c!.rounds, round] };
             saveCareer(next);
             const { drivers } = standings(next.rounds, sprints(next));
@@ -1628,7 +1722,7 @@ export default function Drive() {
         const w = flat ? 0 : me.wear[k]!;
         const text = String(Math.round(w * 100));
         if (el.textContent !== text) el.textContent = text;
-        const cls = `${TYRE_CELL} ${flat ? "bg-accent motion-safe:animate-pulse" : wearInk(w, me.warm)}`;
+        const cls = `${TYRE_CELL} ${flat ? "bg-accent motion-safe:animate-pulse" : wearInk(w, me.temps[k]!)}`;
         if (el.className !== cls) el.className = cls;
       });
       tyreText.current!.textContent = `${Math.round(me.life * 100)}%`;
@@ -1638,6 +1732,12 @@ export default function Drive() {
         name.className = TYRE_INK[me.tyre];
       }
       wingEl.current!.textContent = `W${me.wing}`;
+      const rain = rainEl.current!;
+      rain.hidden = !race.outlook;
+      if (race.outlook) {
+        const text = rainStrip(race.outlook, me.laps);
+        if (rain.textContent !== text) rain.textContent = text;
+      }
       const nextWing = wingNext.current!;
       nextWing.textContent = `W${me.nextWing}`;
       nextWing.classList.toggle("text-accent", me.nextWing !== me.wing);
@@ -1653,7 +1753,7 @@ export default function Drive() {
       fitLabel.current!.textContent = me.pit ? "Fitting" : "Next set";
       if (fitting)
         fitEls.current.forEach((b, i) => {
-          const on = COMPOUNDS[i] === me.fit;
+          const on = tyresRef.current[i] === me.fit;
           b.classList.toggle("bg-lamp", on);
           b.classList.toggle("ring-paper", on);
           b.classList.toggle("ring-paper/25", !on);
@@ -1811,6 +1911,8 @@ export default function Drive() {
           slide: Math.abs(car.v) > 15 ? (me.slide - 0.95) / 0.3 : 0,
           kerb: kerbed && edge > -2.3 && edge < 0.3 ? Math.abs(car.v) / TOP : 0,
           grass: edge > 0 ? Math.min(1, Math.abs(car.v) / 40) : 0,
+          rain: race.weather?.rain[sectionOf(me.p * LENGTH, LENGTH)] ?? 0,
+          hiss: Math.min(1, (waterUnder(race, me) * Math.abs(car.v)) / 40),
           crowd: Math.min(1, crowd),
           cars,
         });
@@ -1822,7 +1924,7 @@ export default function Drive() {
       const m = me.p * LENGTH;
       const brakeIn =
         driving && (line !== "off" || brakes)
-          ? guide(track, carGrip(race, me), car.v, m, line, shades)
+          ? guide(track, (i) => gripAhead(race, me, i), car.v, m, line, shades)
           : null;
       scene!.guide(
         driving && line !== "off" ? shades : null,
@@ -1838,6 +1940,19 @@ export default function Drive() {
             crews[r.id >> 1]!,
             r.stop > 0 && r.stop <= STOP ? 2 : r.pit ? 1 : 0,
           );
+      const w = race.weather;
+      scene!.weather(
+        w?.rain[sectionOf(m, LENGTH)] ?? 0,
+        w?.water ?? null,
+        w?.line ?? null,
+        race.racers.map((r) =>
+          w?.any && !r.out && !r.pit
+            ? Math.min(1, (waterUnder(race, r) * Math.abs(r.car.v)) / 50)
+            : 0,
+        ),
+        race.racers.map((r) => r.car),
+        paused ? 0 : dt,
+      );
       scene!.frame(
         race.racers.map((r) => r.car),
         race.racers.map(towShare),
@@ -2510,12 +2625,18 @@ export default function Drive() {
                 6.0 MJ
               </span>
             </div>
+            <div
+              ref={rainEl}
+              hidden
+              title="Forecast: your team's read of the water on the coming laps, and the chance of rain"
+              className="mt-1.5 text-xs whitespace-nowrap text-soft tabular-nums"
+            />
             <div ref={fitWrap} hidden className="pointer-events-auto mt-2 flex flex-col gap-1.5">
               <div className="flex items-center gap-1.5">
                 <span ref={fitLabel} className="mr-auto text-xs whitespace-nowrap text-soft">
                   Next set
                 </span>
-                {COMPOUNDS.map((t, i) => (
+                {tyres.map((t, i) => (
                   <button
                     key={t}
                     ref={(el) => {
@@ -2650,7 +2771,7 @@ export default function Drive() {
                 <div
                   role="radiogroup"
                   aria-label="Tyre set"
-                  className="mt-3 grid grid-cols-5 gap-1.5"
+                  className={`mt-3 grid gap-1.5 ${timing.sets.length > 5 ? "grid-cols-6" : "grid-cols-5"}`}
                 >
                   {timing.sets.map((t, k) => (
                     <button
@@ -2661,7 +2782,10 @@ export default function Drive() {
                       onClick={() => chooseSet.current(k)}
                       className={`min-h-11 rounded-md px-1 text-xs ring-1 active:scale-[.98] ${timing.pick === k ? "bg-lamp ring-paper" : "ring-paper/25"}`}
                     >
-                      <span className="block font-semibold text-accent">S{k + 1}</span>
+                      <span className={`block font-semibold ${TYRE_INK[t.tyre]}`}>
+                        {letter(t.tyre)}
+                        {k + 1}
+                      </span>
                       <span className="block text-soft">
                         {t.used ? `${Math.round(t.life * 100)}%` : "New"}
                       </span>
@@ -2886,8 +3010,12 @@ export default function Drive() {
                       />
                     </>
                   )}
-                  <div role="radiogroup" aria-label="Tyres" className="mt-2 grid grid-cols-3 gap-2">
-                    {COMPOUNDS.map((t) => (
+                  <div
+                    role="radiogroup"
+                    aria-label="Tyres"
+                    className={`mt-2 grid gap-2 ${tyres.length > 3 ? "grid-cols-5" : "grid-cols-3"}`}
+                  >
+                    {tyres.map((t) => (
                       <button
                         key={t}
                         type="button"
@@ -2934,8 +3062,32 @@ export default function Drive() {
                   </p>
                   <p className={`${label} mt-1`}>
                     Team plan{" "}
-                    <span className="text-paper">{planText(teamPlan(laps, built, tyre))}</span>
+                    <span className="text-paper">
+                      {planText(teamPlan(laps, built, tyre, gridRain))}
+                    </span>
                   </p>
+                  {shownWeather && (
+                    <div className="mt-2 rounded-md p-2.5 ring-1 ring-paper/25">
+                      <p className="disp text-lg leading-tight">{gridSky.now}</p>
+                      <p className={`${label} mt-1`}>
+                        {gridSky.best}. Overtake is off in the wet. Forecast{" "}
+                        <span className="text-paper">{rainRead(gridRain)}</span>
+                      </p>
+                    </div>
+                  )}
+                  {shownWeather && !inCareer && !qualified && (
+                    <Choice
+                      name="Weather"
+                      value={weather}
+                      options={SKIES}
+                      pick={(m: Mode) => {
+                        setWeather(m);
+                        write(WEATHER, m);
+                        weatherRef.current = m;
+                        regrid.current();
+                      }}
+                    />
+                  )}
                   {!qualified && !inCareer && (
                     <Choice
                       name="Qualifying"
@@ -2992,7 +3144,8 @@ export default function Drive() {
                     </div>
                   )}
                   <p className="mt-2 text-xs text-soft pointer-coarse:hidden">
-                    1, 2 or 3 to pick tyres, [ and ] the wing, Enter to line up.
+                    {tyres.length > 3 ? "1 to 5" : "1, 2 or 3"} to pick tyres, [ and ] the wing,
+                    Enter to line up.
                   </p>
                   {inCareer && (
                     <button
