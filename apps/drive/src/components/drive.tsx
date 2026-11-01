@@ -82,6 +82,8 @@ import {
   type Tyre,
   COLD_T,
   gripAhead,
+  teamWater,
+  type Outlook,
   HIGH_T,
   LOW_T,
 } from "@/race";
@@ -226,6 +228,17 @@ const wearInk = (life: number, temp: number) =>
 // The team's plan as the grid screen shows it: "M → H, box lap 3", or in the sprint "M, no stop".
 const planText = ({ at, tyres }: { at: number[]; tyres: Tyre[] }) =>
   `${tyres.map(letter).join(" → ")}, ${at.length ? `box lap ${at.join(" and ")}` : "no stop"}`;
+// The coming laps' water as bars, and the team's read for the grid screen.
+const BARS = "▁▂▃▄▅▆▇█";
+const rainStrip = ({ water, chance }: Outlook, from: number) =>
+  `${water.map((w, k) => `L${from + k + 1} ${BARS[Math.min(7, Math.floor(w * 8))]}`).join(" ")} ~${Math.round(chance * 100)}%`;
+const rainRead = (water: number[] | null) => {
+  if (!water) return "Dry";
+  const first = water.findIndex((w) => w > 0.08);
+  if (first < 0) return "Dry, with rain about";
+  if (first === 0) return water.every((w) => w > 0.08) ? "Wet all race" : "Starting wet, may dry";
+  return `Rain from about lap ${first + 1}`;
+};
 const STEPS: [Level, string, string][] = [
   ["amateur", "Amateur", "F3 grid"],
   ["intermediate", "Intermediate", "F2 grid"],
@@ -604,6 +617,7 @@ export default function Drive() {
   const weatherShownRef = useRef(shownWeather);
   const [weather, setWeather] = useState<Mode>(() => read(WEATHER, "auto"));
   const weatherRef = useRef(weather);
+  const [gridRain, setGridRain] = useState<number[] | null>(null);
   const audio = useRef<Audio | null>(null);
   const again = useRef<() => void>(() => {});
   // The grid screen's pick, and what it and the pit lane's chips call into the race.
@@ -763,6 +777,7 @@ export default function Drive() {
   const otPad = useRef<HTMLButtonElement>(null);
   const batEl = useRef<HTMLSpanElement>(null);
   const batText = useRef<HTMLSpanElement>(null);
+  const rainEl = useRef<HTMLDivElement>(null);
   const limitsEl = useRef<HTMLDivElement>(null);
   const rcEl = useRef<HTMLDivElement>(null);
   const rcLabel = useRef<HTMLSpanElement>(null);
@@ -1121,6 +1136,7 @@ export default function Drive() {
             )
           : null,
       );
+      setGridRain(teamWater(race, 0));
       quali = null;
       towerEl.current!.hidden = false;
       lapName.current!.textContent = "Lap";
@@ -1232,7 +1248,7 @@ export default function Drive() {
     };
     go.current = (t) => {
       const me = race.racers[0]!;
-      const plan = teamPlan(race.laps, track, t);
+      const plan = teamPlan(race.laps, track, t, teamWater(race, 0));
       [me.tyre, me.stints, me.stops, me.plan] = [t, [t], plan.at, plan.tyres];
       [me.wing, me.nextWing] = [wingRef.current, wingRef.current];
       drawBoard();
@@ -1667,6 +1683,12 @@ export default function Drive() {
         name.className = TYRE_INK[me.tyre];
       }
       wingEl.current!.textContent = `W${me.wing}`;
+      const rain = rainEl.current!;
+      rain.hidden = !race.outlook;
+      if (race.outlook) {
+        const text = rainStrip(race.outlook, me.laps);
+        if (rain.textContent !== text) rain.textContent = text;
+      }
       const nextWing = wingNext.current!;
       nextWing.textContent = `W${me.nextWing}`;
       nextWing.classList.toggle("text-accent", me.nextWing !== me.wing);
@@ -2539,6 +2561,12 @@ export default function Drive() {
                 6.0 MJ
               </span>
             </div>
+            <div
+              ref={rainEl}
+              hidden
+              title="Forecast: your team's read of the water on the coming laps, and the chance of rain"
+              className="mt-1.5 text-xs whitespace-nowrap text-soft tabular-nums"
+            />
             <div ref={fitWrap} hidden className="pointer-events-auto mt-2 flex flex-col gap-1.5">
               <div className="flex items-center gap-1.5">
                 <span ref={fitLabel} className="mr-auto text-xs whitespace-nowrap text-soft">
@@ -2967,8 +2995,15 @@ export default function Drive() {
                   </p>
                   <p className={`${label} mt-1`}>
                     Team plan{" "}
-                    <span className="text-paper">{planText(teamPlan(laps, built, tyre))}</span>
+                    <span className="text-paper">
+                      {planText(teamPlan(laps, built, tyre, gridRain))}
+                    </span>
                   </p>
+                  {shownWeather && (
+                    <p className={`${label} mt-1`}>
+                      Forecast <span className="text-paper">{rainRead(gridRain)}</span>
+                    </p>
+                  )}
                   {shownWeather && !inCareer && !qualified && (
                     <Choice
                       name="Weather"

@@ -22,6 +22,8 @@ import {
 import {
   aquaplane,
   clearLine,
+  forecast,
+  meanWater,
   sectionOf,
   SECTIONS,
   tickWeather,
@@ -516,6 +518,13 @@ export const legalSets = (sets: Tyre[]) =>
 // How much quicker a tyre wears on this much water: a wet tyre up to three times on a dry road, and
 // a slick up to half as fast once the water's cooling it.
 const WET_ROAD = 0.2;
+// What a lap on this much water leaves a set's grip at, as the strategist reckons: the curve, and
+// the heat at a typical corner's load.
+const expectedShare = (t: Tyre, water: number) => {
+  const { cool, dry, hot, kind } = TYRES[t];
+  const temp = LOW_T + hot * 7 + dry * Math.max(0, 1 - water / WET_ROAD) - cool * water;
+  return wetGrip(kind, water) * (1 - COLD * coldShare(temp) - HOT * hotShare(temp));
+};
 const waterWear = (t: Tyre, water: number) =>
   TYRES[t].kind === "slick"
     ? 1 - 0.5 * Math.min(1, water / 0.5)
@@ -587,52 +596,100 @@ type Now = {
   cheap: number;
   keep: number[];
 };
-function walkPlans(laps: number, track: Track, now: Now | null, visit: (p: Plan) => void) {
+// With rain to plan for, `water` is the team's read of each lap's water (see teamWater): a lap costs
+// its grip on that water and the heat that water would leave the tyre at, and wears at that water's
+// rate, so wet tyres come into the search and the crossovers fall where the forecast puts them.
+// ponytail: mean water and a typical corner's heat for the whole lap; no traffic, sections or dry
+// line. The search weighs a stop every few laps past 12 in the wet, with five compounds to walk.
+function walkPlans(
+  laps: number,
+  track: Track,
+  now: Now | null,
+  visit: (p: Plan) => void,
+  water: number[] | null = null,
+) {
   const { GRIP_POWER, STOP_LAPS } = track;
-  const run = (t: Tyre, life: number, n: number) => {
+  const run = (t: Tyre, life: number, n: number, start = 0) => {
     const per = lapWear(t, laps, track);
-    if (n && life - per * n < IN_HAND) return Infinity;
+    if (!water && n && life - per * n < IN_HAND) return Infinity;
     let sum = 0;
-    for (let k = 0; k < n; k++) sum += grip(Math.max(0, life - per * (k + 0.5)), t) ** -GRIP_POWER;
+    let left = life;
+    for (let k = 0; k < n; k++) {
+      const w = water?.[start + k] ?? 0;
+      const lost = water ? per * waterWear(t, w) : per;
+      if (water && left - lost < IN_HAND) return Infinity;
+      const mid = water ? left - lost / 2 : life - per * (k + 0.5);
+      const g = grip(Math.max(0, mid), t) * (water ? expectedShare(t, w) : 1);
+      sum += g ** -GRIP_POWER;
+      left -= lost;
+    }
     return sum;
   };
-  const fresh = Object.fromEntries(
-    COMPOUNDS.map((t) => [t, [...Array(laps + 1).keys()].map((n) => run(t, 1, n))]),
-  ) as Record<Tyre, number[]>;
+  const pool = water ? [...COMPOUNDS, "inter" as const, "wet" as const] : COMPOUNDS;
+  // A new set's cost for n laps from lap `start`: one table when every lap's the same, and in the
+  // wet one per start lap, made as they're asked for.
+  const table = new Map<string, number[]>();
+  const fresh = (t: Tyre, start: number, n: number) => {
+    const key = `${t}${water ? start : 0}`;
+    let costs = table.get(key);
+    if (!costs) {
+      costs = [...Array(laps + 1).keys()].map((m) => run(t, 1, m, water ? start : 0));
+      table.set(key, costs);
+    }
+    return costs[n]!;
+  };
   const used = now?.used ?? [];
-  // The sprint plans no stop and needs no second compound.
-  const more = sprint(laps) ? 0 : Math.min(2, 3 - Math.max(0, used.length - 1));
+  // The sprint plans no stop and needs no second compound, unless it rains.
+  const more = sprint(laps) && !water ? 0 : Math.min(2, 3 - Math.max(0, used.length - 1));
   const legal = (sets: Tyre[]) => sprint(laps) || legalSets([...used, ...sets]);
-  const every = Math.ceil(laps / 25);
+  const every = Math.ceil(laps / (water ? 12 : 25));
   const weigh = (n: number) => n % every === 0 || n === now?.first || !!now?.keep.includes(n);
   // New sets from the end of lap `done`, after `at` stops so far.
   const walk = (done: number, at: number[], tyres: Tyre[], cost: number) => {
-    for (const t of COMPOUNDS) {
+    for (const t of pool) {
       const all = [...tyres, t];
-      if (legal(all)) visit({ at, tyres: all, cost: cost + fresh[t][laps - done]! });
+      if (legal(all)) visit({ at, tyres: all, cost: cost + fresh(t, done, laps - done) });
       if (at.length < more)
         for (let n = 2; n <= laps - done - 2; n++)
           if (weigh(done + n))
-            walk(done + n, [...at, done + n], all, cost + fresh[t][n]! + STOP_LAPS);
+            walk(done + n, [...at, done + n], all, cost + fresh(t, done, n) + STOP_LAPS);
     }
   };
   if (!now) return walk(0, [], [], 0);
   const { from, first, tyre, life, cheap } = now;
-  if (legal([tyre])) visit({ at: [], tyres: [tyre], cost: run(tyre, life, laps - from) });
+  if (legal([tyre])) visit({ at: [], tyres: [tyre], cost: run(tyre, life, laps - from, from) });
   for (let end = Math.max(first, from); more > 0 && end <= laps - 2; end++) {
     if (!weigh(end)) continue;
     const stop = STOP_LAPS * (end === first ? cheap : 1);
-    walk(end, [end], [tyre], run(tyre, life, end - from) + stop);
+    walk(end, [end], [tyre], run(tyre, life, end - from, from) + stop);
   }
 }
-export function strategies(laps: number, track: Track) {
+export function strategies(laps: number, track: Track, water: number[] | null = null) {
   const all: Plan[] = [];
-  walkPlans(laps, track, null, (p) => all.push(p));
+  walkPlans(laps, track, null, (p) => all.push(p), water);
   return all.sort((a, b) => a.cost - b.cost);
 }
 // The team's plan for a race started on `tyre`.
-export const teamPlan = (laps: number, track: Track, tyre: Tyre) =>
-  strategies(laps, track).find((p) => p.tyres[0] === tyre)!;
+export const teamPlan = (laps: number, track: Track, tyre: Tyre, water: number[] | null = null) =>
+  strategies(laps, track, water).find((p) => p.tyres[0] === tyre)!;
+// How far a level's strategists misread a far-off cell, as a share of it (weather.ts forecast).
+const MISREAD: Record<Level, number> = {
+  amateur: 0.9,
+  intermediate: 0.6,
+  pro: 0.3,
+  legends: 0.12,
+};
+// An average lap so far, near enough for how far ahead a forecast's laps fall.
+const lapMs = (race: Pick<Race, "fastest" | "track">) =>
+  race.fastest?.ms ?? (race.track.LENGTH * 1000) / 55;
+// A team's read of the water on each lap of the race (null with no rain to plan for). Your team reads
+// as well as the level's do.
+export const teamWater = (race: Race, team: number, done = 0, seed = team): number[] | null => {
+  const w = race.weather;
+  if (!w || (!w.cells.length && !w.any)) return null;
+  const left = forecast(w, lapMs(race), race.laps - done, seed + 1, MISREAD[race.level]);
+  return [...Array<number>(done).fill(0), ...left];
+};
 // How far off the best a level's strategists stray, in laps (about 8, 5, 2 and half a second).
 const CALL: Record<Level, number> = {
   amateur: 0.09,
@@ -877,10 +934,17 @@ export type Race = {
   hand: number;
   // Who drives each car (see REAL).
   seats: number[];
-  // The weekend's weather, or null for a dry race with none to run.
+  // The weekend's weather, or null for a dry race with none to run; your team's read of it as the
+  // HUD shows it; the rain call last made, and the computer cars still to re-plan at the line, a few
+  // a frame, the wet search being the bigger.
   weather: Weather | null;
+  outlook: Outlook | null;
+  rainCall: number;
+  planning: Racer[];
 };
 
+// The coming laps: each one's water in your team's read, and the chance of rain in the next few.
+export type Outlook = { lap: number; water: number[]; chance: number; next: number };
 export function newRace(
   track: Track,
   grid: number[],
@@ -899,8 +963,22 @@ export function newRace(
   const { pace, slip } = LEVELS[lv];
   const drivers = seats.map((k) => LEVELS[lv].drivers[k]!);
   const { HALF, LENGTH, atDist, dirAt, pointAt, ZONES } = track;
-  const options = strategies(laps, track);
-  const close = options.filter((o) => o.cost <= options[0]!.cost + CALL[lv]);
+  // Every team reads the weather its own way, so with rain about they plan apart.
+  const planFor = (water: number[] | null) => {
+    const options = strategies(laps, track, water);
+    return options.filter((o) => o.cost <= options[0]!.cost + CALL[lv]);
+  };
+  const close = planFor(null);
+  const reads = new Map<number, Plan[]>();
+  const closeFor = (id: number) => {
+    if (!weather || (!weather.cells.length && !weather.any)) return close;
+    const team = id >> 1;
+    if (!reads.has(team)) {
+      const lap = (LENGTH * 1000) / 55;
+      reads.set(team, planFor(forecast(weather, lap, laps, team + 1, MISREAD[lv])));
+    }
+    return reads.get(team)!;
+  };
   const ai = drivers.slice(1);
   const spread = (k: "pace" | "aware", id: number) => {
     const xs = ai.map((d) => d[k]);
@@ -910,7 +988,8 @@ export function newRace(
   const racers = [...Array(CARS).keys()].map((id): Racer => {
     // Too short a race for a stop (qualifying), and you, plan nothing here. You run the car as
     // tuned until the grid screen sets your wing.
-    const strat = (id && close[Math.floor(rand() * close.length)]) || { at: [], tyres: [tyre] };
+    const from = id ? closeFor(id) : close;
+    const strat = (id && from[Math.floor(rand() * from.length)]) || { at: [], tyres: [tyre] };
     const s = grid.indexOf(id);
     const m = gridAt(s);
     const [x, y] = pointAt(m, (s % 2 ? 1 : -1) * (HALF[atDist(m)]! / 2.5));
@@ -1021,6 +1100,9 @@ export function newRace(
     hand: 0,
     seats,
     weather,
+    outlook: null,
+    rainCall: -1,
+    planning: [],
     eng: {
       next: 0,
       pos: 0,
@@ -1772,6 +1854,12 @@ const LINES = {
     "Lap back, you're in the queue. Your car.",
     "Back where we belong. Over to you.",
   ],
+  rain: [
+    (n: number, s: number) =>
+      `Rain in about ${n} lap${n > 1 ? "s" : ""}. Looks heavier in sector ${s}.`,
+    (n: number) => `Radar's got rain about ${n} lap${n > 1 ? "s" : ""} out. We'll call the tyre.`,
+    (n: number) => `Rain coming, maybe ${n} lap${n > 1 ? "s" : ""}. Stay on these for now.`,
+  ],
   hot: [
     (w: string) => `The ${w} is running hot. Give it some clean air.`,
     (w: string) => `Tyre temps are high on the ${w}. Back out of the dirty air.`,
@@ -2164,15 +2252,22 @@ const nowOf = (race: Race, r: Racer, first: number, cheap: number) => ({
 // chance.
 function replan(race: Race, r: Racer, cheap = 1) {
   const first = firstChance(race, r);
+  const water = teamWater(race, r.id >> 1, r.laps);
   const k = r.stops.findIndex((n) => n >= first);
   const mine = (k < 0 ? [] : r.stops.slice(k)).join();
   const sets = [r.tyre, ...(k < 0 ? [] : r.plan.slice(k + 1))].join();
   let best: Plan | null = null;
   let cost = Infinity;
-  walkPlans(race.laps, race.track, nowOf(race, r, first, cheap), (p) => {
-    if (!best || p.cost < best.cost) best = p;
-    if (p.at.join() === mine && p.tyres.join() === sets) cost = p.cost;
-  });
+  walkPlans(
+    race.laps,
+    race.track,
+    nowOf(race, r, first, cheap),
+    (p) => {
+      if (!best || p.cost < best.cost) best = p;
+      if (p.at.join() === mine && p.tyres.join() === sets) cost = p.cost;
+    },
+    water,
+  );
   const pick = best as Plan | null;
   if (pick && pick.cost < cost - (r.id ? CALL[race.level] : 0))
     [r.stops, r.plan] = [pick.at, pick.tyres];
@@ -2183,11 +2278,19 @@ function replan(race: Race, r: Racer, cheap = 1) {
 function nextSet(race: Race, r: Racer): Tyre {
   // Qualifying runs softs, and its race is a lap long.
   if (race.session) return "soft";
-  if (sprint(race.laps)) return strategies(race.laps - r.laps, race.track)[0]?.tyres[0] ?? "soft";
+  const water = teamWater(race, r.id >> 1, r.laps);
+  if (sprint(race.laps) && !water)
+    return strategies(race.laps - r.laps, race.track)[0]?.tyres[0] ?? "soft";
   let best: Plan | null = null;
-  walkPlans(race.laps, race.track, nowOf(race, r, r.laps, 1), (p) => {
-    if (p.at[0] === r.laps && (!best || p.cost < best.cost)) best = p;
-  });
+  walkPlans(
+    race.laps,
+    race.track,
+    nowOf(race, r, r.laps, 1),
+    (p) => {
+      if (p.at[0] === r.laps && (!best || p.cost < best.cost)) best = p;
+    },
+    water,
+  );
   return (best as Plan | null)?.tyres[1] ?? COMPOUNDS.find((t) => !r.stints.includes(t)) ?? "soft";
 }
 
@@ -2645,6 +2748,38 @@ export function heatTyres(
   });
 }
 
+// Your team's forecast, every LOOK_EVERY ms: the water it reads on the coming laps, the chance of
+// rain over the next OUTLOOK from how often a few reads of it agree, and the call on the radio when
+// rain first looks close, once a spell.
+const LOOK_EVERY = 4000;
+const OUTLOOK = 4;
+const READS = 5;
+const RAIN = 0.08;
+function outlook(race: Race) {
+  const w = race.weather;
+  if (!w || (!w.cells.length && !w.any)) return;
+  if (race.outlook && race.t - race.outlook.lap < LOOK_EVERY) return;
+  const me = race.racers.find((r) => r.id === 0) ?? race.racers[0]!;
+  const done = Math.min(me.laps, race.laps - 1);
+  const coming = (seed: number) =>
+    forecast(w, lapMs(race), Math.min(OUTLOOK, race.laps - done), seed, MISREAD[race.level]);
+  const water = coming(1);
+  let wet = 0;
+  for (let k = 0; k < READS; k++) wet += +coming(k + 1).some((x) => x > RAIN);
+  const next = water.findIndex((x) => x > RAIN);
+  race.outlook = { lap: race.t, water, chance: wet / READS, next };
+  const dryNow = meanWater(w) < RAIN;
+  if (dryNow && next > 0 && race.rainCall < 0) {
+    race.rainCall = done;
+    const rains = w.rain.map((_, k) => k);
+    const sectors = [0, 1, 2].map((s) =>
+      rains.slice(s * 10, s * 10 + 10).reduce((sum, k) => sum + w.water[k]!, 0),
+    );
+    const worst = sectors.indexOf(Math.max(...sectors)) + 1;
+    radio(race, pick(LINES.rain)(next, worst));
+  } else if (!dryNow) race.rainCall = -1;
+}
+
 // Your split, and whether the team drove any of the lap so far.
 export type YourSplit = Split & { team: boolean };
 // One frame for every car. `you` is the player's input, or null to hold them (before the lights).
@@ -2652,6 +2787,13 @@ export type YourSplit = Split & { team: boolean };
 export function tick(race: Race, you: Input, dt: number): YourSplit | null {
   race.t += dt * 1000;
   if (race.weather) tickWeather(race.weather, dt * 1000);
+  outlook(race);
+  // One computer car's plan a frame; it may have stopped or finished by its turn.
+  const turn = race.planning.shift();
+  if (turn && !turn.out && turn.finish === null && !turn.pitting && !turn.puncture) {
+    replan(race, turn);
+    cover(race, turn);
+  }
   engineer(race);
   const { LENGTH, PIT_IN, PIT_OUT, PIT_SIDE } = race.track;
   const { collide, dirAt, inPit, lateral, nearest, signed } = race.track;
@@ -2820,7 +2962,8 @@ export function tick(race: Race, you: Input, dt: number): YourSplit | null {
       // The team re-plans at the line (not with the car on its way to a stop), and calls you in on
       // the lap you're to stop.
       if (r.finish === null && !race.session && !failed && !r.puncture && !r.pitting) {
-        replan(race, r);
+        if (r.id && race.weather?.cells.length) race.planning.push(r);
+        else replan(race, r);
         if (r.id) cover(race, r);
         else if (r.stops.includes(r.laps + 1))
           boxCall(
