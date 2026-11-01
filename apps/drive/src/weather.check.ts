@@ -25,7 +25,10 @@ import {
   HIGH_T,
   legalSets,
   LOW_T,
+  newQuali,
   newRace,
+  newSession,
+  tickSession,
   pointsShare,
   results,
   standings,
@@ -247,6 +250,54 @@ const lap = (tyre: Tyre, water: number, id = 2) => {
   assert.equal(standings(rounds, false).drivers[0]!.points, 12.5, "half of 25 in the table");
   assert.equal(season(rounds, first, false).points, 12.5, "and in the season");
   assert.deepEqual(progression(rounds, false)[first], [12.5], "and the chart");
+}
+// Quick qualifying: the team fits the tyre for the water, every lap shares one weather, and it runs
+// once however many cars are on it.
+{
+  const w = fixedWeather(0.6, 0.6);
+  const q = newQuali(monza, "pro", seeded(3), undefined, undefined, w);
+  assert.ok(q.every((race) => race.racers[0]!.tyre === "wet" || race.racers[0]!.tyre === "inter"));
+  assert.ok(q.every((race) => race.weather === w));
+  const t = w.t;
+  for (const race of q) tick(race, still, 1);
+  assert.equal(w.t, t + 1000, "one clock");
+  assert.equal(newQuali(monza, "pro", seeded(3))[0]!.racers[0]!.tyre, "soft", "dry, softs");
+  assert.ok(!q.some((race) => race.neutral), "no Safety Car in qualifying");
+}
+// Full qualifying: wet sets on top of the softs only with rain about, a car runs the compound for
+// the water, and the water at the end carries on into the race.
+{
+  assert.equal(newSession(monza, "pro", seeded(3)).session!.sets[0]!.length, 5);
+  const w = fixedWeather(0.7, 0.7);
+  const race = newSession(monza, "pro", seeded(3), undefined, true, undefined, w);
+  const s = race.session!;
+  assert.equal(s.sets[0]!.length, 12);
+  assert.equal(s.sets[0]!.filter((t) => t.tyre === "inter").length, 4);
+  assert.equal(s.sets[0]!.filter((t) => t.tyre === "wet").length, 3);
+  assert.equal(s.sets[0]![s.pick]!.tyre, "wet", "your pick starts on the tyre for the water");
+  const seen = new Set<string>();
+  for (let f = 0; f < 200 / DT; f++) {
+    tickSession(race, still, DT);
+    for (const r of race.racers) if (!r.out) seen.add(r.tyre);
+  }
+  assert.ok(seen.has("wet") && !seen.has("soft"), `runs wets (${[...seen]})`);
+  assert.ok(
+    s.best[0]!.some((b) => b > 0),
+    "sets lap times",
+  );
+  const carried = newRace(
+    monza,
+    GRID,
+    seeded(1),
+    "medium",
+    "pro",
+    8,
+    false,
+    undefined,
+    undefined,
+    w,
+  );
+  assert.ok(meanWater(carried.weather!) > 0.5, "the race starts on the water it left");
 }
 assert.equal(SECTIONS, 30);
 console.log("weather: ok");

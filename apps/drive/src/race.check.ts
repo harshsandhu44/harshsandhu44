@@ -1534,7 +1534,11 @@ assert.equal(trend(false, 1.0, 1.05, 1), "", "a steady gap goes unsaid");
 }
 // The set to go out on: a new one while there is one, else the one with the most life left.
 {
-  const set = (life: number, used = true) => ({ wear: [life, life, life, life], used });
+  const set = (life: number, used = true) => ({
+    tyre: "soft" as const,
+    wear: [life, life, life, life],
+    used,
+  });
   assert.equal(bestSet([set(0.6), set(1, false), set(1, false)]), 1, "a new set first");
   assert.equal(bestSet([set(0.6), set(0.8), set(0.7)]), 1, "then the most life");
 }

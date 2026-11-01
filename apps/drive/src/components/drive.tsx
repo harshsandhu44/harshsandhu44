@@ -90,7 +90,14 @@ import {
   HIGH_T,
   LOW_T,
 } from "@/race";
-import { drawWeather, MODES as SKIES, sectionOf, WEATHER_ON, type Mode } from "@/weather";
+import {
+  drawWeather,
+  MODES as SKIES,
+  sectionOf,
+  WEATHER_ON,
+  type Mode,
+  type Weather,
+} from "@/weather";
 import { KERB_R, TOP, fmt, gear } from "@/track";
 import { CALENDAR, FIRST_CALENDAR, TRACKS, getTrack } from "@/tracks";
 import { Season, TitleScenarios } from "@/components/season";
@@ -278,6 +285,10 @@ const RULES: [string, string][] = [
     "More rear wing is more grip in the corners and under braking, and less top speed. Each track has a quickest wing, low at Monza and high at Monaco: the team suggests it on the grid screen. Qualify and the race starts on your qualifying wing (parc fermé). In the race, [ and ] pick the wing for your next stop.",
   ],
   [
+    "Rain",
+    "Rain cells sweep round the lap, so one part can be soaked while another's dry, and the field clears a drier line that goes off-line doesn't get. Slicks fall away quickly in the wet, inters are quickest on a damp track and full wets once it's deep; running either waives the two-compound rule. Wet tyres cook on a dry road, so stay out too long as it dries and they wear away. Water takes traction, and deep water floats a tyre at speed, wets last. The forecast under the battery is your team's read of the next laps, and it can be wrong, more so far out and at lower levels. Heavy water brings the Safety Car; the worst a red flag, with a free change of tyres and a restart behind it, or if it never eases the race is called on reduced points. The water qualifying leaves is the water the race starts on.",
+  ],
+  [
     "Safety Car & failures",
     "Cars break down (about one in twenty-five a race, yours too), crash out on a big hit, take lasting damage from smaller ones, and puncture from contact or a set run to nothing; a puncture costs grip, not top speed, until you box, its wheel blinking red. A car stopped off the track brings the Virtual Safety Car: everyone is held to the same speed. A crash, or a car stopped on the track, brings the Safety Car: the field queues behind it with no passing, and racing starts again at the line once it's gone in. The team drives your car under both and hands it back as either ends, after a three-second countdown: press E (or Auto) any time in a race and the team drives until you press it again, boxing as it calls, with B to call a stop off, and no lap it drives can set your record; press B (or Box) to have it take you in, as a stop under either costs less, and F (or Skip) to fast-forward to the countdown. With more than three laps to go, lapped cars are waved past the queue to its back first (the team drives you through), and the Safety Car comes in once the last is back. When a car a lap up catches you, the blue flag lets it by; pass it again and pull away, and you've unlapped yourself.",
   ],
@@ -375,7 +386,7 @@ type Timing = {
   fast: boolean;
   rows: { id: number; best: number; phase: Phase }[];
   // Your sets: life left (1 new) and whether run, and the one picked for the next run.
-  sets: { life: number; used: boolean }[];
+  sets: { tyre: Tyre; life: number; used: boolean }[];
   pick: number;
 };
 // Career: a season in one series, at one distance and qualifying format, round by round through
@@ -1118,6 +1129,21 @@ export default function Drive() {
 
     const seatsNow = () =>
       seatsFor(inCareerRef.current, careerRef.current, levelRef.current, picksRef.current);
+    // The race's weather: after qualifying, what it left, the same again on a restart; or a new
+    // draw, over the race and the qualifying it may yet have. ponytail: an average lap by the
+    // length, near enough for how far ahead to draw the rain.
+    let sky: Weather | null = null;
+    let carried: Weather | null = null;
+    const raceSky = (laps: number) => {
+      if (!weatherShownRef.current) return null;
+      if (lineupRef.current !== GRID && sky) {
+        carried ??= structuredClone(sky);
+        return structuredClone(carried);
+      }
+      const lap = (track.LENGTH * 1000) / 55;
+      const mode = inCareerRef.current ? "auto" : weatherRef.current;
+      return drawWeather(track.id, mode, (laps + (fullRef.current ? 15 : 1)) * lap);
+    };
     const start = () => {
       const raceLaps = lapsOf(DISTANCES[distRef.current]!, track);
       race = newRace(
@@ -1130,14 +1156,7 @@ export default function Drive() {
         true,
         lineupRef.current === GRID ? undefined : weekend,
         seatsNow(),
-        // ponytail: an average lap by the length, near enough for how far ahead to draw the rain.
-        weatherShownRef.current
-          ? drawWeather(
-              track.id,
-              inCareerRef.current ? "auto" : weatherRef.current,
-              (raceLaps * track.LENGTH * 1000) / 55,
-            )
-          : null,
+        raceSky(raceLaps),
       );
       setGridRain(teamWater(race, 0));
       quali = null;
@@ -1261,7 +1280,9 @@ export default function Drive() {
     };
     qualify.current = () => {
       if (fullRef.current) return session();
-      quali = newQuali(track, levelRef.current, Math.random, undefined, seatsNow());
+      // The weekend's weather runs from here into the race.
+      [sky, carried] = [race.weather, null];
+      quali = newQuali(track, levelRef.current, Math.random, undefined, seatsNow(), sky);
       race = quali[0]!;
       weekend = race.cars;
       qualiWing.current = wingRef.current;
@@ -1274,7 +1295,8 @@ export default function Drive() {
     };
     // Full qualifying: no lights, you start in the garage.
     const session = () => {
-      race = newSession(track, levelRef.current, Math.random, undefined, simming, seatsNow());
+      [sky, carried] = [race.weather, null];
+      race = newSession(track, levelRef.current, Math.random, undefined, simming, seatsNow(), sky);
       weekend = race.cars;
       qualiWing.current = wingRef.current;
       [race.racers[0]!.wing, race.racers[0]!.nextWing] = [wingRef.current, wingRef.current];
@@ -1322,7 +1344,8 @@ export default function Drive() {
               through: s.in.includes(0),
               fast: fast > 0,
               rows: order.map((id) => ({ id, best: s.best[s.seg]![id]!, phase: s.phase[id]! })),
-              sets: s.sets[0]!.map(({ wear, used }) => ({
+              sets: s.sets[0]!.map(({ tyre, wear, used }) => ({
+                tyre,
                 life: wear.reduce((a, b) => a + b, 0) / wear.length,
                 used,
               })),
@@ -2737,7 +2760,7 @@ export default function Drive() {
                 <div
                   role="radiogroup"
                   aria-label="Tyre set"
-                  className="mt-3 grid grid-cols-5 gap-1.5"
+                  className={`mt-3 grid gap-1.5 ${timing.sets.length > 5 ? "grid-cols-6" : "grid-cols-5"}`}
                 >
                   {timing.sets.map((t, k) => (
                     <button
@@ -2748,7 +2771,10 @@ export default function Drive() {
                       onClick={() => chooseSet.current(k)}
                       className={`min-h-11 rounded-md px-1 text-xs ring-1 active:scale-[.98] ${timing.pick === k ? "bg-lamp ring-paper" : "ring-paper/25"}`}
                     >
-                      <span className="block font-semibold text-accent">S{k + 1}</span>
+                      <span className={`block font-semibold ${TYRE_INK[t.tyre]}`}>
+                        {letter(t.tyre)}
+                        {k + 1}
+                      </span>
                       <span className="block text-soft">
                         {t.used ? `${Math.round(t.life * 100)}%` : "New"}
                       </span>
