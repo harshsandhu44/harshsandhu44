@@ -7,6 +7,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { CARS, type Livery } from "@/race";
 import { KERB_R, PIT_HALF, STAND_HALF, WORK, type Car, type Track } from "@/track";
+import { SECTIONS, sectionOf } from "@/weather";
 
 export type Colors = Record<
   "accent" | "carbon" | "paper" | "chrome" | "ink" | "pit" | "slow",
@@ -244,7 +245,7 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
     track;
   const { BOARD_GAP, BUILDINGS, RUNOFF, SETTING, SKY: SKY_KIND, SPHERE } = track;
   const { atDist, dirAt, nearest, offset, pitOffset, pointAt, wallGap, working } = track;
-  const { LENGTH, RACING } = track;
+  const { CUM, LENGTH, RACING } = track;
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.domElement.className = "block size-full";
   host.append(renderer.domElement);
@@ -978,6 +979,7 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
     return bar;
   });
   let night = false;
+  let wetLights = false;
   let blink = 0;
 
   const hemi = new THREE.HemisphereLight("#e4ebf0", "#3d5244", 1.4);
@@ -998,21 +1000,24 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
   const mix = (a: string, b: string, t: number) => c0.set(a).lerp(c1.set(b), t);
   const toward = new THREE.Vector3();
   let shown = -1;
+  // How far the sky has closed in for the rain, 0 to 1.
+  let storm = 0;
+  const STORM = "#59616a";
   const light = (progress: number) => {
     let k = 0;
     while (k < stops.length - 1 && progress > stops[k + 1]![0]) k++;
     const [p0, a] = stops[k]!;
     const [p1, b] = stops[Math.min(k + 1, stops.length - 1)]!;
     const t = p1 > p0 ? Math.min(1, (progress - p0) / (p1 - p0)) : 0;
-    if (Math.abs(k + t - shown) < 0.002) return;
-    shown = k + t;
-    sky.copy(mix(a.sky, b.sky, t));
+    if (Math.abs(k + t + 10 * storm - shown) < 0.002) return;
+    shown = k + t + 10 * storm;
+    sky.copy(mix(a.sky, b.sky, t)).lerp(c1.set(STORM), 0.8 * storm);
     fog.color.copy(sky);
     hemi.color.copy(mix(a.top, b.top, t));
     hemi.groundColor.copy(mix(a.low, b.low, t));
-    hemi.intensity = a.hemi + (b.hemi - a.hemi) * t;
+    hemi.intensity = (a.hemi + (b.hemi - a.hemi) * t) * (1 - 0.35 * storm);
     sun.color.copy(mix(a.sun, b.sun, t));
-    sun.intensity = a.sunI + (b.sunI - a.sunI) * t;
+    sun.intensity = (a.sunI + (b.sunI - a.sunI) * t) * (1 - 0.75 * storm);
     SUN.set(...a.at).lerp(toward.set(...b.at), t);
     const lamps = a.lamps + (b.lamps - a.lamps) * t;
     for (const { m, base, k } of lamped) m.emissiveIntensity = base + k * lamps;
@@ -1046,7 +1051,130 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
     }
   };
 
+  // The water on the road: a sheen over each section of the lap, off the line and on it, so a dry
+  // line shows darker through it. ponytail: the racing line for every level's dry line, and each
+  // section one flat shade.
+  const sheen = () =>
+    new THREE.MeshStandardMaterial({
+      color: "#8aa2b8",
+      roughness: 0.12,
+      metalness: 0.7,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+  const lineAt = (by: number) =>
+    offset((i) => Math.max(-HALF[i]!, Math.min(HALF[i]!, RACING[i]! + by)));
+  const [lineL, lineR] = [lineAt(3), lineAt(-3)];
+  const sheets = Array.from({ length: SECTIONS }, (_, k) => {
+    const here = (i: number) => sectionOf(CUM[i]!, LENGTH) === k;
+    const mesh = (a: [number, number][], b: [number, number][], m: THREE.Material) => {
+      const o = new THREE.Mesh(strip(a, b, 0.035, here), m);
+      o.visible = false;
+      scene.add(o);
+      return o;
+    };
+    const [off, on] = [sheen(), sheen()];
+    return { off, on, parts: [mesh(lineL, L, off), mesh(R, lineR, off), mesh(lineR, lineL, on)] };
+  });
+  // Rain: streaks falling in a box round the view, as many as it's raining. Spray: a plume of puffs
+  // behind each car, as big as there's water and speed, that a car following has to look through.
+  // Neither moves in the reduced-motion view, which keeps only the tint on the road.
+  const DROPS = 1400;
+  const RAIN_BOX = 90;
+  const TALL = 60;
+  const STREAK = 2.6;
+  const dropAt = new Float32Array(DROPS * 6);
+  const dropSeed = Array.from({ length: DROPS }, () => [
+    Math.random() * RAIN_BOX,
+    Math.random() * TALL,
+    Math.random() * RAIN_BOX,
+  ]);
+  const dropGeo = new THREE.BufferGeometry();
+  dropGeo.setAttribute("position", new THREE.BufferAttribute(dropAt, 3));
+  const drops = new THREE.LineSegments(
+    dropGeo,
+    new THREE.LineBasicMaterial({ color: "#cfd8e2", transparent: true, opacity: 0.4, fog: false }),
+  );
+  drops.frustumCulled = false;
+  drops.visible = false;
+  scene.add(drops);
+  let fall = 0;
+  const PUFFS = 6;
+  const spray = new THREE.InstancedMesh(
+    new THREE.IcosahedronGeometry(1, 1),
+    new THREE.MeshBasicMaterial({
+      color: "#d4dae0",
+      transparent: true,
+      opacity: 0.09,
+      depthWrite: false,
+    }),
+    CARS * PUFFS,
+  );
+  spray.frustumCulled = false;
+  spray.visible = false;
+  scene.add(spray);
+  const puff = new THREE.Object3D();
+  const FOG = [fog.near, fog.far] as const;
+
   return {
+    // The weather, each frame: what's falling on your car, each section's water and dry line, and
+    // each car's spray (0 to 1).
+    weather(
+      rain: number,
+      water: number[] | null,
+      line: number[] | null,
+      sprays: number[],
+      cars: Car[],
+      dt: number,
+    ) {
+      storm += (rain - storm) * Math.min(1, dt * 0.4);
+      fog.near = FOG[0] - 170 * storm;
+      fog.far = FOG[1] - 400 * storm;
+      wetLights = rain > 0.05;
+      sheets.forEach(({ off, on, parts }, k) => {
+        const w = water?.[k] ?? 0;
+        off.opacity = 0.5 * w;
+        on.opacity = 0.5 * w * (1 - (line?.[k] ?? 0));
+        wetLights ||= w > 0.15;
+        parts.forEach((p) => (p.visible = w > 0.01));
+      });
+      drops.visible = !flat && storm > 0.01;
+      if (drops.visible) {
+        fall += dt;
+        const cx = (camera.position.x + cars[0]!.x) / 2 - RAIN_BOX / 2;
+        const cz = (camera.position.z + cars[0]!.y) / 2 - RAIN_BOX / 2;
+        const speed = 45 * fall;
+        dropSeed.forEach(([x, y, z], k) => {
+          const px = cx + ((((x! - cx) % RAIN_BOX) + RAIN_BOX) % RAIN_BOX);
+          const pz = cz + ((((z! - cz) % RAIN_BOX) + RAIN_BOX) % RAIN_BOX);
+          const py = TALL - ((y! + speed) % TALL);
+          dropAt.set([px, py + STREAK, pz, px + 0.1, py, pz + 0.1], k * 6);
+        });
+        dropGeo.attributes.position!.needsUpdate = true;
+        dropGeo.setDrawRange(0, 2 * Math.round(DROPS * storm));
+      }
+      const wet = !flat && sprays.some((s) => s > 0.02);
+      spray.visible = wet;
+      if (wet) {
+        cars.forEach((c, id) => {
+          const s = sprays[id] ?? 0;
+          for (let k = 0; k < PUFFS; k++) {
+            const back = 3 + k * 3.4;
+            puff.position.set(
+              c.x - Math.cos(c.h) * back,
+              0.5 + k * 0.45 * s,
+              c.y - Math.sin(c.h) * back,
+            );
+            puff.scale.setScalar(s > 0.02 ? (1.1 + k * 0.75) * s : 0);
+            puff.updateMatrix();
+            spray.setMatrixAt(id * PUFFS + k, puff.matrix);
+          }
+        });
+        spray.instanceMatrix.needsUpdate = true;
+      }
+    },
     // Every car on track, yours first (only yours in qualifying, the rest hidden), each one's
     // share of the full tow, each team's crew (0 in the garage, 1 a car in the lane, 2 a car
     // stopped at the box), which cars are gone (out of the race, their wrecks cleared), the
@@ -1100,7 +1228,7 @@ export async function createScene(host: HTMLElement, C: Colors, flat: boolean, t
       light(progress);
       blink += dt;
       const on = Math.floor(blink * 8) % 2 === 0;
-      bars.forEach((bar, k) => (bar.visible = clips[k] ? on : night));
+      bars.forEach((bar, k) => (bar.visible = clips[k] ? on : night || wetLights));
       sun.position.set(c.x + SUN.x, SUN.y, c.y + SUN.z);
       sun.target.position.set(c.x, 0, c.y);
       // The eye turns to the car, gliding, and tilts no more than 5° down or up.

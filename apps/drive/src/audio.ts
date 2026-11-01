@@ -32,6 +32,9 @@ export type Heard = {
   slide: number;
   kerb: number;
   grass: number;
+  // What's falling on you, 0 to 1, and your tyres' hiss through the water.
+  rain: number;
+  hiss: number;
   crowd: number;
   cars: { dist: number; closing: number; pan: number; rpm: number }[];
 };
@@ -170,6 +173,10 @@ export function createAudio(mix: Mix) {
   rumble.start();
   const grass = gain();
   noise().connect(filter("lowpass", 700)).connect(grass).connect(groups.tyres);
+  const rainBed = gain();
+  noise().connect(filter("highpass", 2500)).connect(rainBed).connect(groups.tyres);
+  const hiss = gain();
+  noise().connect(filter("bandpass", 1400)).connect(hiss).connect(groups.tyres);
 
   // A one-off burst of noise through a band, shaped by an envelope; `chop` Hz chatters it.
   const burst = (out: AudioNode, at: number, len: number, f: number, v: number, chop = 0) => {
@@ -248,6 +255,8 @@ export function createAudio(mix: Mix) {
       to(rumble.frequency, 15 + 30 * h.kerb);
       to(kerb.gain, h.kerb ? 0.18 : 0, 0.02);
       to(grass.gain, 0.2 * h.grass);
+      to(rainBed.gain, 0.09 * h.rain, 0.5);
+      to(hiss.gain, 0.16 * h.hiss);
     },
     // The crowd's roar for a few seconds: the start, a place taken.
     cheer() {

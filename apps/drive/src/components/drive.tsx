@@ -84,12 +84,13 @@ import {
   gripAhead,
   pointsShare,
   teamWater,
+  waterUnder,
   wetStart,
   type Outlook,
   HIGH_T,
   LOW_T,
 } from "@/race";
-import { drawWeather, MODES as SKIES, WEATHER_ON, type Mode } from "@/weather";
+import { drawWeather, MODES as SKIES, sectionOf, WEATHER_ON, type Mode } from "@/weather";
 import { KERB_R, TOP, fmt, gear } from "@/track";
 import { CALENDAR, FIRST_CALENDAR, TRACKS, getTrack } from "@/tracks";
 import { Season, TitleScenarios } from "@/components/season";
@@ -1876,6 +1877,8 @@ export default function Drive() {
           slide: Math.abs(car.v) > 15 ? (me.slide - 0.95) / 0.3 : 0,
           kerb: kerbed && edge > -2.3 && edge < 0.3 ? Math.abs(car.v) / TOP : 0,
           grass: edge > 0 ? Math.min(1, Math.abs(car.v) / 40) : 0,
+          rain: race.weather?.rain[sectionOf(me.p * LENGTH, LENGTH)] ?? 0,
+          hiss: Math.min(1, (waterUnder(race, me) * Math.abs(car.v)) / 40),
           crowd: Math.min(1, crowd),
           cars,
         });
@@ -1903,6 +1906,19 @@ export default function Drive() {
             crews[r.id >> 1]!,
             r.stop > 0 && r.stop <= STOP ? 2 : r.pit ? 1 : 0,
           );
+      const w = race.weather;
+      scene!.weather(
+        w?.rain[sectionOf(m, LENGTH)] ?? 0,
+        w?.water ?? null,
+        w?.line ?? null,
+        race.racers.map((r) =>
+          w?.any && !r.out && !r.pit
+            ? Math.min(1, (waterUnder(race, r) * Math.abs(r.car.v)) / 50)
+            : 0,
+        ),
+        race.racers.map((r) => r.car),
+        paused ? 0 : dt,
+      );
       scene!.frame(
         race.racers.map((r) => r.car),
         race.racers.map(towShare),
@@ -3087,7 +3103,8 @@ export default function Drive() {
                     </div>
                   )}
                   <p className="mt-2 text-xs text-soft pointer-coarse:hidden">
-                    1, 2 or 3 to pick tyres, [ and ] the wing, Enter to line up.
+                    {tyres.length > 3 ? "1 to 5" : "1, 2 or 3"} to pick tyres, [ and ] the wing,
+                    Enter to line up.
                   </p>
                   {inCareer && (
                     <button

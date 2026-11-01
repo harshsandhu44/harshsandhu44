@@ -148,7 +148,7 @@ const dryGrip = (race: Race, r: Racer) =>
   (1 + race.rubber) *
   race.cars[r.id >> 1]!;
 // The water under a car, and at point i ahead of it on its line.
-const waterUnder = (race: Race, r: Racer) => {
+export const waterUnder = (race: Race, r: Racer) => {
   const w = race.weather;
   if (!w?.any) return 0;
   const { LENGTH, RACING, atDist, lateral } = race.track;
