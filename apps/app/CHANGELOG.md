@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.0](https://github.com/harshsandhu44/harshsandhu44/compare/app-v1.7.0...app-v1.8.0) (2026-11-08)
+
+
+### Features
+
+* **app:** subtle UI sounds with cuelume, with a sound toggle ([#99](https://github.com/harshsandhu44/harshsandhu44/issues/99)) ([805d3cd](https://github.com/harshsandhu44/harshsandhu44/commit/805d3cda0922ca87391d5a6928da4b5d6cedf6d2))
+
 ## [1.7.0](https://github.com/harshsandhu44/harshsandhu44/compare/app-v1.6.0...app-v1.7.0) (2026-10-21)
 
 
