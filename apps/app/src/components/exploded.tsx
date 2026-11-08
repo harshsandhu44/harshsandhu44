@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { play } from "cuelume";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import type { Arch, Layer } from "@/content";
@@ -104,9 +105,15 @@ export function Exploded({ arch }: { arch: Arch }) {
   // A tap on the drawing picks the part under it, or clears.
   const tap = (ev: MouseEvent) => {
     const d = drawing.current;
-    if (d) setOn(d.pick(ev.clientX, ev.clientY));
+    if (!d) return;
+    const id = d.pick(ev.clientX, ev.clientY);
+    if (id) play("select");
+    setOn(id);
   };
-  const toggle = (id: string) => setOn((x) => (x === id ? null : id));
+  const toggle = (id: string) => {
+    play("select");
+    setOn((x) => (x === id ? null : id));
+  };
 
   return (
     <div data-rise className="mb-10">

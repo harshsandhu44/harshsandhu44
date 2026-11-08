@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { play } from "cuelume";
 
 type Phase = "idle" | "intro" | "arming" | "go" | "jump" | "slow" | "result";
 
@@ -55,9 +56,11 @@ export function Gantry() {
       later(() => {
         setLit(n);
         buzz(35);
+        play("tap", { emphasis: "subtle" });
       }, n * STEP);
     const out = 5 * STEP + pause();
     later(() => {
+      // No cue here: a sound at lights out would make it a test of hearing, not sight.
       goAt.current = 0;
       setPhase("go");
       setLit(0);
@@ -79,6 +82,7 @@ export function Gantry() {
     if (phase === "arming" || (phase === "go" && (!goAt.current || at < goAt.current))) {
       clear();
       buzz([60, 60, 60]);
+      play("error");
       setPhase("jump");
       setLit(0);
     } else if (phase === "go") {
@@ -86,6 +90,7 @@ export function Gantry() {
       clear();
       setMs(t);
       setBest((b) => (b ? Math.min(b, t) : t));
+      play("success");
       setPhase("result");
     } else start();
   };

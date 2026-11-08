@@ -80,7 +80,7 @@ export function Work({ items }: { items: WorkItem[] }) {
                 {p.siteLabel}
               </a>
               {p.caseHref && (
-                <Link href={p.caseHref} className={tl}>
+                <Link href={p.caseHref} data-cuelume-navigate className={tl}>
                   Case study
                 </Link>
               )}

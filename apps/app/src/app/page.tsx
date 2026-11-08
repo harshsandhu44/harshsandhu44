@@ -17,6 +17,7 @@ import { Blueprint } from "@/components/blueprint";
 import { Gantry } from "@/components/gantry";
 import { Menu } from "@/components/menu";
 import { Motion } from "@/components/motion";
+import { SoundToggle } from "@/components/sound";
 import {
   Arrow,
   ArrowUpRight,
@@ -100,24 +101,26 @@ export default function Home() {
         <nav aria-label="Main" className="grid-12 items-center pt-3 md:pt-5">
           <a
             href="#top"
+            data-cuelume-navigate
             data-hero-fade
             className={`col-span-5 justify-self-start text-base font-semibold ${navLink}`}
           >
             {site.name}
           </a>
           <div data-hero-fade className="col-[7/-1] hidden justify-between gap-4 text-base md:flex">
-            <a href="#work" className={navLink}>
+            <a href="#work" data-cuelume-navigate className={navLink}>
               Work
             </a>
-            <a href="#how" className={navLink}>
+            <a href="#how" data-cuelume-navigate className={navLink}>
               How I work
             </a>
-            <a href="#about" className={navLink}>
+            <a href="#about" data-cuelume-navigate className={navLink}>
               About
             </a>
-            <a href="#contact" className={navLink}>
+            <a href="#contact" data-cuelume-navigate className={navLink}>
               Contact
             </a>
+            <SoundToggle className={navLink} />
           </div>
           <Menu />
         </nav>
@@ -151,6 +154,7 @@ export default function Home() {
               <Fragment key={p.slug}>
                 <Link
                   href={`/work/${p.slug}`}
+                  data-cuelume-navigate
                   className="text-paper underline underline-offset-4 hover:decoration-[3px]"
                 >
                   {p.name}
@@ -418,7 +422,7 @@ export default function Home() {
           </FootCol>
           <FootCol title="This page">
             <li>
-              <a href="#top" className={footLink}>
+              <a href="#top" data-cuelume-navigate className={footLink}>
                 Back to the start lights
               </a>
             </li>
