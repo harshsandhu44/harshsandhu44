@@ -1,7 +1,9 @@
 "use client";
 
 import { useRef } from "react";
+import { play } from "cuelume";
 import { site } from "@/content";
+import { SoundToggle } from "@/components/sound";
 import { Arrow, ArrowUpRight, Avail, btn, btnGhost } from "@/components/ui";
 
 const links = [
@@ -27,6 +29,7 @@ export function Menu() {
       <button
         type="button"
         onClick={open}
+        data-cuelume-open
         aria-haspopup="dialog"
         className={`${menuBtn} col-[8/-1] justify-self-end md:hidden`}
       >
@@ -35,12 +38,14 @@ export function Menu() {
       <dialog
         ref={dialog}
         aria-label="Menu"
+        // Escape skips the Close button, so its cue plays here.
+        onCancel={() => play("close")}
         onClose={() => (document.documentElement.style.overflow = "")}
         className="on-dark fixed inset-0 m-0 h-dvh max-h-none w-full max-w-none flex-col border-0 bg-ink px-4 pt-5 pb-8 text-paper [--focus:var(--color-accent)] open:flex open:animate-sheet-in backdrop:bg-transparent"
       >
         <div className="flex items-center justify-between">
           <span className="py-3 text-base font-semibold">{site.name}</span>
-          <button type="button" onClick={close} className={menuBtn}>
+          <button type="button" onClick={close} data-cuelume-close className={menuBtn}>
             Close
           </button>
         </div>
@@ -50,12 +55,14 @@ export function Menu() {
               key={href}
               href={href}
               onClick={close}
+              data-cuelume-navigate
               className="disp py-0.5 text-[11vw] leading-[1.08] tracking-[-0.02em] no-underline transition-[color,translate] duration-300 ease-soft hover:translate-x-2 hover:text-accent active:translate-x-2 active:text-accent"
             >
               {label}
             </a>
           ))}
         </nav>
+        <SoundToggle className="mb-6 min-h-11 self-start text-base font-semibold active:scale-[.96]" />
         <a className={`${btn} self-start`} href={`mailto:${site.email}?subject=Hello%20Harsh`}>
           Email me
           <Arrow />

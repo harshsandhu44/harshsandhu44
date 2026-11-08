@@ -78,6 +78,7 @@ export function Tower() {
           <li key={r.code}>
             <Link
               href={r.href}
+              data-cuelume-navigate
               style={{ animationDelay: `${(0.08 + i * 0.1).toFixed(2)}s` }}
               className={`${row} group/trow animate-rowin bg-carbon no-underline transition-[background-color,color,translate] duration-200 ease-soft hover:-translate-x-1.5 hover:bg-accent hover:text-white focus-visible:-translate-x-1.5 focus-visible:bg-accent focus-visible:text-white`}
             >

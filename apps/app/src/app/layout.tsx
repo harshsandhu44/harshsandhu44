@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Archivo, Hanken_Grotesk } from "next/font/google";
+import { Sound } from "@/components/sound";
 import { site } from "@/content";
 import "./globals.css";
 
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             }
           </style>
         </noscript>
+        <Sound />
         {children}
       </body>
     </html>

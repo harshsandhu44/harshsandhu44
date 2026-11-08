@@ -15,6 +15,7 @@ export default function NotFound() {
       >
         <Link
           href="/"
+          data-cuelume-navigate
           className="col-span-5 justify-self-start py-3 text-base font-semibold text-paper no-underline"
         >
           {site.name}
@@ -31,7 +32,11 @@ export default function NotFound() {
             a page from the tower.
           </p>
           <div className="flex flex-wrap gap-2.5">
-            <Link href="/" className={`${btn} flex-auto justify-between md:flex-none`}>
+            <Link
+              href="/"
+              data-cuelume-navigate
+              className={`${btn} flex-auto justify-between md:flex-none`}
+            >
               Back to the pit lane
               <Arrow />
             </Link>

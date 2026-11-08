@@ -7,6 +7,7 @@ import { CsIndex } from "@/components/cs-index";
 import { Exploded } from "@/components/exploded";
 import { Motion } from "@/components/motion";
 import { Signature } from "@/components/signature";
+import { SoundToggle } from "@/components/sound";
 import { Arrow, Legal, Win, Wordmark, btn, skip } from "@/components/ui";
 
 export const dynamicParams = false;
@@ -80,13 +81,16 @@ export default async function CaseStudy({ params }: PageProps<"/work/[slug]">) {
         >
           <Link
             href="/"
+            data-cuelume-navigate
             className="col-[1/span_4] justify-self-start py-3 text-base font-semibold no-underline decoration-2 underline-offset-[6px] hover:underline"
           >
             {site.name}
           </Link>
           <div className="col-[5/-1] flex items-center justify-end gap-5 text-base md:gap-8">
+            <SoundToggle className="py-3 no-underline decoration-2 underline-offset-[6px] hover:underline" />
             <Link
               href="/#work"
+              data-cuelume-navigate
               className="hidden py-3 no-underline decoration-2 underline-offset-[6px] hover:underline md:inline"
             >
               All work
@@ -301,6 +305,7 @@ export default async function CaseStudy({ params }: PageProps<"/work/[slug]">) {
 
         <Link
           href={`/work/${n.slug}`}
+          data-cuelume-navigate
           className="group/next grid grid-cols-12 items-center gap-x-4 overflow-hidden bg-accent px-4 pt-[72px] pb-[88px] text-white no-underline perspective-[1800px] md:gap-x-6 md:px-6 md:pt-24 md:pb-28"
         >
           <div className="col-span-full lg:col-[1/span_6]">
@@ -340,7 +345,7 @@ export default async function CaseStudy({ params }: PageProps<"/work/[slug]">) {
           <Wordmark />
         </div>
         <Legal>
-          <Link href="/" className="underline-offset-4 hover:underline">
+          <Link href="/" data-cuelume-navigate className="underline-offset-4 hover:underline">
             Back to all work
           </Link>
         </Legal>
